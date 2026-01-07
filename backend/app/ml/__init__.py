@@ -1,0 +1,1 @@
+from app.ml.detector import PPEDetector, get_detector

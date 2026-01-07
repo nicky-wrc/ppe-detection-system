@@ -1,0 +1,31 @@
+# FastAPI
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+python-multipart==0.0.9
+
+# Database
+sqlalchemy==2.0.25
+psycopg2-binary==2.9.9
+alembic==1.13.1
+
+# Authentication
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Pydantic
+pydantic==2.6.1
+pydantic-settings==2.1.0
+
+# AI/ML
+ultralytics==8.1.11
+opencv-python-headless==4.9.0.80
+numpy==1.26.4
+pillow==10.2.0
+
+# Utilities
+python-dotenv==1.0.1
+aiofiles==23.2.1
+
+# Testing
+pytest==8.0.0
+httpx==0.26.0

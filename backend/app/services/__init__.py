@@ -1,0 +1,1 @@
+from app.services.detection_service import DetectionService
