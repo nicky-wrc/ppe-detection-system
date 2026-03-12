@@ -5,7 +5,6 @@ import { LoginPage } from './pages/LoginPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { DetectionPage } from './pages/DetectionPage'
 import { HistoryPage } from './pages/HistoryPage'
-import { AlertsPage } from './pages/AlertsPage'
 import { SettingsPage } from './pages/SettingsPage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -19,9 +18,8 @@ function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
-        <Route path="/detect" element={<PrivateRoute><DetectionPage /></PrivateRoute>} />
-        <Route path="/history" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
-        <Route path="/alerts" element={<PrivateRoute><AlertsPage /></PrivateRoute>} />
+        <Route path="/detection" element={<PrivateRoute><DetectionPage /></PrivateRoute>} />
+        <Route path="/reports" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
         <Route path="/settings" element={<PrivateRoute><SettingsPage /></PrivateRoute>} />
       </Routes>
       <Toaster
@@ -29,8 +27,9 @@ function App() {
         toastOptions={{
           duration: 3000,
           style: {
-            background: '#333',
-            color: '#fff',
+            background: '#1e293b',
+            color: '#e2e8f0',
+            border: '1px solid #334155',
           },
         }}
       />

@@ -4,6 +4,7 @@ const API_URL = `${window.location.protocol}//${window.location.hostname}:8000/a
 
 const api = axios.create({
   baseURL: API_URL,
+  timeout: 300000, // 5 minutes for video processing
   headers: {
     'Content-Type': 'application/json',
   },
