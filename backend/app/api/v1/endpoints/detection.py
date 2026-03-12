@@ -160,17 +160,17 @@ async def get_result_video(
             detail="ไม่พบไฟล์ผลลัพธ์"
         )
     
-    # Auto-detect media type based on file extension
-    if path.endswith('.jpg') or path.endswith('.jpeg') or path.endswith('.png'):
-        media_type = "image/jpeg"
-    elif path.endswith('.avi'):
-        media_type = "video/x-msvideo"
-    elif path.endswith('.webm'):
-        media_type = "video/webm"
-    else:
-        media_type = "video/mp4"
+    ext_map = {
+        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+        '.mp4': 'video/mp4', '.avi': 'video/x-msvideo', '.webm': 'video/webm',
+    }
+    ext = os.path.splitext(path)[1].lower()
+    media_type = ext_map.get(ext, 'video/mp4')
     
-    return FileResponse(path, media_type=media_type)
+    return FileResponse(path, media_type=media_type, headers={
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": f"inline; filename=result_{detection_id}{ext}"
+    })
 
 
 @router.get("/{detection_id}", response_model=DetectionResponse)

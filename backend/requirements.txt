@@ -16,11 +16,11 @@ passlib[bcrypt]==1.7.4
 pydantic==2.6.1
 pydantic-settings==2.1.0
 
-# AI/ML
-ultralytics==8.1.11
-opencv-python-headless==4.9.0.80
-numpy==1.26.4
-pillow==10.2.0
+# AI/ML  (ultralytics >=8.3 supports YOLO11)
+ultralytics>=8.3.0
+opencv-python>=4.9.0
+numpy>=1.26.0
+pillow>=10.2.0
 
 # Utilities
 python-dotenv==1.0.1
