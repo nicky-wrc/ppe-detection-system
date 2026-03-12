@@ -18,6 +18,7 @@ async def detect_from_image(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    """อัปโหลดรูปภาพเพื่อตรวจจับ PPE"""
     if not file.content_type.startswith("image/"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -39,6 +40,35 @@ async def detect_from_image(
             detail=f"เกิดข้อผิดพลาด: {str(e)}"
         )
 
+@router.post("/video", response_model=DetectionResponse)
+async def detect_from_video(
+    file: UploadFile = File(...),
+    zone_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """อัปโหลดวิดีโอเพื่อตรวจจับ PPE"""
+    if not file.content_type.startswith("video/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ไฟล์ต้องเป็นวิดีโอเท่านั้น"
+        )
+    
+    service = DetectionService(db)
+    
+    try:
+        detection = await service.process_video(
+            file=file,
+            user_id=current_user.id,
+            zone_id=zone_id
+        )
+        return detection
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"เกิดข้อผิดพลาด: {str(e)}"
+        )
+
 
 @router.get("/history")
 async def get_detection_history(
@@ -49,6 +79,7 @@ async def get_detection_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    """ดูประวัติการตรวจจับ"""
     service = DetectionService(db)
     
     skip = (page - 1) * per_page
@@ -74,8 +105,72 @@ async def get_detection_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    """ดูสถิติการตรวจจับ"""
     service = DetectionService(db)
     return service.get_stats(zone_id=zone_id)
+
+
+@router.get("/analytics/daily")
+async def get_daily_analytics(
+    days: int = Query(7, ge=1, le=30),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """ดูสถิติรายวัน"""
+    service = DetectionService(db)
+    return service.get_daily_analytics(days=days)
+
+
+@router.get("/{detection_id}/image/result")
+async def get_result_image(
+    detection_id: int,
+    db: Session = Depends(get_db)
+):
+    """ดูรูปภาพผลการตรวจจับ"""
+    detection = db.query(Detection).filter(Detection.id == detection_id).first()
+    
+    if detection is None or detection.result_image_path is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="ไม่พบรูปภาพ"
+        )
+    
+    return FileResponse(detection.result_image_path)
+
+
+@router.get("/{detection_id}/video/result")
+async def get_result_video(
+    detection_id: int,
+    db: Session = Depends(get_db)
+):
+    """ดูวิดีโอผลการตรวจจับ"""
+    detection = db.query(Detection).filter(Detection.id == detection_id).first()
+    
+    if detection is None or detection.result_image_path is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="ไม่พบสื่อข้อมูล"
+        )
+    
+    import os
+    path = detection.result_image_path
+    if not os.path.exists(path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="ไม่พบไฟล์ผลลัพธ์"
+        )
+    
+    # Auto-detect media type based on file extension
+    if path.endswith('.jpg') or path.endswith('.jpeg') or path.endswith('.png'):
+        media_type = "image/jpeg"
+    elif path.endswith('.avi'):
+        media_type = "video/x-msvideo"
+    elif path.endswith('.webm'):
+        media_type = "video/webm"
+    else:
+        media_type = "video/mp4"
+    
+    return FileResponse(path, media_type=media_type)
 
 
 @router.get("/{detection_id}", response_model=DetectionResponse)
@@ -84,6 +179,7 @@ async def get_detection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    """ดูรายละเอียดการตรวจจับ"""
     service = DetectionService(db)
     detection = service.get_detection(detection_id)
     
@@ -94,19 +190,3 @@ async def get_detection(
         )
     
     return detection
-
-
-@router.get("/{detection_id}/image/result")
-async def get_result_image(
-    detection_id: int,
-    db: Session = Depends(get_db)
-):
-    detection = db.query(Detection).filter(Detection.id == detection_id).first()
-    
-    if detection is None or detection.result_image_path is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="ไม่พบรูปภาพ"
-        )
-    
-    return FileResponse(detection.result_image_path)

@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import Optional, List, Tuple
 from datetime import datetime
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, cast, Date
+from datetime import timedelta
 from fastapi import UploadFile
 from app.core.config import settings
 from app.models import Detection, Alert
@@ -48,12 +49,54 @@ class DetectionService:
             zone_id=zone_id,
             original_image_path=original_path,
             result_image_path=result_path,
-            detected_objects=detection_result["detected_objects"],
-            violations=detection_result["violations"],
-            person_count=detection_result["person_count"],
-            violation_count=detection_result["violation_count"],
-            has_violation=detection_result["has_violation"],
-            processing_time_ms=detection_result["processing_time_ms"]
+            detected_objects=detection_result.get("detected_objects", []),
+            persons=detection_result.get("persons", []),
+            violations=detection_result.get("violations", []),
+            person_count=detection_result.get("person_count", 0),
+            violation_count=detection_result.get("violation_count", 0),
+            has_violation=detection_result.get("has_violation", False),
+            processing_time_ms=detection_result.get("processing_time_ms", 0),
+            summary=detection_result.get("summary", {})
+        )
+        
+        self.db.add(detection)
+        self.db.commit()
+        self.db.refresh(detection)
+        
+        if detection.has_violation:
+            self._create_alerts(detection)
+        
+        return detection
+
+    async def process_video(
+        self,
+        file: UploadFile,
+        user_id: Optional[int] = None,
+        zone_id: Optional[int] = None
+    ) -> Detection:
+        original_path = await self.save_upload_file(file)
+        
+        result_filename = f"result_{uuid.uuid4()}.avi"
+        result_path = str(self.upload_dir / result_filename)
+        
+        detection_result = self.detector.process_video(original_path, result_path)
+        
+        # ใช้ path จริงที่ detector สร้างขึ้น (อาจเปลี่ยน extension)
+        actual_output_path = detection_result.get("output_video_path", result_path)
+        
+        detection = Detection(
+            user_id=user_id,
+            zone_id=zone_id,
+            original_image_path=original_path,
+            result_image_path=actual_output_path,
+            detected_objects=detection_result.get("detected_objects", []),
+            persons=detection_result.get("persons", []),
+            violations=detection_result.get("violations", []),
+            person_count=detection_result.get("person_count", 0),
+            violation_count=detection_result.get("violation_count", 0),
+            has_violation=detection_result.get("has_violation", False),
+            processing_time_ms=detection_result.get("processing_time_ms", 0),
+            summary=detection_result.get("summary", {})
         )
         
         self.db.add(detection)
@@ -130,4 +173,67 @@ class DetectionService:
             "total_violations": total_violations,
             "compliance_rate": compliance_rate,
             "violation_by_type": violation_by_type
+        }
+
+    def get_daily_analytics(self, days: int = 7) -> dict:
+        """Get daily analytics for charts"""
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+        
+        # Get daily stats
+        daily_data = []
+        for i in range(days):
+            date = start_date + timedelta(days=i)
+            date_start = date.replace(hour=0, minute=0, second=0, microsecond=0)
+            date_end = date.replace(hour=23, minute=59, second=59, microsecond=999999)
+            
+            query = self.db.query(Detection).filter(
+                Detection.created_at >= date_start,
+                Detection.created_at <= date_end
+            )
+            
+            detections_count = query.count()
+            stats = query.with_entities(
+                func.coalesce(func.sum(Detection.person_count), 0).label("persons"),
+                func.coalesce(func.sum(Detection.violation_count), 0).label("violations")
+            ).first()
+            
+            persons = int(stats.persons) if stats.persons else 0
+            violations = int(stats.violations) if stats.violations else 0
+            compliance = 100 if persons == 0 else round(((persons - violations) / persons) * 100)
+            
+            daily_data.append({
+                "date": date.strftime("%Y-%m-%d"),
+                "day": date.strftime("%a"),
+                "detections": detections_count,
+                "persons": persons,
+                "violations": violations,
+                "compliance": compliance
+            })
+        
+        # Get hourly distribution (for today)
+        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        hourly_data = []
+        for hour in range(24):
+            hour_start = today_start.replace(hour=hour)
+            hour_end = today_start.replace(hour=hour, minute=59, second=59)
+            
+            count = self.db.query(Detection).filter(
+                Detection.created_at >= hour_start,
+                Detection.created_at <= hour_end
+            ).count()
+            
+            hourly_data.append({
+                "hour": f"{hour:02d}:00",
+                "count": count
+            })
+        
+        return {
+            "daily": daily_data,
+            "hourly": hourly_data,
+            "period": {
+                "start": start_date.strftime("%Y-%m-%d"),
+                "end": end_date.strftime("%Y-%m-%d"),
+                "days": days
+            }
         }

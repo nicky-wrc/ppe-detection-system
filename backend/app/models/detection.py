@@ -14,11 +14,13 @@ class Detection(Base):
     result_image_path = Column(String(500), nullable=True)
     
     detected_objects = Column(JSON, default=list)
+    persons = Column(JSON, default=list)  # รายการคนพร้อมสถานะ PPE
     violations = Column(JSON, default=list)
     person_count = Column(Integer, default=0)
     violation_count = Column(Integer, default=0)
     
     has_violation = Column(Boolean, default=False)
     processing_time_ms = Column(Float, nullable=True)
+    summary = Column(JSON, nullable=True)  # สรุปผลการตรวจจับ
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())

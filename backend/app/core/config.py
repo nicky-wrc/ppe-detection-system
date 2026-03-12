@@ -13,7 +13,12 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     
-    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+    # รองรับ frontend ทั้ง dev (5173, 5174) และ docker (3000)
+    ALLOWED_ORIGINS: str = (
+        "http://localhost:3000,"
+        "http://localhost:5173,"
+        "http://localhost:5174"
+    )
     
     MODEL_PATH: str = "./app/ml/models/ppe_yolov8n.pt"
     CONFIDENCE_THRESHOLD: float = 0.5

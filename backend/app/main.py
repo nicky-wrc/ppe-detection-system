@@ -14,10 +14,12 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+# CORS: เปิดให้ทุก origin เรียกได้ (เพื่อความง่ายในการพัฒนาโปรเจคจบ)
+# ต้องตั้ง allow_credentials=False เมื่อใช้ allow_origins=["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS.split(","),
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
