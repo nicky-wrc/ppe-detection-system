@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Layout } from '../components/layout/Layout'
 import { detectionService } from '../services/detection'
@@ -115,6 +115,182 @@ export function DetectionPage() {
   const [result, setResult] = useState<Detection | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
+  // ── Real-time video detection with canvas overlay ──────────────────────────
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)   // visible canvas (replaces <video>)
+  const captureCanvasRef = useRef<HTMLCanvasElement>(null) // hidden, for API frame sends
+  const rafRef = useRef<number | null>(null)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const lastDetectionRef = useRef<Detection | null>(null)  // latest result from API (drawn on canvas)
+  const [isLiveDetecting, setIsLiveDetecting] = useState(false)
+  const [liveFrameCount, setLiveFrameCount] = useState(0)
+  const DETECT_INTERVAL_MS = 2000
+
+  // Draw video frame + bounding boxes to canvas every animation frame
+  const renderLoop = useCallback(() => {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    if (!video || !canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    canvas.width = video.videoWidth || canvas.width
+    canvas.height = video.videoHeight || canvas.height
+
+    // Draw current video frame
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+    // Draw bounding boxes from latest detection
+    const det = lastDetectionRef.current
+    if (det?.persons && det.persons.length > 0) {
+      const scaleX = canvas.width / (video.videoWidth || canvas.width)
+      const scaleY = canvas.height / (video.videoHeight || canvas.height)
+
+      det.persons.forEach((person) => {
+        if (!person.bbox) return
+        const [x1, y1, x2, y2] = person.bbox.map((v: number, i: number) =>
+          i % 2 === 0 ? v * scaleX : v * scaleY
+        )
+        const color = person.is_compliant ? '#22c55e' : '#ef4444'
+        const lineW = Math.max(2, canvas.width / 300)
+
+        // Box
+        ctx.strokeStyle = color
+        ctx.lineWidth = lineW
+        ctx.strokeRect(x1, y1, x2 - x1, y2 - y1)
+
+        // Corner accents
+        const cl = Math.min(20, (x2 - x1) / 5, (y2 - y1) / 5)
+        const corners: [number, number, number, number][] = [
+          [x1, y1, 1, 1], [x2, y1, -1, 1], [x1, y2, 1, -1], [x2, y2, -1, -1]
+        ]
+        ctx.lineWidth = lineW * 2.5
+        corners.forEach(([cx, cy, dx, dy]) => {
+          ctx.beginPath()
+          ctx.moveTo(cx, cy)
+          ctx.lineTo(cx + cl * dx, cy)
+          ctx.stroke()
+          ctx.beginPath()
+          ctx.moveTo(cx, cy)
+          ctx.lineTo(cx, cy + cl * dy)
+          ctx.stroke()
+        })
+
+        // Label background + text
+        const label = `Person ${person.id} · ${person.is_compliant ? '✓ Safe' : '✗ Violation'}`
+        const fontSize = Math.max(11, canvas.width / 60)
+        ctx.font = `bold ${fontSize}px Inter, sans-serif`
+        const tw = ctx.measureText(label).width
+        const lh = fontSize + 8
+        ctx.fillStyle = color
+        ctx.fillRect(x1, y1 - lh - 2, tw + 12, lh + 2)
+        ctx.fillStyle = '#fff'
+        ctx.fillText(label, x1 + 6, y1 - 6)
+
+        // PPE status items inside box
+        let ty = y1 + 4 + fontSize
+        const drawPpe = (text: string, ok: boolean) => {
+          const fs2 = Math.max(9, fontSize - 3)
+          ctx.font = `600 ${fs2}px Inter, sans-serif`
+          const tw2 = ctx.measureText(text).width
+          ctx.fillStyle = ok ? 'rgba(34,197,94,0.85)' : 'rgba(239,68,68,0.85)'
+          ctx.fillRect(x1 + 5, ty - fs2, tw2 + 10, fs2 + 6)
+          ctx.fillStyle = '#fff'
+          ctx.fillText(text, x1 + 10, ty)
+          ty += fs2 + 10
+        }
+        person.wearing?.forEach((item: string) => drawPpe(`✓ ${item}`, true))
+        person.not_wearing?.forEach((item: string) => drawPpe(`✗ ${item}`, false))
+      })
+
+      // Top status banner
+      const msg = det.summary?.message || ''
+      const bannerH = Math.max(28, canvas.width / 25)
+      const isViolation = det.has_violation
+      ctx.fillStyle = isViolation ? 'rgba(200,30,30,0.82)' : 'rgba(22,163,74,0.82)'
+      ctx.fillRect(0, 0, canvas.width, bannerH)
+      ctx.fillStyle = '#fff'
+      ctx.font = `bold ${Math.max(11, bannerH * 0.5)}px Inter, sans-serif`
+      ctx.fillText(msg, 12, bannerH * 0.72)
+    }
+
+    // LIVE badge
+    if (!video.paused && !video.ended) {
+      const badgeH = 22; const bx = 10; const by = (det?.persons?.length ? 38 : 10)
+      const badgeW = 110; const r = 11
+      ctx.fillStyle = 'rgba(220,38,38,0.88)'
+      ctx.beginPath()
+      ctx.moveTo(bx + r, by)
+      ctx.lineTo(bx + badgeW - r, by)
+      ctx.quadraticCurveTo(bx + badgeW, by, bx + badgeW, by + r)
+      ctx.lineTo(bx + badgeW, by + badgeH - r)
+      ctx.quadraticCurveTo(bx + badgeW, by + badgeH, bx + badgeW - r, by + badgeH)
+      ctx.lineTo(bx + r, by + badgeH)
+      ctx.quadraticCurveTo(bx, by + badgeH, bx, by + badgeH - r)
+      ctx.lineTo(bx, by + r)
+      ctx.quadraticCurveTo(bx, by, bx + r, by)
+      ctx.closePath()
+      ctx.fill()
+      ctx.fillStyle = '#fff'
+      ctx.beginPath()
+      ctx.arc(bx + 18, by + badgeH / 2, 5, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.font = `bold 11px Inter, sans-serif`
+      ctx.fillText('LIVE DETECT', bx + 28, by + 15)
+    }
+
+    if (!video.paused && !video.ended) {
+      rafRef.current = requestAnimationFrame(renderLoop)
+    }
+  }, [])
+
+  // Send a frame to the API asynchronously (non-blocking)
+  const captureAndDetect = useCallback(async () => {
+    const video = videoRef.current
+    const cap = captureCanvasRef.current
+    if (!video || !cap || video.paused || video.ended) return
+
+    cap.width = video.videoWidth
+    cap.height = video.videoHeight
+    const ctx = cap.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(video, 0, 0, cap.width, cap.height)
+
+    cap.toBlob(async (blob) => {
+      if (!blob) return
+      try {
+        const frameFile = new File([blob], 'frame.jpg', { type: 'image/jpeg' })
+        const detection = await detectionService.uploadImage(frameFile)
+        lastDetectionRef.current = detection
+        setResult(detection)
+        setLiveFrameCount(prev => prev + 1)
+      } catch (err) {
+        console.error('Frame detect error:', err)
+      }
+    }, 'image/jpeg', 0.8)
+  }, [])
+
+  const stopLiveDetection = useCallback(() => {
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
+    setIsLiveDetecting(false)
+  }, [])
+
+  const startLiveDetection = useCallback(() => {
+    if (!videoRef.current) return
+    setIsLiveDetecting(true)
+    // Start render loop
+    if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    rafRef.current = requestAnimationFrame(renderLoop)
+    // Start API polling
+    if (intervalRef.current) clearInterval(intervalRef.current)
+    intervalRef.current = setInterval(captureAndDetect, DETECT_INTERVAL_MS)
+  }, [renderLoop, captureAndDetect])
+
+  useEffect(() => () => stopLiveDetection(), [stopLiveDetection])
+  // ───────────────────────────────────────────────────────────────────────────
+
   const imageDropzone = useDropzone({
     onDrop: useCallback((files: File[]) => {
       const f = files[0]
@@ -128,8 +304,8 @@ export function DetectionPage() {
   const videoDropzone = useDropzone({
     onDrop: useCallback((files: File[]) => {
       const f = files[0]
-      if (f) { setSelectedFile(f); setPreview(URL.createObjectURL(f)); setResult(null) }
-    }, []),
+      if (f) { setSelectedFile(f); setPreview(URL.createObjectURL(f)); setResult(null); stopLiveDetection() }
+    }, [stopLiveDetection]),
     accept: { 'video/mp4': ['.mp4'], 'video/x-msvideo': ['.avi'], 'video/quicktime': ['.mov'] },
     maxFiles: 1,
     disabled: activeTab !== 'video',
@@ -140,6 +316,7 @@ export function DetectionPage() {
   const isDragActive = activeTab === 'image' ? imageDropzone.isDragActive : videoDropzone.isDragActive
 
   const handleTabChange = (tab: TabType) => {
+    stopLiveDetection()
     setActiveTab(tab); setSelectedFile(null); setPreview(null); setResult(null)
   }
 
@@ -160,7 +337,11 @@ export function DetectionPage() {
     }
   }
 
-  const handleReset = () => { setSelectedFile(null); setPreview(null); setResult(null) }
+  const handleReset = () => {
+    stopLiveDetection()
+    setSelectedFile(null); setPreview(null); setResult(null)
+    setLiveFrameCount(0)
+  }
 
   const hasValidFile = activeTab === 'image'
     ? selectedFile?.type.startsWith('image/')
@@ -209,7 +390,36 @@ export function DetectionPage() {
                   {preview ? (
                     <div style={{ width: '100%' }}>
                       {activeTab === 'video' ? (
-                        <video src={preview} controls style={{ width: '100%', borderRadius: '8px', maxHeight: '340px', backgroundColor: '#000' }} />
+                        <div style={{ position: 'relative', width: '100%', backgroundColor: '#000', borderRadius: '8px', overflow: 'hidden' }}>
+                          {/* Hidden video element (source for canvas rendering) */}
+                          <video
+                            ref={videoRef}
+                            src={preview}
+                            style={{ display: 'none' }}
+                            onPlay={startLiveDetection}
+                            onPause={stopLiveDetection}
+                            onEnded={stopLiveDetection}
+                          />
+                          {/* Visible canvas — shows video frames + detection overlays */}
+                          <canvas
+                            ref={canvasRef}
+                            style={{ width: '100%', maxHeight: '380px', display: 'block', borderRadius: '8px' }}
+                          />
+                          {/* Hidden canvas for frame capture → API */}
+                          <canvas ref={captureCanvasRef} style={{ display: 'none' }} />
+                          {/* Custom controls since native video is hidden */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', backgroundColor: 'rgba(0,0,0,0.6)', borderBottomLeftRadius: '8px', borderBottomRightRadius: '8px', position: 'absolute', bottom: 0, left: 0, right: 0 }}>
+                            <button
+                              onClick={() => { videoRef.current?.paused ? videoRef.current?.play() : videoRef.current?.pause() }}
+                              style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: '6px', padding: '4px 12px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
+                            >
+                              {isLiveDetecting ? '⏸ Pause' : '▶ Play'}
+                            </button>
+                            <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: 'auto' }}>
+                              {isLiveDetecting ? `🔴 LIVE · ${liveFrameCount} frames detected` : 'Press Play to start live detection'}
+                            </span>
+                          </div>
+                        </div>
                       ) : (
                         <img src={preview} alt="Preview" style={{ width: '100%', borderRadius: '8px', maxHeight: '340px', objectFit: 'contain' }} />
                       )}
@@ -397,6 +607,10 @@ export function DetectionPage() {
         @keyframes progressPulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.5; }
+        }
+        @keyframes livePulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(0.75); }
         }
       `}</style>
     </Layout>
