@@ -1,9 +1,7 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 /* Google Font - Kanit for Thai language support */
 @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap');
+
+@import "tailwindcss";
 
 /* Dark theme CSS variables */
 :root {

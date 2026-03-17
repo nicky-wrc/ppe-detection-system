@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { authService } from '../services/auth'
-import { Shield, Mail, Lock, Loader2, Eye, EyeOff } from 'lucide-react'
+import { Shield, Lock, Eye, EyeOff, Loader2, ArrowRight, AtSign } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export function LoginPage() {
@@ -33,165 +33,105 @@ export function LoginPage() {
   }
 
   return (
-    <div className="h-screen w-full flex overflow-hidden" style={{ backgroundColor: '#0a0e17' }}>
+    <div className="flex h-screen w-full bg-[#f8f9fc] overflow-hidden font-sans">
+      
+      {/* Left Panel */}
+      <div className="hidden lg:block w-1/2 bg-[url('/bglogin.png')] bg-cover bg-center bg-no-repeat"></div>
 
-      {/* Left Panel - Branding (takes 55% on large screens) */}
-      <div
-        className="hidden lg:flex w-[55%] relative items-center justify-center px-16 xl:px-24 overflow-hidden"
-        style={{ background: 'linear-gradient(135deg, #0c1222 0%, #162040 50%, #0c1222 100%)' }}
-      >
-        {/* Background glow effects */}
-        <div className="absolute inset-0 opacity-25 pointer-events-none">
-          <div className="absolute top-[10%] left-[5%] w-[50%] h-[50%] rounded-full bg-cyan-500 blur-[180px]" />
-          <div className="absolute bottom-[5%] right-[5%] w-[45%] h-[45%] rounded-full bg-blue-600 blur-[160px]" />
-        </div>
+      {/* Right Panel */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center px-6 lg:px-12 bg-[#f8fafc]">
+        <div className="w-full max-w-[400px]">
 
-        <div className="relative z-10 max-w-2xl">
-          {/* Logo icon */}
-          <div className="w-24 h-24 bg-[#06b6d4]/15 backdrop-blur-md rounded-3xl flex items-center justify-center mb-12 border border-[#06b6d4]/25">
-            <Shield className="w-12 h-12 text-[#06b6d4]" />
-          </div>
-
-          {/* Heading */}
-          <h1 className="text-5xl xl:text-6xl font-extrabold tracking-tight leading-[1.15] mb-8">
-            <span className="text-white">ระบบตรวจจับ</span>
-            <br />
-            <span className="text-[#06b6d4]">อุปกรณ์ความปลอดภัย</span>
-            <br />
-            <span className="text-white">ด้วย AI อัจฉริยะ</span>
-          </h1>
-
-          {/* Description */}
-          <p className="text-xl text-slate-300/80 leading-relaxed mb-14 max-w-xl">
-            ยกระดับความปลอดภัยในพื้นที่ทำงาน ด้วยเทคโนโลยีคอมพิวเตอร์วิทัศน์
-            ที่วิเคราะห์และแจ้งเตือนการฝ่าฝืนแบบเรียลไทม์
+          {/* Header */}
+          <h2 className="text-3xl font-extrabold text-[#0f172a] mb-2">
+            Welcome Back
+          </h2>
+          <p className="text-[#64748b] text-sm mb-8">
+            Access the Secure Industrial Portal with your credentials.
           </p>
-
-          {/* Stats bar */}
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 p-8 rounded-2xl">
-            <div className="grid grid-cols-3 gap-8 text-center">
-              <div>
-                <p className="text-3xl font-bold text-[#06b6d4]">YOLOv8</p>
-                <p className="text-sm text-slate-400 mt-2">AI Model</p>
-              </div>
-              <div>
-                <p className="text-3xl font-bold text-[#06b6d4]">&lt;100ms</p>
-                <p className="text-sm text-slate-400 mt-2">Processing</p>
-              </div>
-              <div>
-                <p className="text-3xl font-bold text-[#06b6d4]">24/7</p>
-                <p className="text-sm text-slate-400 mt-2">Monitoring</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Right Panel - Login Form (takes 45%) */}
-      <div className="w-full lg:w-[45%] flex items-center justify-center px-8 sm:px-16 xl:px-20">
-        <div className="w-full max-w-lg">
-
-          {/* Mobile Logo */}
-          <div className="lg:hidden flex items-center gap-4 mb-12">
-            <div className="w-14 h-14 bg-[#06b6d4]/20 rounded-2xl flex items-center justify-center">
-              <Shield className="w-8 h-8 text-[#06b6d4]" />
-            </div>
-            <span className="font-bold text-white text-2xl">PPE Guard AI</span>
-          </div>
-
-          {/* Welcome */}
-          <div className="mb-12">
-            <h2 className="text-4xl font-bold text-white mb-3">ยินดีต้อนรับกลับมา</h2>
-            <p className="text-lg text-slate-400">กรุณาเข้าสู่ระบบเพื่อเข้าใช้งาน Dashboard</p>
-          </div>
 
           {/* Error */}
           {error && (
-            <div className="mb-8 p-5 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl text-base font-medium flex items-center gap-3">
-              <Shield className="w-6 h-6 shrink-0" />
+            <div className="mb-6 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm flex items-center gap-2">
+              <Shield className="w-4 h-4" />
               {error}
             </div>
           )}
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-7">
-            <div className="space-y-2.5">
-              <label className="text-base font-semibold text-slate-300 ml-1">อีเมล</label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                  <Mail className="h-6 w-6 text-slate-500 group-focus-within:text-[#06b6d4] transition-colors" />
-                </div>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@ppe-system.com"
-                  required
-                  className="block w-full pl-14 pr-5 py-4.5 bg-[#111827] border border-[#1e293b] rounded-xl text-white text-base placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#06b6d4]/30 focus:border-[#06b6d4] transition-all"
-                />
-              </div>
+          <form onSubmit={handleSubmit}>
+            
+            {/* Email */}
+            <div className="mb-8">
+              <label className="block text-sm font-semibold text-[#334155] mb-2 flex items-center gap-2">
+                <AtSign className="w-4 h-4" />
+                Username or Email
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@company.com"
+                required
+                className="w-full px-4 py-3 rounded-lg border border-[#e2e8f0] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#0ea5e9]/30 focus:border-[#0ea5e9] transition"
+              />
             </div>
 
-            <div className="space-y-2.5">
-              <label className="text-base font-semibold text-slate-300 ml-1">รหัสผ่าน</label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                  <Lock className="h-6 w-6 text-slate-500 group-focus-within:text-[#06b6d4] transition-colors" />
-                </div>
+            {/* Password */}
+            <div className="mb-8">
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-sm font-semibold text-[#334155] flex items-center gap-2">
+                  <Lock className="w-4 h-4" />
+                  Password
+                </label>
+                <a href="#" className="text-xs text-[#0ea5e9] hover:underline">
+                  Forgot password?
+                </a>
+              </div>
+
+              <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="block w-full pl-14 pr-14 py-4.5 bg-[#111827] border border-[#1e293b] rounded-xl text-white text-base placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#06b6d4]/30 focus:border-[#06b6d4] transition-all"
+                  className="w-full px-4 py-3 pr-10 rounded-lg border border-[#e2e8f0] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#0ea5e9]/30 focus:border-[#0ea5e9] transition"
                 />
+
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-5 flex items-center text-slate-500 hover:text-slate-300 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94a3b8]"
                 >
-                  {showPassword ? <EyeOff className="h-6 w-6" /> : <Eye className="h-6 w-6" />}
+                  {showPassword ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
                 </button>
               </div>
             </div>
 
+            {/* Button */}
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-4.5 px-6 rounded-xl text-lg font-bold text-white bg-[#06b6d4] hover:bg-[#22d3ee] focus:outline-none focus:ring-2 focus:ring-[#06b6d4]/50 disabled:opacity-70 disabled:cursor-not-allowed transition-all mt-2"
+              className="mt-4 w-full py-3 rounded-lg bg-[#0ea5e9] hover:bg-[#0284c7] text-white font-semibold text-sm transition flex items-center justify-center gap-2 disabled:opacity-70"
             >
               {isLoading ? (
-                <div className="flex items-center justify-center gap-3">
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                  <span>กำลังตรวจสอบข้อมูล...</span>
-                </div>
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Signing in...
+                </>
               ) : (
-                <span>เข้าสู่ระบบ</span>
+                <>
+                  Sign In to Dashboard
+                  <ArrowRight className="w-4 h-4" />
+                </>
               )}
             </button>
-          </form>
 
-          {/* Demo Account */}
-          <div className="mt-10 pt-10 border-t border-[#1e293b]">
-            <div className="bg-[#111827] border border-[#1e293b] rounded-xl p-6">
-              <p className="text-base font-bold text-slate-300 mb-4">บัญชีสำหรับทดสอบ (Demo)</p>
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <p className="text-sm text-slate-500 font-medium mb-2">EMAIL</p>
-                  <p className="text-base font-mono text-[#06b6d4] bg-[#0a0e17] px-4 py-2.5 rounded-lg border border-[#1e293b]">
-                    admin@ppe-system.com
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-slate-500 font-medium mb-2">PASSWORD</p>
-                  <p className="text-base font-mono text-[#06b6d4] bg-[#0a0e17] px-4 py-2.5 rounded-lg border border-[#1e293b]">
-                    admin123
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+          </form>
         </div>
       </div>
     </div>

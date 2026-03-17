@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
-import { Shield, Bell, User, LogOut, Camera, FileText, Settings, LayoutDashboard, Menu, X } from 'lucide-react'
+import { Shield, Bell, User, LogOut, Camera, FileText, LayoutDashboard, Menu, X } from 'lucide-react'
 import { useState } from 'react'
 
 interface LayoutProps {
