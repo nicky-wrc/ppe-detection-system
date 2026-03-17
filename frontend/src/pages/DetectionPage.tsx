@@ -473,7 +473,7 @@ export function DetectionPage() {
             </div>
 
             {/* Result image card */}
-            {result && (
+            {result && activeTab === 'image' && (
               <div style={c.card}>
                 <div style={c.cardHead}>
                   <p style={c.cardTitle}>Detection Result</p>
@@ -486,10 +486,7 @@ export function DetectionPage() {
                 </div>
                 <div style={c.cardBody}>
                   <img
-                    src={activeTab === 'video'
-                      ? detectionService.getResultVideoUrl(result.id)
-                      : detectionService.getResultImageUrl(result.id)
-                    }
+                    src={detectionService.getResultImageUrl(result.id)}
                     alt="Detection Result"
                     style={{ width: '100%', borderRadius: '10px', border: '1px solid #e5eaf0', maxHeight: '500px', objectFit: 'contain' }}
                   />
