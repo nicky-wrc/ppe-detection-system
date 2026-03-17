@@ -1,17 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
-import {
-  Shield,
-  Bell,
-  User,
-  LogOut,
-  LayoutDashboard,
-  Camera,
-  FileText,
-  Settings,
-  Menu,
-  X,
-} from 'lucide-react'
+import { Shield, Bell, User, LogOut, Camera, FileText, Settings, LayoutDashboard, Menu, X } from 'lucide-react'
 import { useState } from 'react'
 
 interface LayoutProps {
@@ -39,86 +28,147 @@ export function Layout({ children }: LayoutProps) {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
-      {/* Top Navigation Bar */}
-      <header className="flex-shrink-0 h-16 flex items-center justify-between px-6 lg:px-10 z-20 border-b border-[#1e293b]/50" style={{ backgroundColor: '#0f1724' }}>
-        <div className="flex items-center gap-10">
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-[#06b6d4]/20">
-              <Shield className="w-6 h-6 text-[#06b6d4]" />
-            </div>
-            <span className="font-bold text-white text-xl tracking-tight">
-              PPE Guard AI
-            </span>
-          </Link>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', backgroundColor: '#f0f4f8' }}>
 
-          {/* Desktop Nav Links */}
-          <nav className="hidden md:flex items-center gap-2">
-            {navItems.map((item) => {
-              const isActive =
-                location.pathname === item.path ||
-                (item.path !== '/' && location.pathname.startsWith(item.path))
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={`flex items-center gap-2.5 px-5 py-2.5 rounded-lg text-base font-medium transition-colors ${
-                    isActive
-                      ? 'text-[#06b6d4] bg-[#06b6d4]/10'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  <item.icon className="w-5 h-5" />
-                  {item.label}
-                </Link>
-              )
-            })}
-          </nav>
-        </div>
+      {/* ── Navbar ── */}
+      <header style={{
+        flexShrink: 0,
+        height: '60px',
+        backgroundColor: '#ffffff',
+        borderBottom: '1px solid #e5eaf0',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingLeft: '32px',
+        paddingRight: '32px',
+        zIndex: 20,
+        position: 'relative',
+      }}>
 
-        {/* Right side */}
-        <div className="flex items-center gap-4">
+        {/* Left: Logo */}
+        <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
+          <div style={{
+            width: '38px', height: '38px',
+            backgroundColor: '#2563eb',
+            borderRadius: '10px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Shield size={20} color="#ffffff" />
+          </div>
+          <span style={{ fontWeight: 700, fontSize: '17px', color: '#0f172a', letterSpacing: '-0.3px' }}>
+            PPE Guard AI
+          </span>
+        </Link>
+
+        {/* Center: Nav links — absolutely centered */}
+        <nav style={{
+          position: 'absolute',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+        }}>
+          {navItems.map((item) => {
+            const isActive =
+              location.pathname === item.path ||
+              (item.path !== '/' && location.pathname.startsWith(item.path))
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '6px 14px 4px',
+                  fontSize: '14px',
+                  fontWeight: isActive ? 600 : 500,
+                  color: isActive ? '#2563eb' : '#64748b',
+                  textDecoration: 'none',
+                  borderBottom: isActive ? '2px solid #2563eb' : '2px solid transparent',
+                  transition: 'color 0.15s',
+                }}
+              >
+                {item.label}
+              </Link>
+            )
+          })}
+        </nav>
+
+        {/* Right: Bell + Avatar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+
+          {/* Bell */}
           <button
-            className="p-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors relative"
             aria-label="Notifications"
+            style={{
+              position: 'relative',
+              width: '36px', height: '36px',
+              borderRadius: '50%',
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#64748b',
+            }}
           >
-            <Bell className="w-6 h-6" />
-            <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#0f1724]" />
+            <Bell size={19} />
           </button>
 
-          <div className="relative">
+          {/* User avatar */}
+          <div style={{ position: 'relative' }}>
             <button
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5 transition-colors"
+              style={{
+                width: '36px', height: '36px',
+                borderRadius: '50%',
+                backgroundColor: '#f59e0b',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
             >
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#06b6d4] to-[#0891b2] flex items-center justify-center">
-                {user?.full_name ? (
-                  <span className="text-base font-bold text-white">
-                    {user.full_name.charAt(0).toUpperCase()}
-                  </span>
-                ) : (
-                  <User className="w-5 h-5 text-white" />
-                )}
-              </div>
-              <span className="hidden sm:block text-base font-medium text-slate-300">
-                {user?.full_name || 'User'}
-              </span>
+              {user?.full_name ? (
+                <span style={{ fontSize: '13px', fontWeight: 700, color: '#ffffff' }}>
+                  {user.full_name.charAt(0).toUpperCase()}
+                </span>
+              ) : (
+                <User size={17} color="#ffffff" />
+              )}
             </button>
 
             {isUserMenuOpen && (
               <>
-                <div className="fixed inset-0 z-10" onClick={() => setIsUserMenuOpen(false)} />
-                <div className="absolute right-0 mt-2 w-56 py-2 rounded-xl shadow-xl z-20 border border-[#1e293b]" style={{ backgroundColor: '#1e293b' }}>
-                  <div className="px-4 py-3 border-b border-slate-700/50">
-                    <p className="text-sm font-medium text-white">{user?.full_name || 'User'}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">{user?.email || ''}</p>
+                <div
+                  style={{ position: 'fixed', inset: 0, zIndex: 10 }}
+                  onClick={() => setIsUserMenuOpen(false)}
+                />
+                <div style={{
+                  position: 'absolute', right: 0, top: '44px',
+                  width: '200px',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #e5eaf0',
+                  borderRadius: '12px',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                  zIndex: 20,
+                  overflow: 'hidden',
+                }}>
+                  <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
+                    <p style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', margin: 0 }}>{user?.full_name || 'User'}</p>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', margin: '2px 0 0' }}>{user?.email || ''}</p>
                   </div>
                   <button
                     onClick={handleLogout}
-                    className="flex items-center gap-3 w-full px-4 py-3 text-base text-red-400 hover:bg-white/5 hover:text-red-300 transition-colors"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '10px',
+                      width: '100%', padding: '10px 16px',
+                      fontSize: '13px', color: '#ef4444',
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
                   >
-                    <LogOut className="w-5 h-5" />
+                    <LogOut size={15} />
                     ออกจากระบบ
                   </button>
                 </div>
@@ -126,21 +176,33 @@ export function Layout({ children }: LayoutProps) {
             )}
           </div>
 
-          {/* Mobile menu toggle */}
+          {/* Mobile hamburger */}
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="md:hidden p-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5"
+            style={{
+              display: 'none', // hidden on desktop – shown via media query below (not needed here as inline)
+              width: '36px', height: '36px',
+              borderRadius: '8px', border: 'none',
+              background: 'none', cursor: 'pointer',
+              color: '#64748b',
+            }}
             aria-label="Toggle menu"
           >
-            {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
         </div>
       </header>
 
-      {/* Mobile Nav */}
+      {/* Mobile nav drawer */}
       {isMobileMenuOpen && (
-        <div className="md:hidden fixed inset-x-0 top-16 bottom-0 z-10 overflow-y-auto" style={{ backgroundColor: '#0f1724' }}>
-          <nav className="flex flex-col p-5 gap-2">
+        <div style={{
+          position: 'fixed', top: '60px', left: 0, right: 0, bottom: 0,
+          backgroundColor: '#ffffff',
+          borderTop: '1px solid #e5eaf0',
+          zIndex: 10,
+          overflowY: 'auto',
+        }}>
+          <nav style={{ display: 'flex', flexDirection: 'column', padding: '12px', gap: '4px' }}>
             {navItems.map((item) => {
               const isActive =
                 location.pathname === item.path ||
@@ -150,13 +212,18 @@ export function Layout({ children }: LayoutProps) {
                   key={item.path}
                   to={item.path}
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className={`flex items-center gap-4 px-5 py-4 rounded-xl text-lg font-medium transition-colors ${
-                    isActive
-                      ? 'text-[#06b6d4] bg-[#06b6d4]/10'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
-                  }`}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '12px',
+                    padding: '12px 16px',
+                    borderRadius: '10px',
+                    fontSize: '15px',
+                    fontWeight: 500,
+                    color: isActive ? '#2563eb' : '#64748b',
+                    backgroundColor: isActive ? '#eff6ff' : 'transparent',
+                    textDecoration: 'none',
+                  }}
                 >
-                  <item.icon className="w-6 h-6" />
+                  <item.icon size={18} />
                   {item.label}
                 </Link>
               )
@@ -166,25 +233,33 @@ export function Layout({ children }: LayoutProps) {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto" style={{ backgroundColor: '#0a0e17' }}>
-        <div className="w-full max-w-[1600px] mx-auto px-6 lg:px-10 py-8">
+      <main style={{ flex: 1, overflowY: 'auto', backgroundColor: '#f0f4f8' }}>
+        <div style={{
+          width: '100%',
+          maxWidth: '1280px',
+          marginLeft: 'auto',
+          marginRight: 'auto',
+          paddingLeft: '40px',
+          paddingRight: '40px',
+          paddingTop: '32px',
+          paddingBottom: '32px',
+        }}>
           {children}
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="flex-shrink-0 h-10 flex items-center justify-between px-6 lg:px-10 text-xs font-medium border-t border-[#1e293b]/50" style={{ backgroundColor: '#0f1724' }}>
-        <div className="flex items-center gap-8">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-slate-400">AI CORE: OPERATIONAL</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span className="text-slate-400">NETWORK: STABLE</span>
-          </div>
-        </div>
-        <span className="text-slate-500 hidden sm:block">LAST UPDATED: {new Date().toLocaleTimeString()}</span>
+      <footer style={{
+        flexShrink: 0,
+        height: '40px',
+        backgroundColor: '#ffffff',
+        borderTop: '1px solid #e5eaf0',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingLeft: '32px',
+        paddingRight: '32px',
+      }}>
       </footer>
     </div>
   )

@@ -1,7 +1,25 @@
 import { useState } from 'react'
 import { Layout } from '../components/layout/Layout'
-import { Save, Sliders, Bell, HardDrive, Cpu, Database, Monitor, Shield } from 'lucide-react'
+import { Save, Bell, HardDrive, Cpu, Database, Monitor, Shield } from 'lucide-react'
 import toast from 'react-hot-toast'
+
+const ToggleSwitch = ({ checked, onChange }: { checked: boolean; onChange: () => void }) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    onClick={onChange}
+    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+      checked ? 'bg-[#06b6d4]' : 'bg-slate-600'
+    }`}
+  >
+    <span
+      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ease-in-out ${
+        checked ? 'translate-x-5' : 'translate-x-0'
+      }`}
+    />
+  </button>
+)
 
 export function SettingsPage() {
   const [settings, setSettings] = useState({
@@ -23,24 +41,6 @@ export function SettingsPage() {
       toast.success('บันทึกการตั้งค่าเรียบร้อยแล้ว')
     }, 600)
   }
-
-  const ToggleSwitch = ({ checked, onChange }: { checked: boolean; onChange: () => void }) => (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={onChange}
-      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
-        checked ? 'bg-[#06b6d4]' : 'bg-slate-600'
-      }`}
-    >
-      <span
-        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ease-in-out ${
-          checked ? 'translate-x-5' : 'translate-x-0'
-        }`}
-      />
-    </button>
-  )
 
   return (
     <Layout>
