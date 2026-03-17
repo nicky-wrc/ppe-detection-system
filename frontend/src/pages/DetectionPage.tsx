@@ -11,14 +11,102 @@ import {
   X,
   Users,
   Clock,
-  Video,
   Image as ImageIcon,
   ShieldCheck,
   ShieldAlert,
+  Video,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 type TabType = 'image' | 'video'
+
+// ─── Inline style constants ───────────────────────────────────────────────────
+const c = {
+  // page wrapper
+  page: { display: 'flex', flexDirection: 'column' as const, gap: '20px' },
+
+  // top header row
+  headerRow: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: '12px' },
+  pageTitle: { fontSize: '22px', fontWeight: 700, color: '#0f172a', margin: 0 },
+  pageSubtitle: { fontSize: '13px', color: '#64748b', marginTop: '4px' },
+
+  // tab switcher (top-right)
+  tabs: { display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '10px' },
+  tabActive: { display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600, color: '#0f172a', backgroundColor: '#ffffff', border: 'none', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
+  tabInactive: { display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 500, color: '#64748b', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' },
+
+  // two-column layout
+  columns: { display: 'grid', gridTemplateColumns: '1fr 360px', gap: '20px', alignItems: 'start' },
+
+  // card container
+  card: { backgroundColor: '#ffffff', border: '1px solid #e5eaf0', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
+  cardHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid #f1f5f9' },
+  cardTitle: { fontSize: '14px', fontWeight: 600, color: '#0f172a', margin: 0 },
+  cardBody: { padding: '20px' },
+
+  // dropzone
+  dropzone: (active: boolean, hasFile: boolean) => ({
+    minHeight: '280px',
+    border: `2px dashed ${active ? '#2563eb' : hasFile ? '#cbd5e1' : '#d1d8e4'}`,
+    borderRadius: '12px',
+    display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center',
+    textAlign: 'center' as const,
+    cursor: 'pointer',
+    backgroundColor: active ? '#eff6ff' : hasFile ? '#f8fafc' : '#fafbfc',
+    transition: 'all 0.2s',
+    padding: '24px',
+  }),
+
+  // detect button row
+  detectRow: { display: 'flex', gap: '10px', marginTop: '16px' },
+  detectBtn: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '11px 20px', backgroundColor: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' },
+  detectBtnDisabled: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '11px 20px', backgroundColor: '#93c5fd', color: '#ffffff', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 600, cursor: 'not-allowed' },
+  resetBtn: { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '11px 14px', backgroundColor: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: '10px', cursor: 'pointer' },
+
+  // progress bar
+  progressBar: { height: '4px', backgroundColor: '#e2e8f0', borderRadius: '2px', overflow: 'hidden', marginTop: '12px' },
+  progressFill: { height: '100%', backgroundColor: '#2563eb', borderRadius: '2px', animation: 'progressPulse 1.5s ease-in-out infinite' },
+
+  // result banner
+  bannerSafe: { display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 14px', backgroundColor: '#dcfce7', color: '#16a34a', borderRadius: '8px', fontSize: '13px', fontWeight: 600, border: '1px solid #bbf7d0' },
+  bannerViolation: { display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 14px', backgroundColor: '#fee2e2', color: '#dc2626', borderRadius: '8px', fontSize: '13px', fontWeight: 600, border: '1px solid #fecaca' },
+
+  // right panel: status alert
+  alertRed: { display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '14px', backgroundColor: '#fff1f2', border: '1px solid #fecaca', borderRadius: '12px', marginBottom: '16px' },
+  alertGreen: { display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '14px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', marginBottom: '16px' },
+
+  // stats grid
+  statsGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' },
+  statBox: { backgroundColor: '#f8fafc', border: '1px solid #e5eaf0', borderRadius: '10px', padding: '14px 16px' },
+  statLabel: { fontSize: '11px', color: '#94a3b8', fontWeight: 500, textTransform: 'uppercase' as const, letterSpacing: '0.05em', margin: '0 0 6px' },
+  statValue: { fontSize: '28px', fontWeight: 700, color: '#0f172a', margin: 0 },
+  statValueRed: { fontSize: '28px', fontWeight: 700, color: '#dc2626', margin: 0 },
+  statBoxFull: { backgroundColor: '#f8fafc', border: '1px solid #e5eaf0', borderRadius: '10px', padding: '14px 16px', gridColumn: '1 / -1' as const },
+
+  // per-person
+  sectionTitle: { fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.06em', margin: '16px 0 10px', display: 'flex', alignItems: 'center', gap: '6px' },
+  personCard: (compliant: boolean) => ({
+    border: `1px solid ${compliant ? '#bbf7d0' : '#fecaca'}`,
+    borderRadius: '10px',
+    padding: '12px 14px',
+    backgroundColor: compliant ? '#f0fdf4' : '#fff1f2',
+    marginBottom: '8px',
+  }),
+  personHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' },
+  personName: { fontSize: '13px', fontWeight: 600, color: '#0f172a' },
+  badgeSafe: { fontSize: '11px', fontWeight: 600, color: '#16a34a', backgroundColor: '#dcfce7', padding: '2px 8px', borderRadius: '20px' },
+  badgeViolation: { fontSize: '11px', fontWeight: 600, color: '#dc2626', backgroundColor: '#fee2e2', padding: '2px 8px', borderRadius: '20px' },
+  ppeRow: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', marginBottom: '4px' },
+  ppeOk: { color: '#16a34a' },
+  ppeNo: { color: '#dc2626' },
+  confidence: { fontSize: '11px', color: '#94a3b8', marginTop: '6px' },
+
+  // violations summary
+  violationItem: { display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', backgroundColor: '#fff1f2', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '13px', color: '#dc2626', marginBottom: '6px' },
+
+  // empty state
+  emptyPanel: { display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: '40px 20px', textAlign: 'center' as const },
+}
 
 export function DetectionPage() {
   const [activeTab, setActiveTab] = useState<TabType>('image')
@@ -28,13 +116,9 @@ export function DetectionPage() {
   const [isLoading, setIsLoading] = useState(false)
 
   const imageDropzone = useDropzone({
-    onDrop: useCallback((acceptedFiles: File[]) => {
-      const file = acceptedFiles[0]
-      if (file) {
-        setSelectedFile(file)
-        setPreview(URL.createObjectURL(file))
-        setResult(null)
-      }
+    onDrop: useCallback((files: File[]) => {
+      const f = files[0]
+      if (f) { setSelectedFile(f); setPreview(URL.createObjectURL(f)); setResult(null) }
     }, []),
     accept: { 'image/*': ['.jpeg', '.jpg', '.png', '.webp'] },
     maxFiles: 1,
@@ -42,19 +126,11 @@ export function DetectionPage() {
   })
 
   const videoDropzone = useDropzone({
-    onDrop: useCallback((acceptedFiles: File[]) => {
-      const file = acceptedFiles[0]
-      if (file) {
-        setSelectedFile(file)
-        setPreview(URL.createObjectURL(file))
-        setResult(null)
-      }
+    onDrop: useCallback((files: File[]) => {
+      const f = files[0]
+      if (f) { setSelectedFile(f); setPreview(URL.createObjectURL(f)); setResult(null) }
     }, []),
-    accept: {
-      'video/mp4': ['.mp4'],
-      'video/x-msvideo': ['.avi'],
-      'video/quicktime': ['.mov'],
-    },
+    accept: { 'video/mp4': ['.mp4'], 'video/x-msvideo': ['.avi'], 'video/quicktime': ['.mov'] },
     maxFiles: 1,
     disabled: activeTab !== 'video',
   })
@@ -64,370 +140,265 @@ export function DetectionPage() {
   const isDragActive = activeTab === 'image' ? imageDropzone.isDragActive : videoDropzone.isDragActive
 
   const handleTabChange = (tab: TabType) => {
-    setActiveTab(tab)
-    setSelectedFile(null)
-    setPreview(null)
-    setResult(null)
+    setActiveTab(tab); setSelectedFile(null); setPreview(null); setResult(null)
   }
 
   const handleDetect = async () => {
     if (!selectedFile) return
     setIsLoading(true)
     try {
-      const detection =
-        activeTab === 'video'
-          ? await detectionService.uploadVideo(selectedFile)
-          : await detectionService.uploadImage(selectedFile)
+      const detection = activeTab === 'video'
+        ? await detectionService.uploadVideo(selectedFile)
+        : await detectionService.uploadImage(selectedFile)
       setResult(detection)
       toast.success('ตรวจจับสำเร็จ')
     } catch (error) {
-      console.error('Detection error:', error)
+      console.error(error)
       toast.error('เกิดข้อผิดพลาด กรุณาลองใหม่')
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleReset = () => {
-    setSelectedFile(null)
-    setPreview(null)
-    setResult(null)
-  }
+  const handleReset = () => { setSelectedFile(null); setPreview(null); setResult(null) }
 
-  const hasValidFile =
-    activeTab === 'image'
-      ? selectedFile && selectedFile.type.startsWith('image/')
-      : selectedFile && selectedFile.type.startsWith('video/')
+  const hasValidFile = activeTab === 'image'
+    ? selectedFile?.type.startsWith('image/')
+    : selectedFile?.type.startsWith('video/')
 
   return (
     <Layout>
-      <div className="space-y-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-white tracking-tight">
-              PPE Detection
-            </h1>
-            <p className="text-base text-slate-400 mt-2">
-              อัปโหลดรูปภาพหรือวิดีโอเพื่อตรวจจับการสวมใส่อุปกรณ์ความปลอดภัยอัตโนมัติ
-            </p>
-          </div>
+      <div style={c.page}>
 
-          {/* Tabs */}
-          <div className="flex gap-1.5 p-1.5 rounded-xl bg-[#111827] border border-[#1e293b]">
-            <button
-              onClick={() => handleTabChange('image')}
-              className={`flex items-center gap-2.5 px-6 py-3 rounded-lg text-base font-medium transition-colors ${
-                activeTab === 'image'
-                  ? 'bg-[#06b6d4] text-white shadow-lg shadow-[#06b6d4]/20'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <ImageIcon className="w-5 h-5" />
-              รูปภาพ
+        {/* ── Page Header ── */}
+        <div style={c.headerRow}>
+          <div>
+            <h1 style={c.pageTitle}>PPE Detection</h1>
+            <p style={c.pageSubtitle}>Upload an image or video to automatically detect PPE compliance (helmet &amp; reflective vest).</p>
+          </div>
+          {/* Image / Video switcher */}
+          <div style={c.tabs}>
+            <button style={activeTab === 'image' ? c.tabActive : c.tabInactive} onClick={() => handleTabChange('image')}>
+              <ImageIcon size={14} /> Image
             </button>
-            <button
-              onClick={() => handleTabChange('video')}
-              className={`flex items-center gap-2.5 px-6 py-3 rounded-lg text-base font-medium transition-colors ${
-                activeTab === 'video'
-                  ? 'bg-[#06b6d4] text-white shadow-lg shadow-[#06b6d4]/20'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <Video className="w-5 h-5" />
-              วิดีโอ
+            <button style={activeTab === 'video' ? c.tabActive : c.tabInactive} onClick={() => handleTabChange('video')}>
+              <Video size={14} /> Video
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-          {/* Main Content */}
-          <div className="xl:col-span-2 space-y-8">
-            {/* Upload Card */}
-            <div className="bg-[#111827] rounded-2xl border border-[#1e293b] overflow-hidden">
-              <div className="px-8 py-5 border-b border-[#1e293b]">
-                <h2 className="text-xl font-semibold text-white">
-                  {activeTab === 'image' ? 'อัปโหลดรูปภาพ' : 'อัปโหลดวิดีโอ'}
-                </h2>
-              </div>
-              <div className="p-8">
-                <div
-                  {...getRootProps()}
-                  className={`relative min-h-[350px] border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all duration-200 flex flex-col items-center justify-center ${
-                    isDragActive
-                      ? 'border-[#06b6d4] bg-[#06b6d4]/10'
-                      : preview
-                        ? 'border-[#1e293b] bg-[#0a0e17]/50 hover:border-[#06b6d4]/50'
-                        : 'border-[#1e293b] hover:border-[#06b6d4]/50 hover:bg-[#0a0e17]/30'
-                  }`}
-                >
-                  <input {...getInputProps()} />
+        {/* ── Two column layout ── */}
+        <div style={c.columns}>
 
+          {/* ── LEFT: Upload + Result image ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+            {/* Upload card */}
+            <div style={c.card}>
+              <div style={c.cardHead}>
+                <p style={c.cardTitle}>{activeTab === 'image' ? 'Upload Image' : 'Upload Video'}</p>
+                {selectedFile && (
+                  <button onClick={handleReset} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '2px' }}>
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+              <div style={c.cardBody}>
+                <div {...getRootProps()} style={c.dropzone(isDragActive, !!preview)}>
+                  <input {...getInputProps()} />
                   {preview ? (
-                    <div className="w-full flex flex-col items-center justify-center">
-                      <div className="relative w-full rounded-xl overflow-hidden border border-[#1e293b]">
-                        {activeTab === 'video' ? (
-                          <video
-                            src={preview}
-                            controls
-                            className="w-full h-auto object-contain max-h-[320px] bg-black rounded-xl"
-                          />
-                        ) : (
-                          <img
-                            src={preview}
-                            alt="Preview"
-                            className="w-full h-auto object-contain max-h-[320px] rounded-xl"
-                          />
-                        )}
-                      </div>
-                      <p className="text-base text-slate-400 mt-4 truncate max-w-full">
-                        {selectedFile?.name}
-                      </p>
+                    <div style={{ width: '100%' }}>
+                      {activeTab === 'video' ? (
+                        <video src={preview} controls style={{ width: '100%', borderRadius: '8px', maxHeight: '340px', backgroundColor: '#000' }} />
+                      ) : (
+                        <img src={preview} alt="Preview" style={{ width: '100%', borderRadius: '8px', maxHeight: '340px', objectFit: 'contain' }} />
+                      )}
+                      <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '8px', textAlign: 'center' }}>{selectedFile?.name}</p>
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center py-8">
-                      <div className="w-20 h-20 bg-[#06b6d4]/15 text-[#06b6d4] rounded-2xl flex items-center justify-center mb-6">
-                        <Upload className="w-10 h-10" />
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', padding: '20px 0' }}>
+                      <div style={{ width: '56px', height: '56px', borderRadius: '14px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Upload size={26} color="#2563eb" />
                       </div>
-                      <p className="text-xl text-slate-200 font-semibold">
-                        {isDragActive ? 'วางไฟล์ที่นี่เลย' : 'ลากไฟล์มาวางที่นี่'}
-                      </p>
-                      <p className="text-base text-slate-500 mt-2">
-                        หรือคลิกเพื่อเลือกไฟล์
-                      </p>
-                      <p className="text-sm text-slate-600 mt-6">
-                        {activeTab === 'image'
-                          ? 'รองรับ: JPG, PNG, WebP'
-                          : 'รองรับ: MP4, AVI, MOV'}
+                      <div>
+                        <p style={{ fontSize: '15px', fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>
+                          {isDragActive ? 'Drop your file here' : 'Drag & drop your file here'}
+                        </p>
+                        <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>or click to browse</p>
+                      </div>
+                      <p style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '4px' }}>
+                        {activeTab === 'image' ? 'Supported: JPG, PNG, WebP' : 'Supported: MP4, AVI, MOV'}
                       </p>
                     </div>
                   )}
                 </div>
 
+                {/* Detect / Reset buttons */}
                 {preview && hasValidFile && (
-                  <div className="flex gap-4 mt-6">
+                  <div style={c.detectRow}>
                     <button
                       onClick={handleDetect}
                       disabled={isLoading}
-                      className="flex-1 py-4 px-6 bg-[#06b6d4] hover:bg-[#22d3ee] text-white rounded-xl text-lg font-bold disabled:opacity-70 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-3"
+                      style={isLoading ? c.detectBtnDisabled : c.detectBtn}
                     >
                       {isLoading ? (
-                        <>
-                          <Loader2 className="w-6 h-6 animate-spin" />
-                          <span>กำลังประมวลผล...</span>
-                        </>
+                        <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Processing...</>
                       ) : (
-                        <>
-                          <ShieldCheck className="w-6 h-6" />
-                          <span>เริ่มตรวจจับ</span>
-                        </>
+                        <><ShieldCheck size={16} /> Start Detection</>
                       )}
                     </button>
-                    <button
-                      onClick={handleReset}
-                      className="p-4 border border-[#1e293b] text-slate-400 rounded-xl hover:bg-white/5 hover:text-white transition-colors"
-                    >
-                      <X className="w-6 h-6" />
+                    <button onClick={handleReset} style={c.resetBtn}>
+                      <X size={16} />
                     </button>
                   </div>
                 )}
 
+                {/* Progress bar */}
                 {isLoading && (
-                  <div className="mt-6">
-                    <div className="h-2 bg-[#1e293b] rounded-full overflow-hidden">
-                      <div className="h-full bg-[#06b6d4] rounded-full animate-pulse" style={{ width: '40%' }} />
-                    </div>
-                    <p className="text-sm text-slate-500 mt-3">
-                      กำลังประมวลผล... กรุณารอสักครู่
-                    </p>
+                  <div style={c.progressBar}>
+                    <div style={{ ...c.progressFill, width: '60%' }} />
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Result */}
+            {/* Result image card */}
             {result && (
-              <div className="bg-[#111827] rounded-2xl border border-[#1e293b] overflow-hidden">
-                <div className="px-8 py-5 border-b border-[#1e293b] flex items-center justify-between">
-                  <h2 className="text-xl font-semibold text-white">ผลลัพธ์การตรวจจับ</h2>
-                  {result.has_violation ? (
-                    <span className="flex items-center gap-2 px-4 py-2 bg-red-500/15 text-red-400 rounded-lg text-sm font-semibold border border-red-500/30">
-                      <ShieldAlert className="w-4 h-4" /> พบการฝ่าฝืน
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-2 px-4 py-2 bg-emerald-500/15 text-emerald-400 rounded-lg text-sm font-semibold border border-emerald-500/30">
-                      <ShieldCheck className="w-4 h-4" /> ปลอดภัย
-                    </span>
-                  )}
-                </div>
-                <div className="p-8">
-                  <div className="rounded-xl overflow-hidden border border-[#1e293b] bg-black">
-                    <img
-                      src={activeTab === 'video'
-                        ? detectionService.getResultVideoUrl(result.id)
-                        : detectionService.getResultImageUrl(result.id)
-                      }
-                      alt="Detection Result"
-                      className="w-full h-auto object-contain max-h-[500px]"
-                    />
+              <div style={c.card}>
+                <div style={c.cardHead}>
+                  <p style={c.cardTitle}>Detection Result</p>
+                  <div style={result.has_violation ? c.bannerViolation : c.bannerSafe}>
+                    {result.has_violation
+                      ? <><ShieldAlert size={14} /> Violation Detected</>
+                      : <><ShieldCheck size={14} /> Compliant</>
+                    }
                   </div>
+                </div>
+                <div style={c.cardBody}>
+                  <img
+                    src={activeTab === 'video'
+                      ? detectionService.getResultVideoUrl(result.id)
+                      : detectionService.getResultImageUrl(result.id)
+                    }
+                    alt="Detection Result"
+                    style={{ width: '100%', borderRadius: '10px', border: '1px solid #e5eaf0', maxHeight: '500px', objectFit: 'contain' }}
+                  />
                 </div>
               </div>
             )}
           </div>
 
-          {/* Right Panel */}
-          <div className="xl:col-span-1">
-            <div className="bg-[#111827] rounded-2xl border border-[#1e293b] overflow-hidden sticky top-8">
-              <div className="px-6 py-5 border-b border-[#1e293b]">
-                <h2 className="text-xl font-semibold text-white">สถานะการตรวจจับ</h2>
-              </div>
-              <div className="p-6 space-y-5">
-                {result ? (
-                  <>
-                    {/* Status */}
-                    <div
-                      className={`p-5 rounded-xl border ${
-                        result.has_violation
-                          ? 'bg-red-500/10 border-red-500/30'
-                          : 'bg-emerald-500/10 border-emerald-500/30'
-                      }`}
-                    >
-                      <div className="flex items-start gap-4">
-                        {result.has_violation ? (
-                          <AlertTriangle className="w-8 h-8 text-red-400 flex-shrink-0 mt-0.5" />
-                        ) : (
-                          <CheckCircle className="w-8 h-8 text-emerald-400 flex-shrink-0 mt-0.5" />
-                        )}
-                        <div>
-                          <p className={`text-lg font-bold ${result.has_violation ? 'text-red-400' : 'text-emerald-400'}`}>
-                            {result.has_violation ? 'พบการฝ่าฝืน' : 'ปฏิบัติตามครบถ้วน'}
-                          </p>
-                          <p className="text-base text-slate-400 mt-1">
-                            {result.summary?.message || 'ไม่พบปัญหา'}
-                          </p>
-                        </div>
-                      </div>
+          {/* ── RIGHT: Status panel ── */}
+          <div style={{ ...c.card, position: 'sticky' as const, top: '20px' }}>
+            <div style={c.cardHead}>
+              <p style={c.cardTitle}>Detection Status</p>
+            </div>
+            <div style={{ padding: '16px 18px', maxHeight: 'calc(100vh - 180px)', overflowY: 'auto' as const }}>
+              {result ? (
+                <>
+                  {/* Status alert */}
+                  <div style={result.has_violation ? c.alertRed : c.alertGreen}>
+                    {result.has_violation
+                      ? <AlertTriangle size={20} color="#dc2626" style={{ flexShrink: 0, marginTop: '1px' }} />
+                      : <CheckCircle size={20} color="#16a34a" style={{ flexShrink: 0, marginTop: '1px' }} />
+                    }
+                    <div>
+                      <p style={{ fontSize: '14px', fontWeight: 700, color: result.has_violation ? '#dc2626' : '#16a34a', margin: '0 0 2px' }}>
+                        {result.has_violation ? 'Violation Detected' : 'Fully Compliant'}
+                      </p>
+                      <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>
+                        {result.summary?.message || (result.has_violation ? `${result.violation_count} violation(s) found` : 'All persons wearing PPE correctly')}
+                      </p>
                     </div>
+                  </div>
 
-                    {/* Stats */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-5 rounded-xl bg-[#0a0e17] border border-[#1e293b]">
-                        <div className="flex items-center gap-2 text-slate-400 mb-2">
-                          <Users className="w-5 h-5" />
-                          <span className="text-sm font-medium">จำนวนคน</span>
-                        </div>
-                        <p className="text-3xl font-bold text-white">{result.person_count}</p>
-                      </div>
-                      <div className="p-5 rounded-xl bg-[#0a0e17] border border-[#1e293b]">
-                        <div className="flex items-center gap-2 text-slate-400 mb-2">
-                          <AlertTriangle className="w-5 h-5" />
-                          <span className="text-sm font-medium">การฝ่าฝืน</span>
-                        </div>
-                        <p className={`text-3xl font-bold ${result.violation_count > 0 ? 'text-red-400' : 'text-white'}`}>
-                          {result.violation_count}
-                        </p>
-                      </div>
-                      <div className="p-5 rounded-xl bg-[#0a0e17] border border-[#1e293b] col-span-2">
-                        <div className="flex items-center gap-2 text-slate-400 mb-2">
-                          <Clock className="w-5 h-5" />
-                          <span className="text-sm font-medium">เวลาประมวลผล</span>
-                        </div>
-                        <p className="text-3xl font-bold text-white">
-                          {result.processing_time_ms ?? '-'} <span className="text-lg text-slate-400">ms</span>
-                        </p>
-                      </div>
+                  {/* Stats */}
+                  <div style={c.statsGrid}>
+                    <div style={c.statBox}>
+                      <p style={c.statLabel}><Users size={11} style={{ display: 'inline', marginRight: '3px' }} />Persons</p>
+                      <p style={c.statValue}>{result.person_count ?? 0}</p>
                     </div>
+                    <div style={c.statBox}>
+                      <p style={c.statLabel}><AlertTriangle size={11} style={{ display: 'inline', marginRight: '3px' }} />Violations</p>
+                      <p style={(result.violation_count ?? 0) > 0 ? c.statValueRed : c.statValue}>{result.violation_count ?? 0}</p>
+                    </div>
+                    <div style={c.statBoxFull}>
+                      <p style={c.statLabel}><Clock size={11} style={{ display: 'inline', marginRight: '3px' }} />Processing Time</p>
+                      <p style={c.statValue}>{result.processing_time_ms ?? '—'} <span style={{ fontSize: '14px', color: '#94a3b8', fontWeight: 500 }}>ms</span></p>
+                    </div>
+                  </div>
 
-                    {/* Per-Person PPE Details */}
-                    {result.persons && result.persons.length > 0 && (
-                      <div>
-                        <h3 className="text-base font-semibold text-slate-300 mb-3">
-                          รายละเอียด PPE แต่ละคน
-                        </h3>
-                        <div className="space-y-3">
-                          {result.persons.map((person) => (
-                            <div
-                              key={person.id}
-                              className={`p-4 rounded-xl border ${
-                                person.is_compliant
-                                  ? 'bg-emerald-500/5 border-emerald-500/20'
-                                  : 'bg-red-500/5 border-red-500/20'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between mb-3">
-                                <span className="text-sm font-bold text-white">
-                                  คนที่ {person.id}
-                                </span>
-                                <span
-                                  className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                                    person.is_compliant
-                                      ? 'bg-emerald-500/20 text-emerald-400'
-                                      : 'bg-red-500/20 text-red-400'
-                                  }`}
-                                >
-                                  {person.is_compliant ? 'ปลอดภัย' : 'ฝ่าฝืน'}
-                                </span>
-                              </div>
-                              <div className="space-y-1.5">
-                                {person.wearing.map((item, i) => (
-                                  <div key={`w-${i}`} className="flex items-center gap-2 text-sm">
-                                    <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                                    <span className="text-emerald-300">{item}</span>
-                                    <span className="text-emerald-500/60 text-xs ml-auto">สวมใส่</span>
-                                  </div>
-                                ))}
-                                {person.not_wearing.map((item, i) => (
-                                  <div key={`nw-${i}`} className="flex items-center gap-2 text-sm">
-                                    <X className="w-4 h-4 text-red-400 flex-shrink-0" />
-                                    <span className="text-red-300">{item}</span>
-                                    <span className="text-red-500/60 text-xs ml-auto">ไม่สวมใส่</span>
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="mt-2 text-xs text-slate-500">
-                                ความมั่นใจ: {Math.round(person.confidence * 100)}%
-                              </div>
+                  {/* Per-person PPE details */}
+                  {result.persons && result.persons.length > 0 && (
+                    <>
+                      <p style={c.sectionTitle}>Per-Person PPE Details</p>
+                      {result.persons.map((person) => (
+                        <div key={person.id} style={c.personCard(person.is_compliant)}>
+                          <div style={c.personHead}>
+                            <span style={c.personName}>Person {person.id}</span>
+                            <span style={person.is_compliant ? c.badgeSafe : c.badgeViolation}>
+                              {person.is_compliant ? 'Compliant' : 'Violation'}
+                            </span>
+                          </div>
+                          {person.wearing?.map((item, i) => (
+                            <div key={`w${i}`} style={c.ppeRow}>
+                              <CheckCircle size={13} color="#16a34a" />
+                              <span style={c.ppeOk}>{item}</span>
+                              <span style={{ marginLeft: 'auto', fontSize: '11px', color: '#86efac' }}>Wearing</span>
                             </div>
                           ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* General Violations Summary */}
-                    {result.violations && result.violations.length > 0 && (
-                      <div>
-                        <h3 className="text-base font-semibold text-slate-300 mb-3">สรุปการฝ่าฝืน</h3>
-                        <ul className="space-y-2.5">
-                          {result.violations.map((v, i) => (
-                            <li
-                              key={i}
-                              className="flex items-center gap-3 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-base"
-                            >
-                              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
-                              {v}
-                            </li>
+                          {person.not_wearing?.map((item, i) => (
+                            <div key={`nw${i}`} style={c.ppeRow}>
+                              <X size={13} color="#dc2626" />
+                              <span style={c.ppeNo}>{item}</span>
+                              <span style={{ marginLeft: 'auto', fontSize: '11px', color: '#fca5a5' }}>Not Wearing</span>
+                            </div>
                           ))}
-                        </ul>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-16 text-center">
-                    <div className="w-20 h-20 bg-[#1e293b] rounded-2xl flex items-center justify-center mb-5">
-                      <ImageIcon className="w-10 h-10 text-slate-500" />
-                    </div>
-                    <p className="text-lg text-slate-400 font-medium">ยังไม่มีผลลัพธ์</p>
-                    <p className="text-base text-slate-500 mt-2 max-w-[220px]">
-                      อัปโหลดและกดตรวจจับเพื่อดูผลลัพธ์
-                    </p>
+                          <p style={c.confidence}>Confidence: {Math.round(person.confidence * 100)}%</p>
+                        </div>
+                      ))}
+                    </>
+                  )}
+
+                  {/* Violations summary */}
+                  {result.violations && result.violations.length > 0 && (
+                    <>
+                      <p style={c.sectionTitle}>Violations Summary</p>
+                      {result.violations.map((v, i) => (
+                        <div key={i} style={c.violationItem}>
+                          <AlertTriangle size={14} color="#dc2626" style={{ flexShrink: 0 }} />
+                          {v}
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </>
+              ) : (
+                /* Empty state */
+                <div style={c.emptyPanel}>
+                  <div style={{ width: '56px', height: '56px', borderRadius: '14px', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px' }}>
+                    <ImageIcon size={26} color="#cbd5e1" />
                   </div>
-                )}
-              </div>
+                  <p style={{ fontSize: '14px', fontWeight: 600, color: '#475569', margin: '0 0 6px' }}>No results yet</p>
+                  <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0, maxWidth: '180px', lineHeight: 1.5 }}>
+                    Upload a file and click Start Detection to see results.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
+
         </div>
       </div>
+
+      {/* Spin animation for loader */}
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes progressPulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+      `}</style>
     </Layout>
   )
 }
