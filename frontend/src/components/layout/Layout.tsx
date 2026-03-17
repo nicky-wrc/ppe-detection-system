@@ -11,7 +11,7 @@ const navItems = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/detection', icon: Camera, label: 'Detection' },
   { path: '/reports', icon: FileText, label: 'Reports' },
-  { path: '/settings', icon: Settings, label: 'Settings' },
+  //{ path: '/settings', icon: Settings, label: 'Settings' },
 ]
 
 export function Layout({ children }: LayoutProps) {

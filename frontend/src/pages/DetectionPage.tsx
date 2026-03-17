@@ -173,7 +173,7 @@ export function DetectionPage() {
         {/* ── Page Header ── */}
         <div style={c.headerRow}>
           <div>
-            <h1 style={c.pageTitle}>PPE Detection</h1>
+            <h1 style={c.pageTitle}>Detection</h1>
             <p style={c.pageSubtitle}>Upload an image or video to automatically detect PPE compliance (helmet &amp; reflective vest).</p>
           </div>
           {/* Image / Video switcher */}
