@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
-import { Shield, Bell, User, LogOut, Camera, FileText, LayoutDashboard, Menu, X } from 'lucide-react'
+import { Shield, Bell, User, LogOut, Camera, FileText, LayoutDashboard, Menu, X, Settings } from 'lucide-react'
 import { useState } from 'react'
 
 interface LayoutProps {
@@ -11,7 +11,8 @@ const navItems = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/detection', icon: Camera, label: 'Detection' },
   { path: '/reports', icon: FileText, label: 'Reports' },
-  //{ path: '/settings', icon: Settings, label: 'Settings' },
+  { path: '/alerts', icon: Bell, label: 'Alerts' },
+  { path: '/settings', icon: Settings, label: 'Settings' },
 ]
 
 export function Layout({ children }: LayoutProps) {
@@ -102,6 +103,7 @@ export function Layout({ children }: LayoutProps) {
           {/* Bell */}
           <button
             aria-label="Notifications"
+            onClick={() => navigate('/alerts')}
             style={{
               position: 'relative',
               width: '36px', height: '36px',

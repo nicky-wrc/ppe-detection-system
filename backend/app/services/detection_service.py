@@ -6,10 +6,10 @@ from typing import Optional, List, Tuple
 from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, Date
-from datetime import timedelta
+from datetime import timedelta, date as date_type
 from fastapi import UploadFile
 from app.core.config import settings
-from app.models import Detection, Alert
+from app.models import Detection, Alert, Zone
 from app.ml.detector import get_detector
 
 
@@ -42,7 +42,13 @@ class DetectionService:
         result_filename = f"result_{uuid.uuid4()}.jpg"
         result_path = str(self.upload_dir / result_filename)
         
-        detection_result = self.detector.process_image(original_path, result_path)
+        required_ppe: list[str] | None = None
+        if zone_id is not None:
+            zone = self.db.query(Zone).filter(Zone.id == zone_id).first()
+            if zone and isinstance(zone.required_ppe, list) and len(zone.required_ppe) > 0:
+                required_ppe = zone.required_ppe
+
+        detection_result = self.detector.process_image(original_path, result_path, required_ppe=required_ppe)
         
         detection = Detection(
             user_id=user_id,
@@ -79,7 +85,13 @@ class DetectionService:
         result_filename = f"result_{uuid.uuid4()}.avi"
         result_path = str(self.upload_dir / result_filename)
         
-        detection_result = self.detector.process_video(original_path, result_path)
+        required_ppe: list[str] | None = None
+        if zone_id is not None:
+            zone = self.db.query(Zone).filter(Zone.id == zone_id).first()
+            if zone and isinstance(zone.required_ppe, list) and len(zone.required_ppe) > 0:
+                required_ppe = zone.required_ppe
+
+        detection_result = self.detector.process_video(original_path, result_path, required_ppe=required_ppe)
         
         # ใช้ path จริงที่ detector สร้างขึ้น (อาจเปลี่ยน extension)
         actual_output_path = detection_result.get("output_video_path", result_path)
@@ -175,17 +187,40 @@ class DetectionService:
             "violation_by_type": violation_by_type
         }
 
-    def get_daily_analytics(self, days: int = 7) -> dict:
-        """Get daily analytics for charts"""
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days)
+    def get_daily_analytics(
+        self,
+        days: int = 7,
+        start_date: Optional[date_type] = None,
+        end_date: Optional[date_type] = None,
+    ) -> dict:
+        """Get daily/hourly analytics for charts.
+
+        - If start_date/end_date provided: use that inclusive range (max 30 days).
+        - Else: use last N days (days).
+        - hourly is only meaningful when range is a single day.
+        """
+        now = datetime.now()
+        if start_date and end_date:
+            if end_date < start_date:
+                start_date, end_date = end_date, start_date
+            range_days = (end_date - start_date).days + 1
+            range_days = max(1, min(range_days, 30))
+            start_dt = datetime.combine(start_date, datetime.min.time())
+            end_dt = datetime.combine(end_date, datetime.max.time())
+            # Ensure range is not above 30 days even if user passes longer
+            if range_days > 30:
+                end_dt = start_dt + timedelta(days=29, hours=23, minutes=59, seconds=59, microseconds=999999)
+        else:
+            range_days = days
+            end_dt = now
+            start_dt = end_dt - timedelta(days=range_days)
         
         # Get daily stats
         daily_data = []
-        for i in range(days):
-            date = start_date + timedelta(days=i)
-            date_start = date.replace(hour=0, minute=0, second=0, microsecond=0)
-            date_end = date.replace(hour=23, minute=59, second=59, microsecond=999999)
+        for i in range(range_days):
+            d = (start_dt + timedelta(days=i)).date()
+            date_start = datetime.combine(d, datetime.min.time())
+            date_end = datetime.combine(d, datetime.max.time())
             
             query = self.db.query(Detection).filter(
                 Detection.created_at >= date_start,
@@ -203,37 +238,52 @@ class DetectionService:
             compliance = 100 if persons == 0 else round(((persons - violations) / persons) * 100)
             
             daily_data.append({
-                "date": date.strftime("%Y-%m-%d"),
-                "day": date.strftime("%a"),
+                "date": d.strftime("%Y-%m-%d"),
+                "day": d.strftime("%a"),
                 "detections": detections_count,
                 "persons": persons,
                 "violations": violations,
                 "compliance": compliance
             })
         
-        # Get hourly distribution (for today)
-        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        # Hourly distribution (only when single-day range)
         hourly_data = []
-        for hour in range(24):
-            hour_start = today_start.replace(hour=hour)
-            hour_end = today_start.replace(hour=hour, minute=59, second=59)
-            
-            count = self.db.query(Detection).filter(
-                Detection.created_at >= hour_start,
-                Detection.created_at <= hour_end
-            ).count()
-            
-            hourly_data.append({
-                "hour": f"{hour:02d}:00",
-                "count": count
-            })
+        if range_days == 1:
+            day_start = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            for hour in range(24):
+                hour_start = day_start.replace(hour=hour)
+                hour_end = day_start.replace(hour=hour, minute=59, second=59, microsecond=999999)
+
+                q = self.db.query(Detection).filter(
+                    Detection.created_at >= hour_start,
+                    Detection.created_at <= hour_end
+                )
+
+                detections_count = q.count()
+                stats = q.with_entities(
+                    func.coalesce(func.sum(Detection.person_count), 0).label("persons"),
+                    func.coalesce(func.sum(Detection.violation_count), 0).label("violations")
+                ).first()
+
+                persons = int(stats.persons) if stats and stats.persons else 0
+                violations = int(stats.violations) if stats and stats.violations else 0
+                compliance = 100 if persons == 0 else round(((persons - violations) / persons) * 100)
+
+                hourly_data.append({
+                    "hour": f"{hour:02d}:00",
+                    "detections": detections_count,
+                    "count": detections_count,  # backward compatibility
+                    "persons": persons,
+                    "violations": violations,
+                    "compliance": compliance
+                })
         
         return {
             "daily": daily_data,
             "hourly": hourly_data,
             "period": {
-                "start": start_date.strftime("%Y-%m-%d"),
-                "end": end_date.strftime("%Y-%m-%d"),
-                "days": days
+                "start": start_dt.strftime("%Y-%m-%d"),
+                "end": end_dt.strftime("%Y-%m-%d"),
+                "days": range_days
             }
         }

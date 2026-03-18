@@ -1,53 +1,63 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Layout } from '../components/layout/Layout'
 import { Bell, AlertTriangle, CheckCircle, Clock, ShieldAlert } from 'lucide-react'
 import toast from 'react-hot-toast'
-
-interface Alert {
-  id: number
-  type: string
-  message: string
-  timestamp: string
-  status: 'new' | 'read' | 'resolved'
-}
+import { alertsService } from '../services/alerts'
+import type { Alert } from '../types'
 
 export function AlertsPage() {
-  const [alerts, setAlerts] = useState<Alert[]>([
-    {
-      id: 1,
-      type: 'no_hardhat',
-      message: 'ตรวจพบบุคคลไม่สวมหมวกนิรภัย (พื้นที่ A)',
-      timestamp: '2026-01-08T15:30:00',
-      status: 'new'
-    },
-    {
-      id: 2,
-      type: 'no_safety_vest',
-      message: 'ตรวจพบบุคคลไม่สวมเสื้อสะท้อนแสง (พื้นที่ C)',
-      timestamp: '2026-01-08T14:45:00',
-      status: 'read'
-    },
-    {
-      id: 3,
-      type: 'multiple',
-      message: 'ตรวจพบการฝ่าฝืนหลายรายการ (โซนประกอบ)',
-      timestamp: '2026-01-08T13:20:00',
-      status: 'resolved'
-    }
-  ])
+  const [alerts, setAlerts] = useState<Alert[]>([])
+  const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [perPage] = useState(20)
+  const [total, setTotal] = useState(0)
+  const [activeStatus, setActiveStatus] = useState<string | undefined>(undefined) // undefined = all
 
-  const handleMarkRead = (id: number) => {
-    setAlerts(alerts.map(a => a.id === id ? { ...a, status: 'read' as const } : a))
-    toast.success('ทำเครื่องหมายว่าอ่านแล้ว')
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(total / perPage)), [total, perPage])
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const res = await alertsService.list(page, perPage, activeStatus)
+      setAlerts(res.items || [])
+      setTotal(res.total || 0)
+    } catch (e) {
+      console.error(e)
+      toast.error('โหลดการแจ้งเตือนไม่สำเร็จ')
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleResolve = (id: number) => {
-    setAlerts(alerts.map(a => a.id === id ? { ...a, status: 'resolved' as const } : a))
-    toast.success('บันทึกการแก้ไขแล้ว', { icon: '✅' })
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, activeStatus])
+
+  const handleAcknowledge = async (id: number) => {
+    try {
+      const updated = await alertsService.acknowledge(id)
+      setAlerts((prev) => prev.map((a) => (a.id === id ? updated : a)))
+      toast.success('รับทราบแล้ว')
+    } catch (e) {
+      console.error(e)
+      toast.error('ทำรายการไม่สำเร็จ')
+    }
+  }
+
+  const handleResolve = async (id: number) => {
+    try {
+      const updated = await alertsService.resolve(id)
+      setAlerts((prev) => prev.map((a) => (a.id === id ? updated : a)))
+      toast.success('ปิดการแจ้งเตือนแล้ว')
+    } catch (e) {
+      console.error(e)
+      toast.error('ทำรายการไม่สำเร็จ')
+    }
   }
 
   const newAlertsCount = alerts.filter(a => a.status === 'new').length
-  const readAlertsCount = alerts.filter(a => a.status === 'read').length
+  const readAlertsCount = alerts.filter(a => a.status === 'acknowledged').length
   const resolvedAlertsCount = alerts.filter(a => a.status === 'resolved').length
 
   return (
@@ -120,11 +130,47 @@ export function AlertsPage() {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="p-5 sm:p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
             <h2 className="text-lg font-bold text-slate-900">รายการแจ้งเตือน</h2>
-            <div className="text-sm text-slate-500 font-medium">ทั้งหมด {alerts.length} รายการ</div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setPage(1); setActiveStatus(undefined) }}
+                className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${
+                  !activeStatus ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                ทั้งหมด
+              </button>
+              <button
+                onClick={() => { setPage(1); setActiveStatus('new') }}
+                className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${
+                  activeStatus === 'new' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                ใหม่
+              </button>
+              <button
+                onClick={() => { setPage(1); setActiveStatus('acknowledged') }}
+                className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${
+                  activeStatus === 'acknowledged' ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                รับทราบ
+              </button>
+              <button
+                onClick={() => { setPage(1); setActiveStatus('resolved') }}
+                className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${
+                  activeStatus === 'resolved' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                ปิดแล้ว
+              </button>
+              <div className="text-sm text-slate-500 font-medium ml-2">ทั้งหมด {total} รายการ</div>
+            </div>
           </div>
           
           <div className="p-0 sm:p-2 divide-y divide-slate-100">
-            {alerts.length === 0 ? (
+            {loading ? (
+              <div className="text-center py-16 px-4 text-slate-500 font-medium">กำลังโหลด...</div>
+            ) : alerts.length === 0 ? (
               <div className="text-center py-16 px-4">
                 <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Bell className="w-10 h-10 text-slate-300" />
@@ -149,7 +195,7 @@ export function AlertsPage() {
                         <div className={`shrink-0 p-3 rounded-xl ${
                           alert.status === 'new' 
                             ? 'bg-rose-100 text-rose-600' 
-                            : alert.status === 'read'
+                            : alert.status === 'acknowledged'
                               ? 'bg-amber-100 text-amber-600'
                               : 'bg-emerald-100 text-emerald-600'
                         }`}>
@@ -164,12 +210,12 @@ export function AlertsPage() {
                           <p className={`font-semibold text-base sm:text-lg mb-1 leading-tight ${
                             alert.status === 'new' ? 'text-slate-900' : 'text-slate-700'
                           }`}>
-                            {alert.message}
+                            {alert.message || alert.alert_type}
                           </p>
                           <div className="flex items-center gap-3 text-sm text-slate-500">
                             <span className="flex items-center gap-1 font-medium">
                               <Clock className="w-4 h-4" />
-                              {new Date(alert.timestamp).toLocaleString('th-TH', {
+                              {new Date(alert.created_at).toLocaleString('th-TH', {
                                 year: 'numeric', month: 'short', day: 'numeric',
                                 hour: '2-digit', minute: '2-digit'
                               })}
@@ -189,7 +235,7 @@ export function AlertsPage() {
                           {alert.status === 'new' && (
                             <span className="px-3 py-1 bg-rose-100 text-rose-700 text-xs font-bold rounded-full border border-rose-200 shadow-sm">ใหม่ล่าสุด</span>
                           )}
-                          {alert.status === 'read' && (
+                          {alert.status === 'acknowledged' && (
                             <span className="px-3 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded-full border border-amber-200 shadow-sm">รับทราบแล้ว</span>
                           )}
                           {alert.status === 'resolved' && (
@@ -202,7 +248,7 @@ export function AlertsPage() {
                           <div className="flex items-center gap-2">
                             {alert.status === 'new' && (
                               <button
-                                onClick={() => handleMarkRead(alert.id)}
+                                onClick={() => handleAcknowledge(alert.id)}
                                 className="px-3 py-1.5 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:text-blue-600 focus:ring-2 focus:ring-blue-100 transition-all shadow-sm"
                               >
                                 รับทราบ
@@ -220,6 +266,28 @@ export function AlertsPage() {
                     </div>
                   </div>
                 ))}
+
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-center gap-2 p-4 text-sm">
+                    <button
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white disabled:opacity-50"
+                    >
+                      ก่อนหน้า
+                    </button>
+                    <span className="text-slate-600 font-semibold">
+                      หน้า {page} / {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page === totalPages}
+                      className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white disabled:opacity-50"
+                    >
+                      ถัดไป
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -87,3 +87,14 @@ export interface Alert {
   status: string
   created_at: string
 }
+
+export interface UserSettings {
+  id: number
+  user_id: number
+  alert_sound: boolean
+  save_evidence: boolean
+  confidence_threshold: number
+  ppe_detection_sensitivity: number
+  active_ppe_rules: Record<string, boolean>
+  created_at: string
+}

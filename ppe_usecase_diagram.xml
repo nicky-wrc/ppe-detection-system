@@ -1,0 +1,260 @@
+<mxfile host="app.diagrams.net" modified="2026-03-12T00:00:00.000Z" agent="draw.io" version="24.0.0" type="device">
+  <diagram id="ppe-use-case" name="Use Case Diagram - PPE Detection System">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- System Boundary -->
+        <mxCell id="sys1" value="ระบบตรวจจับการสวมใส่อุปกรณ์ป้องกันความปลอดภัยแบบอัตโนมัติ&#xa;(Automatic Safety PPE Detection System)" style="shape=mxgraph.sysml.package;xSize=160;html=1;overflow=fill;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=10;" vertex="1" parent="1">
+          <mxGeometry x="350" y="30" width="900" height="1100" as="geometry"/>
+        </mxCell>
+
+        <!-- ==================== ACTORS ==================== -->
+
+        <!-- Admin Actor -->
+        <mxCell id="admin" value="ผู้ดูแลระบบ&#xa;(Admin)" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="350" width="40" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- User Actor -->
+        <mxCell id="user" value="ผู้ใช้งาน&#xa;(User)" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="650" width="40" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- AI System Actor -->
+        <mxCell id="ai" value="ระบบ AI&#xa;(YOLO Model)" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1420" y="450" width="40" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Database Actor -->
+        <mxCell id="db" value="ฐานข้อมูล&#xa;(PostgreSQL)" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1420" y="700" width="40" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- ==================== USE CASES ==================== -->
+
+        <!-- Authentication Group -->
+        <mxCell id="uc1" value="เข้าสู่ระบบ&#xa;(Login)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="440" y="80" width="180" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="uc2" value="สมัครสมาชิก&#xa;(Register)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="700" y="80" width="180" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="uc3" value="ดูข้อมูลผู้ใช้&#xa;(View Profile)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="960" y="80" width="180" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- Detection Group -->
+        <mxCell id="uc4" value="อัปโหลดรูปภาพ&#xa;เพื่อตรวจจับ PPE&#xa;(Upload Image)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="440" y="210" width="200" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="uc5" value="อัปโหลดวิดีโอ&#xa;เพื่อตรวจจับ PPE&#xa;(Upload Video)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="700" y="210" width="200" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="uc6" value="ตรวจจับอุปกรณ์ PPE&#xa;ด้วย AI (YOLO SH17)&#xa;(Detect PPE)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="960" y="220" width="220" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="uc7" value="แสดงผลลัพธ์การตรวจจับ&#xa;(View Detection Result)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="440" y="340" width="220" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="uc8" value="วิเคราะห์การสวม PPE&#xa;แต่ละคน&#xa;(Analyze Per-Person PPE)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="960" y="340" width="220" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="uc9" value="จับคู่อุปกรณ์ PPE กับคน&#xa;(Associate PPE to Person)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="960" y="460" width="220" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- Dashboard & Reports -->
+        <mxCell id="uc10" value="ดูแดชบอร์ด&#xa;สถิติความปลอดภัย&#xa;(View Dashboard)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="440" y="460" width="200" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="uc11" value="ดูประวัติการตรวจจับ&#xa;(View Detection History)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="440" y="580" width="200" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="uc12" value="ดูสถิติรายวัน/กราฟ&#xa;(View Daily Analytics)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="700" y="460" width="200" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="uc13" value="ดูอัตราการปฏิบัติตาม&#xa;(View Compliance Rate)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="700" y="580" width="200" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- Alert System -->
+        <mxCell id="uc14" value="สร้างการแจ้งเตือน&#xa;อัตโนมัติ&#xa;(Auto Create Alert)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="960" y="580" width="200" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="uc15" value="ดูรายการแจ้งเตือน&#xa;(View Alerts)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="440" y="700" width="200" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="uc16" value="รับทราบ/แก้ไข&#xa;การแจ้งเตือน&#xa;(Acknowledge/Resolve Alert)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="700" y="700" width="220" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- Zone Management -->
+        <mxCell id="uc17" value="จัดการโซนพื้นที่&#xa;(Manage Zones)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="440" y="830" width="200" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="uc18" value="กำหนด PPE ที่จำเป็น&#xa;ของแต่ละโซน&#xa;(Set Required PPE per Zone)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="700" y="830" width="220" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- Settings -->
+        <mxCell id="uc19" value="ตั้งค่าระบบ AI&#xa;(AI Settings)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="440" y="950" width="200" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="uc20" value="ตั้งค่าการแจ้งเตือน&#xa;(Notification Settings)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="700" y="950" width="200" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- Data Storage -->
+        <mxCell id="uc21" value="บันทึกผลการตรวจจับ&#xa;ลงฐานข้อมูล&#xa;(Save Detection to DB)" style="ellipse;whiteSpace=wrap;html=1;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="960" y="700" width="220" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- ==================== ASSOCIATIONS ==================== -->
+
+        <!-- Admin associations -->
+        <mxCell id="e1" style="endArrow=none;html=1;" edge="1" source="admin" target="uc1" parent="1"/>
+        <mxCell id="e2" style="endArrow=none;html=1;" edge="1" source="admin" target="uc4" parent="1"/>
+        <mxCell id="e3" style="endArrow=none;html=1;" edge="1" source="admin" target="uc5" parent="1"/>
+        <mxCell id="e4" style="endArrow=none;html=1;" edge="1" source="admin" target="uc7" parent="1"/>
+        <mxCell id="e5" style="endArrow=none;html=1;" edge="1" source="admin" target="uc10" parent="1"/>
+        <mxCell id="e6" style="endArrow=none;html=1;" edge="1" source="admin" target="uc11" parent="1"/>
+        <mxCell id="e7" style="endArrow=none;html=1;" edge="1" source="admin" target="uc15" parent="1"/>
+        <mxCell id="e8" style="endArrow=none;html=1;" edge="1" source="admin" target="uc16" parent="1"/>
+        <mxCell id="e9" style="endArrow=none;html=1;" edge="1" source="admin" target="uc17" parent="1"/>
+        <mxCell id="e10" style="endArrow=none;html=1;" edge="1" source="admin" target="uc19" parent="1"/>
+        <mxCell id="e11" style="endArrow=none;html=1;" edge="1" source="admin" target="uc20" parent="1"/>
+
+        <!-- User associations -->
+        <mxCell id="e20" style="endArrow=none;html=1;" edge="1" source="user" target="uc1" parent="1"/>
+        <mxCell id="e21" style="endArrow=none;html=1;" edge="1" source="user" target="uc2" parent="1"/>
+        <mxCell id="e22" style="endArrow=none;html=1;" edge="1" source="user" target="uc4" parent="1"/>
+        <mxCell id="e23" style="endArrow=none;html=1;" edge="1" source="user" target="uc5" parent="1"/>
+        <mxCell id="e24" style="endArrow=none;html=1;" edge="1" source="user" target="uc7" parent="1"/>
+        <mxCell id="e25" style="endArrow=none;html=1;" edge="1" source="user" target="uc10" parent="1"/>
+        <mxCell id="e26" style="endArrow=none;html=1;" edge="1" source="user" target="uc11" parent="1"/>
+        <mxCell id="e27" style="endArrow=none;html=1;" edge="1" source="user" target="uc15" parent="1"/>
+        <mxCell id="e28" style="endArrow=none;html=1;" edge="1" source="user" target="uc3" parent="1"/>
+        <mxCell id="e29" style="endArrow=none;html=1;" edge="1" source="user" target="uc12" parent="1"/>
+        <mxCell id="e30" style="endArrow=none;html=1;" edge="1" source="user" target="uc13" parent="1"/>
+
+        <!-- AI System associations -->
+        <mxCell id="e40" style="endArrow=none;html=1;" edge="1" source="ai" target="uc6" parent="1"/>
+        <mxCell id="e41" style="endArrow=none;html=1;" edge="1" source="ai" target="uc8" parent="1"/>
+        <mxCell id="e42" style="endArrow=none;html=1;" edge="1" source="ai" target="uc9" parent="1"/>
+        <mxCell id="e43" style="endArrow=none;html=1;" edge="1" source="ai" target="uc14" parent="1"/>
+
+        <!-- Database associations -->
+        <mxCell id="e50" style="endArrow=none;html=1;" edge="1" source="db" target="uc21" parent="1"/>
+        <mxCell id="e51" style="endArrow=none;html=1;" edge="1" source="db" target="uc14" parent="1"/>
+
+        <!-- ==================== INCLUDE RELATIONSHIPS ==================== -->
+
+        <!-- Upload image includes Detect PPE -->
+        <mxCell id="inc1" style="endArrow=open;endSize=12;dashed=1;html=1;" edge="1" source="uc4" target="uc6" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="inc1_label" value="&lt;&lt;include&gt;&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=2;" vertex="1" connectable="0" parent="inc1">
+          <mxGeometry x="-0.1" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- Upload video includes Detect PPE -->
+        <mxCell id="inc2" style="endArrow=open;endSize=12;dashed=1;html=1;" edge="1" source="uc5" target="uc6" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="inc2_label" value="&lt;&lt;include&gt;&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=2;" vertex="1" connectable="0" parent="inc2">
+          <mxGeometry x="-0.1" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- Detect PPE includes Analyze Per-Person -->
+        <mxCell id="inc3" style="endArrow=open;endSize=12;dashed=1;html=1;" edge="1" source="uc6" target="uc8" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="inc3_label" value="&lt;&lt;include&gt;&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=2;" vertex="1" connectable="0" parent="inc3">
+          <mxGeometry x="-0.1" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- Analyze includes Associate PPE -->
+        <mxCell id="inc4" style="endArrow=open;endSize=12;dashed=1;html=1;" edge="1" source="uc8" target="uc9" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="inc4_label" value="&lt;&lt;include&gt;&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=2;" vertex="1" connectable="0" parent="inc4">
+          <mxGeometry x="-0.1" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- Detection includes Save to DB -->
+        <mxCell id="inc5" style="endArrow=open;endSize=12;dashed=1;html=1;" edge="1" source="uc7" target="uc21" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="inc5_label" value="&lt;&lt;include&gt;&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=2;" vertex="1" connectable="0" parent="inc5">
+          <mxGeometry x="-0.1" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- Manage zones includes Set required PPE -->
+        <mxCell id="inc6" style="endArrow=open;endSize=12;dashed=1;html=1;" edge="1" source="uc17" target="uc18" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="inc6_label" value="&lt;&lt;include&gt;&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=2;" vertex="1" connectable="0" parent="inc6">
+          <mxGeometry x="-0.1" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- Dashboard includes Daily Analytics -->
+        <mxCell id="inc7" style="endArrow=open;endSize=12;dashed=1;html=1;" edge="1" source="uc10" target="uc12" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="inc7_label" value="&lt;&lt;include&gt;&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=2;" vertex="1" connectable="0" parent="inc7">
+          <mxGeometry x="-0.1" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- Dashboard includes Compliance Rate -->
+        <mxCell id="inc8" style="endArrow=open;endSize=12;dashed=1;html=1;" edge="1" source="uc10" target="uc13" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="inc8_label" value="&lt;&lt;include&gt;&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=2;" vertex="1" connectable="0" parent="inc8">
+          <mxGeometry x="-0.1" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- ==================== EXTEND RELATIONSHIPS ==================== -->
+
+        <!-- Violation extends to Auto Alert -->
+        <mxCell id="ext1" style="endArrow=open;endSize=12;dashed=1;html=1;" edge="1" source="uc14" target="uc6" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ext1_label" value="&lt;&lt;extend&gt;&gt;&#xa;[พบการฝ่าฝืน]" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=2;" vertex="1" connectable="0" parent="ext1">
+          <mxGeometry x="-0.1" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- Acknowledge extends View Alerts -->
+        <mxCell id="ext2" style="endArrow=open;endSize=12;dashed=1;html=1;" edge="1" source="uc16" target="uc15" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ext2_label" value="&lt;&lt;extend&gt;&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=2;" vertex="1" connectable="0" parent="ext2">
+          <mxGeometry x="-0.1" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- ==================== GENERALIZATION ==================== -->
+
+        <!-- Admin is a generalization of User -->
+        <mxCell id="gen1" style="endArrow=block;endFill=0;endSize=16;html=1;" edge="1" source="admin" target="user" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

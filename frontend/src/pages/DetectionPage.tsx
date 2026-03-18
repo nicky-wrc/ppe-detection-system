@@ -13,7 +13,6 @@ import {
   Clock,
   Image as ImageIcon,
   ShieldCheck,
-  ShieldAlert,
   Video,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -77,8 +76,21 @@ const drawDetectionOverlay = (
       ty += fs2 + 10
     }
 
-    person.wearing?.forEach((item: string) => drawPpe(`✓ ${item === 'helmet' ? 'หมวกนิรภัย' : item === 'vest' ? 'เสื้อสะท้อนแสง' : item}`, true))
-    person.not_wearing?.forEach((item: string) => drawPpe(`✗ ${item === 'helmet' ? 'หมวกนิรภัย' : item === 'vest' ? 'เสื้อสะท้อนแสง' : item}`, false))
+    const toThai = (key: string) => {
+      const k = (key || '').toLowerCase()
+      if (k === 'helmet') return 'หมวกนิรภัย'
+      if (k === 'safety-vest' || k === 'vest') return 'เสื้อสะท้อนแสง'
+      if (k === 'glasses') return 'แว่นตานิรภัย'
+      if (k === 'gloves') return 'ถุงมือ'
+      if (k === 'shoes') return 'รองเท้านิรภัย'
+      if (k === 'face-mask') return 'หน้ากาก'
+      if (k === 'ear-mufs') return 'ที่ครอบหู'
+      if (k === 'face-guard') return 'กระบังหน้า'
+      return key
+    }
+
+    person.wearing?.forEach((item: string) => drawPpe(`✓ ${toThai(item)}`, true))
+    person.not_wearing?.forEach((item: string) => drawPpe(`✗ ${toThai(item)}`, false))
   })
 
   // Top banner
@@ -451,7 +463,8 @@ export function DetectionPage() {
                       <button
                         onClick={(e) => { 
                           e.stopPropagation(); 
-                          videoRef.current?.paused ? videoRef.current?.play() : videoRef.current?.pause() 
+                          if (videoRef.current?.paused) videoRef.current?.play()
+                          else videoRef.current?.pause()
                         }}
                         className={
                           isLiveDetecting

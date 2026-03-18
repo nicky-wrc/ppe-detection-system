@@ -1,4 +1,5 @@
 from typing import Optional
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -113,12 +114,14 @@ async def get_detection_stats(
 @router.get("/analytics/daily")
 async def get_daily_analytics(
     days: int = Query(7, ge=1, le=30),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """ดูสถิติรายวัน"""
     service = DetectionService(db)
-    return service.get_daily_analytics(days=days)
+    return service.get_daily_analytics(days=days, start_date=start_date, end_date=end_date)
 
 
 @router.get("/{detection_id}/image/result")

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Layout } from '../components/layout/Layout'
 import { detectionService } from '../services/detection'
 import type { Detection } from '../types'
@@ -25,9 +25,7 @@ export function HistoryPage() {
   const [total, setTotal] = useState(0)
   const [selectedDetection, setSelectedDetection] = useState<Detection | null>(null)
 
-  useEffect(() => { loadHistory() }, [page])
-
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     setLoading(true)
     try {
       const data = await detectionService.getHistory(page, 12)
@@ -39,7 +37,9 @@ export function HistoryPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [page])
+
+  useEffect(() => { loadHistory() }, [loadHistory])
 
   const violationCount = detections.filter(d => d.has_violation).length
   const complianceCount = detections.filter(d => !d.has_violation).length

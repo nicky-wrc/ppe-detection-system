@@ -32,7 +32,7 @@ SH17_THAI = {
 }
 
 PPE_ITEMS = {"helmet", "safety-vest"}
-REQUIRED_PPE = ["helmet", "safety-vest"]
+DEFAULT_REQUIRED_PPE = ["helmet", "safety-vest"]
 
 
 class PPEDetector:
@@ -84,11 +84,12 @@ class PPEDetector:
     #  Core detection: SH17 model detects ALL classes in one pass
     # ------------------------------------------------------------------ #
 
-    def detect(self, image: np.ndarray) -> Dict[str, Any]:
+    def detect(self, image: np.ndarray, required_ppe: List[str] | None = None) -> Dict[str, Any]:
         start = time.time()
         if self.ppe_model is None:
             return self._empty_result()
 
+        required = required_ppe or DEFAULT_REQUIRED_PPE
         results = self.ppe_model(image, conf=self.CONF_THRESHOLD, iou=self.IOU_THRESHOLD, verbose=False)
 
         raw_persons = []
@@ -108,7 +109,7 @@ class PPEDetector:
                 elif cls_name in PPE_ITEMS:
                     ppe_objects.append({"class": cls_name, "bbox": bbox, "confidence": conf})
 
-        persons = self._associate_ppe(raw_persons, ppe_objects, image.shape[0])
+        persons = self._associate_ppe(raw_persons, ppe_objects, image.shape[0], required=required)
 
         violation_count = sum(1 for p in persons if not p["is_compliant"])
         violations = []
@@ -147,7 +148,7 @@ class PPEDetector:
                         "non_compliant_persons": violation_count},
         }
 
-    def _associate_ppe(self, raw_persons: list, ppe_objects: list, img_h: int) -> list:
+    def _associate_ppe(self, raw_persons: list, ppe_objects: list, img_h: int, required: List[str]) -> list:
         """Associate each PPE item with the nearest/best-matching person."""
         persons = []
         for rp in raw_persons:
@@ -208,11 +209,12 @@ class PPEDetector:
         for p in persons:
             wearing = []
             not_wearing = []
-            for req in REQUIRED_PPE:
+            for req in required:
                 if req in p["found_ppe"]:
-                    wearing.append(SH17_THAI.get(req, req))
+                    # return class keys (frontend can localize); keep Thai mapping via SH17_THAI when needed
+                    wearing.append(req)
                 else:
-                    not_wearing.append(SH17_THAI.get(req, req))
+                    not_wearing.append(req)
 
             compliant = len(not_wearing) == 0
             result.append({
@@ -316,11 +318,11 @@ class PPEDetector:
     #  Image processing
     # ------------------------------------------------------------------ #
 
-    def process_image(self, image_path: str, output_path: str) -> Dict[str, Any]:
+    def process_image(self, image_path: str, output_path: str, required_ppe: List[str] | None = None) -> Dict[str, Any]:
         image = cv2.imread(image_path)
         if image is None:
             raise ValueError(f"ไม่สามารถโหลดภาพ: {image_path}")
-        det = self.detect(image)
+        det = self.detect(image, required_ppe=required_ppe)
         cv2.imwrite(output_path, self.draw_detections(image, det))
         return det
 
@@ -328,7 +330,7 @@ class PPEDetector:
     #  Video processing
     # ------------------------------------------------------------------ #
 
-    def _analyze_frame_from_results(self, frame: np.ndarray, yolo_result) -> Dict[str, Any]:
+    def _analyze_frame_from_results(self, frame: np.ndarray, yolo_result, required: List[str]) -> Dict[str, Any]:
         """Build detection dict from SH17 model result."""
         start = time.time()
         raw_persons = []
@@ -346,13 +348,13 @@ class PPEDetector:
                 elif cls_name in PPE_ITEMS:
                     ppe_objects.append({"class": cls_name, "bbox": bbox, "confidence": conf})
 
-        persons = self._associate_ppe(raw_persons, ppe_objects, frame.shape[0])
+        persons = self._associate_ppe(raw_persons, ppe_objects, frame.shape[0], required=required)
 
         vc = sum(1 for p in persons if not p["is_compliant"])
         violations = []
         for p in persons:
             for item in p["not_wearing"]:
-                tag = f"ไม่สวม{item}"
+                tag = f"ไม่สวม{SH17_THAI.get(item, item)}"
                 if tag not in violations:
                     violations.append(tag)
 
@@ -377,10 +379,11 @@ class PPEDetector:
                         "non_compliant_persons": vc},
         }
 
-    def process_video(self, video_path: str, output_path: str) -> Dict[str, Any]:
+    def process_video(self, video_path: str, output_path: str, required_ppe: List[str] | None = None) -> Dict[str, Any]:
         print(f"[VIDEO] Start: {video_path}  size={os.path.getsize(video_path) if os.path.exists(video_path) else 0}")
 
         start = time.time()
+        required = required_ppe or DEFAULT_REQUIRED_PPE
         all_violations: set[str] = set()
         annotated: list[np.ndarray] = []
         fps = 24
@@ -416,7 +419,7 @@ class PPEDetector:
                     except Exception:
                         pass
 
-                det = self._analyze_frame_from_results(frame_bgr, r)
+                det = self._analyze_frame_from_results(frame_bgr, r, required=required)
                 annotated.append(self.draw_detections(frame_bgr, det))
                 processed += 1
 
@@ -459,7 +462,7 @@ class PPEDetector:
                     idx += 1
                     if idx % 5 != 1:
                         continue
-                    det = self.detect(frame)
+                    det = self.detect(frame, required_ppe=required)
                     annotated.append(self.draw_detections(frame, det))
                     processed += 1
                     pc = det.get("person_count", 0)

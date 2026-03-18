@@ -1,0 +1,122 @@
+@startuml PPE Detection System - Use Case Diagram
+
+title Automatic Safety PPE Detection System\nUse Case Diagram
+
+left to right direction
+skinparam actorStyle awesome
+skinparam packageStyle rectangle
+skinparam usecaseFontSize 11
+skinparam actorFontSize 11
+skinparam backgroundColor #FEFEFE
+skinparam shadowing false
+
+skinparam usecase {
+  BackgroundColor<<auth>> #FFF2CC
+  BorderColor<<auth>> #D6B656
+  BackgroundColor<<detect>> #D5E8D4
+  BorderColor<<detect>> #82B366
+  BackgroundColor<<report>> #E1D5E7
+  BorderColor<<report>> #9673A6
+  BackgroundColor<<alert>> #F8CECC
+  BorderColor<<alert>> #B85450
+  BackgroundColor<<manage>> #DAE8FC
+  BorderColor<<manage>> #6C8EBF
+  BackgroundColor<<system>> #F5F5F5
+  BorderColor<<system>> #666666
+}
+
+' ==================== ACTORS ====================
+
+actor "Admin" as Admin
+actor "User" as User
+actor "AI Engine\n(YOLO SH17)" as AI
+actor "Database\n(PostgreSQL)" as DB
+
+Admin --|> User
+
+' ==================== SYSTEM BOUNDARY ====================
+
+rectangle "PPE Detection System" {
+
+  ' --- Authentication ---
+  usecase "Login" as UC1 <<auth>>
+  usecase "Register" as UC2 <<auth>>
+  usecase "View Profile" as UC3 <<auth>>
+
+  ' --- Detection ---
+  usecase "Upload Image\nfor PPE Detection" as UC4 <<detect>>
+  usecase "Upload Video\nfor PPE Detection" as UC5 <<detect>>
+  usecase "Detect PPE\nusing AI Model" as UC6 <<detect>>
+  usecase "View Detection\nResult" as UC7 <<detect>>
+  usecase "Analyze Per-Person\nPPE Status" as UC8 <<detect>>
+  usecase "Associate PPE\nItems to Person" as UC9 <<detect>>
+
+  ' --- Dashboard & Reports ---
+  usecase "View Safety\nDashboard" as UC10 <<report>>
+  usecase "View Detection\nHistory" as UC11 <<report>>
+  usecase "View Daily\nAnalytics Chart" as UC12 <<report>>
+  usecase "View Compliance\nRate" as UC13 <<report>>
+
+  ' --- Alert System ---
+  usecase "Auto Create\nViolation Alert" as UC14 <<alert>>
+  usecase "View Alerts" as UC15 <<alert>>
+  usecase "Acknowledge /\nResolve Alert" as UC16 <<alert>>
+
+  ' --- Management ---
+  usecase "Manage Safety\nZones" as UC17 <<manage>>
+  usecase "Set Required PPE\nper Zone" as UC18 <<manage>>
+  usecase "Configure AI\nSettings" as UC19 <<manage>>
+  usecase "Configure\nNotifications" as UC20 <<manage>>
+
+  ' --- System ---
+  usecase "Save Detection\nResult to Database" as UC21 <<system>>
+}
+
+' ==================== USER ASSOCIATIONS ====================
+
+User --> UC1
+User --> UC2
+User --> UC3
+User --> UC4
+User --> UC5
+User --> UC7
+User --> UC10
+User --> UC11
+User --> UC12
+User --> UC13
+User --> UC15
+
+' ==================== ADMIN ASSOCIATIONS ====================
+
+Admin --> UC16
+Admin --> UC17
+Admin --> UC19
+Admin --> UC20
+
+' ==================== AI ASSOCIATIONS ====================
+
+AI --> UC6
+AI --> UC8
+AI --> UC9
+
+' ==================== DB ASSOCIATIONS ====================
+
+DB --> UC21
+
+' ==================== INCLUDE ====================
+
+UC4 ..> UC6 : <<include>>
+UC5 ..> UC6 : <<include>>
+UC6 ..> UC8 : <<include>>
+UC8 ..> UC9 : <<include>>
+UC7 ..> UC21 : <<include>>
+UC17 ..> UC18 : <<include>>
+UC10 ..> UC12 : <<include>>
+UC10 ..> UC13 : <<include>>
+
+' ==================== EXTEND ====================
+
+UC14 ..> UC6 : <<extend>>\n[violation found]
+UC16 ..> UC15 : <<extend>>
+
+@enduml

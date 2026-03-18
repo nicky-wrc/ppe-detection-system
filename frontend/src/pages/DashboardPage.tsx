@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Layout } from '../components/layout/Layout'
 import { detectionService } from '../services/detection'
-import type { DetectionStats } from '../types'
+import { alertsService } from '../services/alerts'
+import { zonesService } from '../services/zones'
+import type { Alert, DetectionStats } from '../types'
 import {
   LineChart,
   Line,
@@ -23,17 +25,16 @@ import {
   Eye,
   ShieldCheck,
   Video,
-  TrendingUp,
-  TrendingDown,
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 
 interface ViolationRow {
   id: string
-  dateTime: string
-  cameraId: string
+  createdAt: string
+  refId: string
   violationType: string
-  confidence: string
   status: string
+  message?: string
 }
 
 const chartTooltipStyle = {
@@ -51,39 +52,37 @@ export function DashboardPage() {
   const [stats, setStats] = useState<DetectionStats | null>(null)
   const [violations, setViolations] = useState<ViolationRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [activeZones, setActiveZones] = useState(0)
   const [activeFilter, setActiveFilter] = useState<string>('Today')
   const [customStartDate, setCustomStartDate] = useState<string>('')
   const [customEndDate, setCustomEndDate] = useState<string>('')
   const [dailyData, setDailyData] = useState<{ name: string; value: number; compliance?: number }[]>([])
   const [weeklyData, setWeeklyData] = useState<{ name: string; value: number }[]>([])
+  const navigate = useNavigate()
+  const updatedAtText = useMemo(() => new Date().toLocaleString(), [])
 
   useEffect(() => { loadData() }, [])
 
   const loadData = async () => {
     try {
-      const [statsData, historyData] = await Promise.all([
+      const [statsData, alertsData, zonesData] = await Promise.all([
         detectionService.getStats(),
-        detectionService.getHistory(1, 20).catch(() => ({ items: [] })),
+        alertsService.list(1, 20).catch(() => ({ items: [] as Alert[], total: 0, page: 1, per_page: 20 })),
+        zonesService.list().catch(() => []),
       ])
       setStats(statsData)
-      const items = historyData?.items || []
-      const violationRows: ViolationRow[] = []
-      items
-        .filter((d: { has_violation: boolean }) => d.has_violation)
-        .forEach((d: { id: number; created_at: string; zone_id?: number; violations: string[] }) => {
-          const vList = d.violations?.length ? d.violations : ['Unknown']
-          vList.forEach((v, i) => {
-            violationRows.push({
-              id: `${d.id}-${i}`,
-              dateTime: new Date(d.created_at).toLocaleString(),
-              cameraId: d.zone_id ? `CAM-00${d.zone_id}-NW` : '—',
-              violationType: v,
-              confidence: '98%',
-              status: 'Open',
-            })
-          })
-        })
-      setViolations(violationRows.slice(0, 10))
+      setActiveZones((zonesData || []).filter((z) => z.is_active).length)
+
+      const items = alertsData?.items || []
+      const rows: ViolationRow[] = items.map((a) => ({
+        id: String(a.id),
+        createdAt: a.created_at,
+        refId: `DET-${String(a.detection_id).padStart(5, '0')}`,
+        violationType: a.alert_type,
+        status: a.status,
+        message: a.message,
+      }))
+      setViolations(rows.slice(0, 10))
     } catch (error) {
       console.error('Error loading data:', error)
     } finally {
@@ -111,7 +110,7 @@ export function DashboardPage() {
 
         if (activeFilter === 'Today' || (activeFilter === 'Custom' && start === end)) {
           if (analytics?.hourly?.length) {
-            const mapped = analytics.hourly.map((d: any) => ({
+            const mapped = analytics.hourly.map((d: { hour: string; violations?: number; compliance?: number }) => ({
               name: d.hour,
               value: d.violations ?? 0,
               compliance: d.compliance ?? 0,
@@ -121,7 +120,7 @@ export function DashboardPage() {
           }
         } else {
           if (analytics?.daily?.length) {
-            const mapped = analytics.daily.map((d: any) => ({
+            const mapped = analytics.daily.map((d: { day?: string; date: string; violations?: number; compliance?: number }) => ({
               name: d.day || d.date?.slice(5) || '',
               value: d.violations ?? 0,
               compliance: d.compliance ?? 0,
@@ -176,11 +175,10 @@ export function DashboardPage() {
               <p className="text-[13px] text-[#64748b] font-semibold m-0">Total Detections</p>
               <Eye size={16} color="#94a3b8" strokeWidth={2.5} />
             </div>
-            <p className="text-[30px] font-bold text-[#0f172a] m-0 mb-3 leading-none tracking-tight">{stats?.total_detections ? stats.total_detections.toLocaleString() : '12,840'}</p>
-            <div className="flex items-center gap-[4px]">
-              <TrendingUp size={14} color="#22c55e" strokeWidth={3} />
-              <p className="text-[12px] text-[#22c55e] font-bold m-0">{stats ? '+1.2%' : '+12.5%'}</p>
-            </div>
+            <p className="text-[30px] font-bold text-[#0f172a] m-0 mb-2 leading-none tracking-tight">
+              {(stats?.total_detections ?? 0).toLocaleString()}
+            </p>
+            <p className="text-[12px] text-[#94a3b8] font-semibold m-0">Updated: {updatedAtText}</p>
           </div>
 
           {/* Total Violations */}
@@ -189,11 +187,10 @@ export function DashboardPage() {
               <p className="text-[13px] text-[#64748b] font-semibold m-0">Total Violations</p>
               <AlertTriangle size={16} color="#94a3b8" strokeWidth={2.5} />
             </div>
-            <p className="text-[30px] font-bold text-[#0f172a] m-0 mb-3 leading-none tracking-tight">{stats?.total_violations ? stats.total_violations.toLocaleString() : '432'}</p>
-            <div className="flex items-center gap-[4px]">
-              <TrendingDown size={14} color="#ef4444" strokeWidth={3} />
-              <p className="text-[12px] text-[#ef4444] font-bold m-0">{stats ? '-0.5%' : '-5.2%'}</p>
-            </div>
+            <p className="text-[30px] font-bold text-[#0f172a] m-0 mb-2 leading-none tracking-tight">
+              {(stats?.total_violations ?? 0).toLocaleString()}
+            </p>
+            <p className="text-[12px] text-[#94a3b8] font-semibold m-0">Latest: Alerts page</p>
           </div>
 
           {/* Compliance Rate */}
@@ -202,21 +199,20 @@ export function DashboardPage() {
               <p className="text-[13px] text-[#64748b] font-semibold m-0">Compliance Rate (%)</p>
               <ShieldCheck size={16} color="#94a3b8" strokeWidth={2.5} />
             </div>
-            <p className="text-[30px] font-bold text-[#0f172a] m-0 mb-3 leading-none tracking-tight">{stats?.compliance_rate ? stats.compliance_rate : '96.5%'}</p>
-            <div className="flex items-center gap-[4px]">
-              <TrendingUp size={14} color="#22c55e" strokeWidth={3} />
-              <p className="text-[12px] text-[#22c55e] font-bold m-0">{stats ? '+0.1%' : '+0.8%'}</p>
-            </div>
+            <p className="text-[30px] font-bold text-[#0f172a] m-0 mb-2 leading-none tracking-tight">
+              {stats ? stats.compliance_rate : 0}
+            </p>
+            <p className="text-[12px] text-[#94a3b8] font-semibold m-0">Based on detections</p>
           </div>
 
-          {/* Active Cameras */}
+          {/* Active Zones */}
           <div className="bg-white border border-[#e5eaf0] rounded-[14px] p-5 shadow-sm">
             <div className="flex items-start justify-between mb-4">
-              <p className="text-[13px] text-[#64748b] font-semibold m-0">Active Cameras</p>
+              <p className="text-[13px] text-[#64748b] font-semibold m-0">Active Zones</p>
               <Video size={16} color="#94a3b8" strokeWidth={2.5} />
             </div>
-            <p className="text-[30px] font-bold text-[#0f172a] m-0 mb-3 leading-none tracking-tight">24</p>
-            <p className="text-[12px] text-[#94a3b8] font-semibold m-0">Stable</p>
+            <p className="text-[30px] font-bold text-[#0f172a] m-0 mb-2 leading-none tracking-tight">{activeZones}</p>
+            <p className="text-[12px] text-[#94a3b8] font-semibold m-0">From Zones config</p>
           </div>
         </div>
 
@@ -257,13 +253,19 @@ export function DashboardPage() {
             )}
           </div>
           <div className="flex gap-[10px]">
-            <button className="flex items-center gap-[6px] px-4 py-2 bg-[#2563eb] text-white border-none rounded-[10px] text-[13px] font-semibold cursor-pointer shadow-[0_1px_3px_rgba(37,99,235,0.3)]">
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-[6px] px-4 py-2 bg-[#2563eb] text-white border-none rounded-[10px] text-[13px] font-semibold cursor-pointer shadow-[0_1px_3px_rgba(37,99,235,0.3)]"
+            >
               <Download size={14} />
               Export PDF
             </button>
-            <button className="flex items-center gap-[6px] px-4 py-2 bg-[#f1f5f9] text-[#475569] border-none rounded-[10px] text-[13px] font-semibold cursor-pointer">
+            <button
+              onClick={() => navigate('/reports')}
+              className="flex items-center gap-[6px] px-4 py-2 bg-[#f1f5f9] text-[#475569] border-none rounded-[10px] text-[13px] font-semibold cursor-pointer"
+            >
               <SlidersHorizontal size={14} />
-              Filters
+              View Reports
             </button>
           </div>
         </div>
@@ -313,7 +315,10 @@ export function DashboardPage() {
               <ShieldAlert size={18} color="#94a3b8" />
               Recent Violations
             </div>
-            <button className="text-[13px] text-[#2563eb] font-medium bg-transparent border-none cursor-pointer">
+            <button
+              onClick={() => navigate('/alerts')}
+              className="text-[13px] text-[#2563eb] font-medium bg-transparent border-none cursor-pointer"
+            >
               View all logs →
             </button>
           </div>
@@ -331,9 +336,9 @@ export function DashboardPage() {
                   <tr>
                     <th className="text-left px-5 py-[10px] text-[11px] font-semibold text-[#94a3b8] uppercase tracking-[0.05em] bg-[#f8fafc]">Thumbnail</th>
                     <th className="text-left px-5 py-[10px] text-[11px] font-semibold text-[#94a3b8] uppercase tracking-[0.05em] bg-[#f8fafc]">Date &amp; Time</th>
-                    <th className="text-left px-5 py-[10px] text-[11px] font-semibold text-[#94a3b8] uppercase tracking-[0.05em] bg-[#f8fafc]">Camera ID</th>
+                    <th className="text-left px-5 py-[10px] text-[11px] font-semibold text-[#94a3b8] uppercase tracking-[0.05em] bg-[#f8fafc]">Reference</th>
                     <th className="text-left px-5 py-[10px] text-[11px] font-semibold text-[#94a3b8] uppercase tracking-[0.05em] bg-[#f8fafc]">Violation Type</th>
-                    <th className="text-left px-5 py-[10px] text-[11px] font-semibold text-[#94a3b8] uppercase tracking-[0.05em] bg-[#f8fafc]">Confidence</th>
+                    <th className="text-left px-5 py-[10px] text-[11px] font-semibold text-[#94a3b8] uppercase tracking-[0.05em] bg-[#f8fafc]">Status</th>
                     <th className="text-left px-5 py-[10px] text-[11px] font-semibold text-[#94a3b8] uppercase tracking-[0.05em] bg-[#f8fafc]">Actions</th>
                   </tr>
                 </thead>
@@ -346,10 +351,10 @@ export function DashboardPage() {
                         </div>
                       </td>
                       <td className="px-5 py-[14px] text-[13px] text-[#334155] border-b border-[#f1f5f9]">
-                        <div className="font-medium text-[#1e293b]">{row.dateTime.split(',')[0]}</div>
-                        <div className="text-[11px] text-[#94a3b8] mt-[2px]">{row.dateTime.split(',')[1]}</div>
+                        <div className="font-medium text-[#1e293b]">{new Date(row.createdAt).toLocaleDateString()}</div>
+                        <div className="text-[11px] text-[#94a3b8] mt-[2px]">{new Date(row.createdAt).toLocaleTimeString()}</div>
                       </td>
-                      <td className="px-5 py-[14px] text-[13px] text-[#334155] border-b border-[#f1f5f9]">{row.cameraId}</td>
+                      <td className="px-5 py-[14px] text-[13px] text-[#334155] border-b border-[#f1f5f9]">{row.refId}</td>
                       <td className="px-5 py-[14px] text-[13px] text-[#334155] border-b border-[#f1f5f9]">
                         <span className={getViolationBadgeClass(row.violationType)}>
                           {row.violationType.toUpperCase().includes('HELMET') ? 'MISSING HELMET' :
@@ -358,15 +363,14 @@ export function DashboardPage() {
                         </span>
                       </td>
                       <td className="px-5 py-[14px] text-[13px] text-[#334155] border-b border-[#f1f5f9]">
-                        <div className="flex items-center gap-2">
-                          <div className="w-[60px] h-[6px] bg-[#dbeafe] rounded-[3px] overflow-hidden">
-                            <div className="h-full bg-[#2563eb] rounded-[3px]" style={{ width: row.confidence }} />
-                          </div>
-                          <span className="text-[13px] font-semibold text-[#334155]">{row.confidence}</span>
-                        </div>
+                        <span className="text-[12px] font-semibold text-[#475569]">{row.status}</span>
                       </td>
                       <td className="px-5 py-[14px] text-[13px] text-[#334155] border-b border-[#f1f5f9]">
-                        <button className="bg-transparent border-none cursor-pointer p-1 rounded-md">
+                        <button
+                          onClick={() => navigate('/alerts')}
+                          className="bg-transparent border-none cursor-pointer p-1 rounded-md"
+                          title={row.message || row.violationType}
+                        >
                           <Download size={16} color="#94a3b8" />
                         </button>
                       </td>
