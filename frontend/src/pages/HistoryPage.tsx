@@ -44,121 +44,95 @@ export function HistoryPage() {
   const violationCount = detections.filter(d => d.has_violation).length
   const complianceCount = detections.filter(d => !d.has_violation).length
 
-  // ─── Shared styles ────────────────────────────────────────────────────────
-  const card = {
-    backgroundColor: '#ffffff',
-    border: '1px solid #e5eaf0',
-    borderRadius: '16px',
-    overflow: 'hidden' as const,
-    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-  }
-
-  const thStyle = {
-    padding: '11px 16px',
-    fontSize: '11px',
-    fontWeight: 600,
-    color: '#94a3b8',
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.06em',
-    textAlign: 'left' as const,
-    backgroundColor: '#f8fafc',
-    borderBottom: '1px solid #e5eaf0',
-  }
-
-  const tdStyle = {
-    padding: '12px 16px',
-    fontSize: '13px',
-    color: '#334155',
-    borderBottom: '1px solid #f1f5f9',
-    verticalAlign: 'middle' as const,
-  }
-
   if (loading && detections.length === 0) {
     return (
       <Layout>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '36px', height: '36px', border: '3px solid #e5eaf0', borderTop: '3px solid #2563eb', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-            <span style={{ fontSize: '14px', color: '#64748b', fontWeight: 500 }}>Loading records...</span>
+        <div className="flex items-center justify-center h-[60vh]">
+          <div className="flex flex-col items-center gap-[14px]">
+            <div className="w-9 h-9 border-[3px] border-[#e5eaf0] border-t-[#2563eb] rounded-full animate-spin" />
+            <span className="text-[14px] text-[#64748b] font-medium">Loading records...</span>
           </div>
         </div>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </Layout>
     )
   }
 
   return (
     <Layout>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div className="flex flex-col gap-5">
 
         {/* ── Header ── */}
         <div>
-          <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <h1 className="text-[22px] font-bold text-[#0f172a] m-0 mb-1 flex items-center gap-[10px]">
             <FileText size={22} color="#2563eb" />
             Safety Reports &amp; Analytics
           </h1>
-          <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>Detection history and safety compliance records</p>
+          <p className="text-[13px] text-[#64748b] m-0">Detection history and safety compliance records</p>
         </div>
 
         {/* ── Summary stat cards ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px' }}>
+        <div className="grid grid-cols-3 gap-[14px]">
           {/* Violations */}
-          <div style={{ ...card, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={{ width: '48px', height: '48px', borderRadius: '12px', backgroundColor: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div className="bg-white border border-[#e5eaf0] rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)] px-6 py-5 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-[#fee2e2] flex items-center justify-center shrink-0">
               <AlertTriangle size={22} color="#dc2626" />
             </div>
             <div>
-              <p style={{ fontSize: '32px', fontWeight: 700, color: '#0f172a', margin: 0, lineHeight: 1 }}>{violationCount}</p>
-              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '4px 0 0', fontWeight: 500 }}>Total Violations</p>
+              <p className="text-[32px] font-bold text-[#0f172a] m-0 leading-none">{violationCount}</p>
+              <p className="text-[12px] text-[#94a3b8] mt-1 font-medium">Total Violations</p>
             </div>
           </div>
+
           {/* Compliant */}
-          <div style={{ ...card, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={{ width: '48px', height: '48px', borderRadius: '12px', backgroundColor: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div className="bg-white border border-[#e5eaf0] rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)] px-6 py-5 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-[#dcfce7] flex items-center justify-center shrink-0">
               <CheckCircle size={22} color="#16a34a" />
             </div>
             <div>
-              <p style={{ fontSize: '32px', fontWeight: 700, color: '#0f172a', margin: 0, lineHeight: 1 }}>{complianceCount}</p>
-              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '4px 0 0', fontWeight: 500 }}>Compliant</p>
+              <p className="text-[32px] font-bold text-[#0f172a] m-0 leading-none">{complianceCount}</p>
+              <p className="text-[12px] text-[#94a3b8] mt-1 font-medium">Compliant</p>
             </div>
           </div>
-          {/* Total records */}
-          <div style={{ ...card, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={{ width: '48px', height: '48px', borderRadius: '12px', backgroundColor: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+
+          {/* Total Records */}
+          <div className="bg-white border border-[#e5eaf0] rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)] px-6 py-5 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-[#dbeafe] flex items-center justify-center shrink-0">
               <FileText size={22} color="#2563eb" />
             </div>
             <div>
-              <p style={{ fontSize: '32px', fontWeight: 700, color: '#0f172a', margin: 0, lineHeight: 1 }}>{total}</p>
-              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '4px 0 0', fontWeight: 500 }}>Total Records</p>
+              <p className="text-[32px] font-bold text-[#0f172a] m-0 leading-none">{total}</p>
+              <p className="text-[12px] text-[#94a3b8] mt-1 font-medium">Total Records</p>
             </div>
           </div>
         </div>
 
         {/* ── Detection Records Table ── */}
         {detections.length === 0 && !loading ? (
-          <div style={{ ...card, padding: '60px 20px', textAlign: 'center' }}>
-            <Clock size={40} color="#cbd5e1" style={{ marginBottom: '12px' }} />
-            <p style={{ fontSize: '15px', fontWeight: 600, color: '#475569', margin: '0 0 6px' }}>No detection records yet</p>
-            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Detection results will appear here after running the system.</p>
+          <div className="bg-white border border-[#e5eaf0] rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)] py-[60px] px-5 text-center">
+            <Clock size={40} color="#cbd5e1" className="mx-auto mb-3" />
+            <p className="text-[15px] font-semibold text-[#475569] m-0 mb-[6px]">No detection records yet</p>
+            <p className="text-[13px] text-[#94a3b8] m-0">Detection results will appear here after running the system.</p>
           </div>
         ) : (
-          <div style={card}>
-            {/* Table header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid #e5eaf0' }}>
-              <h2 style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a', margin: 0 }}>Detection Records</h2>
-              <span style={{ fontSize: '12px', color: '#94a3b8' }}>{total} records</span>
+          <div className="bg-white border border-[#e5eaf0] rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            {/* Table header bar */}
+            <div className="flex items-center justify-between px-5 py-[14px] border-b border-[#e5eaf0]">
+              <h2 className="text-[14px] font-semibold text-[#0f172a] m-0">Detection Records</h2>
+              <span className="text-[12px] text-[#94a3b8]">{total} records</span>
             </div>
 
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
                 <thead>
                   <tr>
-                    <th style={thStyle}>Thumbnail</th>
-                    <th style={thStyle}>Date &amp; Time</th>
-                    <th style={thStyle}>Persons</th>
-                    <th style={thStyle}>Violations</th>
-                    <th style={thStyle}>Status</th>
-                    <th style={thStyle}>Actions</th>
+                    {['Thumbnail', 'Date & Time', 'Persons', 'Violations', 'Status', 'Actions'].map(col => (
+                      <th
+                        key={col}
+                        className="px-4 py-[11px] text-[11px] font-semibold text-[#94a3b8] uppercase tracking-[0.06em] text-left bg-[#f8fafc] border-b border-[#e5eaf0]"
+                      >
+                        {col}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -170,18 +144,18 @@ export function HistoryPage() {
                       onMouseLeave={e => (e.currentTarget.style.backgroundColor = idx % 2 === 0 ? '#ffffff' : '#fafbfc')}
                     >
                       {/* Thumbnail */}
-                      <td style={tdStyle}>
-                        <div style={{ width: '56px', height: '56px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e5eaf0', backgroundColor: '#f1f5f9', flexShrink: 0 }}>
+                      <td className="px-4 py-3 text-[13px] text-[#334155] border-b border-[#f1f5f9] align-middle">
+                        <div className="w-14 h-14 rounded-lg overflow-hidden border border-[#e5eaf0] bg-[#f1f5f9] shrink-0">
                           <img
                             src={detectionService.getResultImageUrl(detection.id)}
                             alt=""
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            className="w-full h-full object-cover"
                           />
                         </div>
                       </td>
 
                       {/* Date & Time */}
-                      <td style={tdStyle}>
+                      <td className="px-4 py-3 text-[13px] text-[#334155] border-b border-[#f1f5f9] align-middle">
                         {new Date(detection.created_at).toLocaleString('en-GB', {
                           day: '2-digit', month: 'short', year: 'numeric',
                           hour: '2-digit', minute: '2-digit',
@@ -189,66 +163,60 @@ export function HistoryPage() {
                       </td>
 
                       {/* Persons */}
-                      <td style={tdStyle}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                      <td className="px-4 py-3 text-[13px] text-[#334155] border-b border-[#f1f5f9] align-middle">
+                        <span className="inline-flex items-center gap-[5px]">
                           <Users size={14} color="#94a3b8" />
-                          <span style={{ fontWeight: 600, color: '#0f172a' }}>{detection.person_count}</span>
+                          <span className="font-semibold text-[#0f172a]">{detection.person_count}</span>
                         </span>
                       </td>
 
                       {/* Violations chips */}
-                      <td style={tdStyle}>
+                      <td className="px-4 py-3 text-[13px] text-[#334155] border-b border-[#f1f5f9] align-middle">
                         {detection.violations && detection.violations.length > 0 ? (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                          <div className="flex flex-wrap gap-1">
                             {detection.violations.slice(0, 2).map((v, i) => (
-                              <span key={i} style={{ padding: '2px 8px', backgroundColor: '#fee2e2', color: '#dc2626', fontSize: '11px', fontWeight: 600, borderRadius: '6px', border: '1px solid #fecaca' }}>
+                              <span key={i} className="px-2 py-[2px] bg-[#fee2e2] text-[#dc2626] text-[11px] font-semibold rounded-md border border-[#fecaca]">
                                 {v}
                               </span>
                             ))}
                             {detection.violations.length > 2 && (
-                              <span style={{ padding: '2px 8px', backgroundColor: '#f1f5f9', color: '#64748b', fontSize: '11px', borderRadius: '6px' }}>
+                              <span className="px-2 py-[2px] bg-[#f1f5f9] text-[#64748b] text-[11px] rounded-md">
                                 +{detection.violations.length - 2}
                               </span>
                             )}
                           </div>
                         ) : (
-                          <span style={{ fontSize: '12px', color: '#cbd5e1' }}>—</span>
+                          <span className="text-[12px] text-[#cbd5e1]">—</span>
                         )}
                       </td>
 
                       {/* Status badge */}
-                      <td style={tdStyle}>
+                      <td className="px-4 py-3 text-[13px] text-[#334155] border-b border-[#f1f5f9] align-middle">
                         {detection.has_violation ? (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '4px 10px', backgroundColor: '#fee2e2', color: '#dc2626', fontSize: '12px', fontWeight: 600, borderRadius: '8px', border: '1px solid #fecaca' }}>
+                          <span className="inline-flex items-center gap-[5px] px-[10px] py-1 bg-[#fee2e2] text-[#dc2626] text-[12px] font-semibold rounded-lg border border-[#fecaca]">
                             <ShieldAlert size={13} /> Violation
                           </span>
                         ) : (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '4px 10px', backgroundColor: '#dcfce7', color: '#16a34a', fontSize: '12px', fontWeight: 600, borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+                          <span className="inline-flex items-center gap-[5px] px-[10px] py-1 bg-[#dcfce7] text-[#16a34a] text-[12px] font-semibold rounded-lg border border-[#bbf7d0]">
                             <ShieldCheck size={13} /> Compliant
                           </span>
                         )}
                       </td>
 
                       {/* Actions */}
-                      <td style={tdStyle}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          {/* Download */}
+                      <td className="px-4 py-3 text-[13px] text-[#334155] border-b border-[#f1f5f9] align-middle">
+                        <div className="flex items-center gap-[6px]">
                           <button
                             onClick={e => { e.stopPropagation(); window.open(detectionService.getResultImageUrl(detection.id), '_blank') }}
                             title="Download"
-                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #e5eaf0', backgroundColor: '#f8fafc', color: '#64748b', cursor: 'pointer' }}
-                            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#eff6ff'; (e.currentTarget as HTMLButtonElement).style.color = '#2563eb' }}
-                            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#f8fafc'; (e.currentTarget as HTMLButtonElement).style.color = '#64748b' }}
+                            className="flex items-center justify-center w-8 h-8 rounded-lg border border-[#e5eaf0] bg-[#f8fafc] text-[#64748b] cursor-pointer hover:bg-[#eff6ff] hover:text-[#2563eb] transition-colors"
                           >
                             <Download size={14} />
                           </button>
-                          {/* View Detail */}
                           <button
                             onClick={e => { e.stopPropagation(); setSelectedDetection(detection) }}
                             title="View Detail"
-                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #e5eaf0', backgroundColor: '#f8fafc', color: '#64748b', cursor: 'pointer' }}
-                            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#eff6ff'; (e.currentTarget as HTMLButtonElement).style.color = '#2563eb' }}
-                            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#f8fafc'; (e.currentTarget as HTMLButtonElement).style.color = '#64748b' }}
+                            className="flex items-center justify-center w-8 h-8 rounded-lg border border-[#e5eaf0] bg-[#f8fafc] text-[#64748b] cursor-pointer hover:bg-[#eff6ff] hover:text-[#2563eb] transition-colors"
                           >
                             <Eye size={14} />
                           </button>
@@ -262,21 +230,21 @@ export function HistoryPage() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '14px 20px', borderTop: '1px solid #f1f5f9' }}>
+              <div className="flex items-center justify-center gap-2 px-5 py-[14px] border-t border-[#f1f5f9]">
                 <button
                   onClick={() => setPage(Math.max(1, page - 1))}
                   disabled={page === 1}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #e5eaf0', backgroundColor: '#ffffff', color: '#64748b', cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.4 : 1 }}
+                  className="flex items-center justify-center w-8 h-8 rounded-lg border border-[#e5eaf0] bg-white text-[#64748b] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <ChevronLeft size={16} />
                 </button>
-                <span style={{ fontSize: '13px', fontWeight: 500, color: '#475569', padding: '6px 14px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e5eaf0' }}>
+                <span className="text-[13px] font-medium text-[#475569] px-[14px] py-[6px] bg-[#f8fafc] rounded-lg border border-[#e5eaf0]">
                   Page {page} of {totalPages}
                 </span>
                 <button
                   onClick={() => setPage(Math.min(totalPages, page + 1))}
                   disabled={page === totalPages}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #e5eaf0', backgroundColor: '#ffffff', color: '#64748b', cursor: page === totalPages ? 'not-allowed' : 'pointer', opacity: page === totalPages ? 0.4 : 1 }}
+                  className="flex items-center justify-center w-8 h-8 rounded-lg border border-[#e5eaf0] bg-white text-[#64748b] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <ChevronRight size={16} />
                 </button>
@@ -287,62 +255,63 @@ export function HistoryPage() {
 
         {/* ── Detail Modal ── */}
         {selectedDetection && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             {/* Backdrop */}
             <div
-              style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(4px)' }}
+              className="absolute inset-0 bg-[rgba(15,23,42,0.5)] backdrop-blur-sm"
               onClick={() => setSelectedDetection(null)}
             />
             {/* Modal */}
-            <div style={{ position: 'relative', backgroundColor: '#ffffff', borderRadius: '20px', border: '1px solid #e5eaf0', boxShadow: '0 20px 60px rgba(0,0,0,0.15)', width: '100%', maxWidth: '680px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div className="relative bg-white rounded-[20px] border border-[#e5eaf0] shadow-[0_20px_60px_rgba(0,0,0,0.15)] w-full max-w-[680px] max-h-[90vh] flex flex-col overflow-hidden">
               {/* Modal header */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
-                <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: 0 }}>Detection Detail</h2>
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#f1f5f9]">
+                <h2 className="text-[15px] font-bold text-[#0f172a] m-0">Detection Detail</h2>
                 <button
                   onClick={() => setSelectedDetection(null)}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '8px', border: 'none', backgroundColor: '#f1f5f9', color: '#64748b', cursor: 'pointer' }}
+                  className="flex items-center justify-center w-8 h-8 rounded-lg border-none bg-[#f1f5f9] text-[#64748b] cursor-pointer"
                 >
                   <X size={16} />
                 </button>
               </div>
 
-              <div style={{ overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div className="overflow-y-auto p-5 flex flex-col gap-4">
                 {/* Result image */}
-                <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5eaf0', backgroundColor: '#f8fafc' }}>
+                <div className="rounded-xl overflow-hidden border border-[#e5eaf0] bg-[#f8fafc]">
                   <img
                     src={detectionService.getResultImageUrl(selectedDetection.id)}
                     alt="Result"
-                    style={{ width: '100%', maxHeight: '45vh', objectFit: 'contain' }}
+                    className="w-full object-contain"
+                    style={{ maxHeight: '45vh' }}
                   />
                 </div>
 
                 {/* Status banner */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '14px 16px', borderRadius: '12px', backgroundColor: selectedDetection.has_violation ? '#fff1f2' : '#f0fdf4', border: `1px solid ${selectedDetection.has_violation ? '#fecaca' : '#bbf7d0'}` }}>
+                <div className={`flex items-center gap-[10px] px-4 py-[14px] rounded-xl border ${selectedDetection.has_violation ? 'bg-[#fff1f2] border-[#fecaca]' : 'bg-[#f0fdf4] border-[#bbf7d0]'}`}>
                   {selectedDetection.has_violation
-                    ? <AlertTriangle size={20} color="#dc2626" style={{ flexShrink: 0 }} />
-                    : <CheckCircle size={20} color="#16a34a" style={{ flexShrink: 0 }} />
+                    ? <AlertTriangle size={20} color="#dc2626" className="shrink-0" />
+                    : <CheckCircle size={20} color="#16a34a" className="shrink-0" />
                   }
                   <div>
-                    <p style={{ fontSize: '14px', fontWeight: 700, color: selectedDetection.has_violation ? '#dc2626' : '#16a34a', margin: '0 0 2px' }}>
+                    <p className={`text-[14px] font-bold m-0 mb-[2px] ${selectedDetection.has_violation ? 'text-[#dc2626]' : 'text-[#16a34a]'}`}>
                       {selectedDetection.has_violation ? 'Safety Violation Detected' : 'Fully Compliant — No Violations'}
                     </p>
-                    <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>
+                    <p className="text-[12px] text-[#64748b] m-0">
                       {new Date(selectedDetection.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
                 </div>
 
                 {/* Stats row */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '10px' }}>
+                <div className="grid grid-cols-3 gap-[10px]">
                   {[
                     { icon: <Users size={18} color="#2563eb" />, label: 'Persons', value: selectedDetection.person_count, valueColor: '#0f172a' },
                     { icon: <AlertTriangle size={18} color={selectedDetection.violation_count > 0 ? '#dc2626' : '#94a3b8'} />, label: 'Violations', value: selectedDetection.violation_count, valueColor: selectedDetection.violation_count > 0 ? '#dc2626' : '#0f172a' },
                     { icon: <Clock size={18} color="#0ea5e9" />, label: 'Processing', value: `${selectedDetection.processing_time_ms ?? '—'}ms`, valueColor: '#0f172a' },
                   ].map((s, i) => (
-                    <div key={i} style={{ backgroundColor: '#f8fafc', border: '1px solid #e5eaf0', borderRadius: '10px', padding: '14px', textAlign: 'center' }}>
-                      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '6px' }}>{s.icon}</div>
-                      <p style={{ fontSize: '22px', fontWeight: 700, color: s.valueColor, margin: '0 0 2px' }}>{s.value}</p>
-                      <p style={{ fontSize: '11px', color: '#94a3b8', margin: 0, fontWeight: 500 }}>{s.label}</p>
+                    <div key={i} className="bg-[#f8fafc] border border-[#e5eaf0] rounded-[10px] p-[14px] text-center">
+                      <div className="flex justify-center mb-[6px]">{s.icon}</div>
+                      <p className="text-[22px] font-bold m-0 mb-[2px]" style={{ color: s.valueColor }}>{s.value}</p>
+                      <p className="text-[11px] text-[#94a3b8] m-0 font-medium">{s.label}</p>
                     </div>
                   ))}
                 </div>
@@ -350,10 +319,10 @@ export function HistoryPage() {
                 {/* Violations list */}
                 {selectedDetection.violations && selectedDetection.violations.length > 0 && (
                   <div>
-                    <p style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>Violations Found</p>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    <p className="text-[12px] font-semibold text-[#64748b] uppercase tracking-[0.06em] m-0 mb-2">Violations Found</p>
+                    <div className="flex flex-wrap gap-[6px]">
                       {selectedDetection.violations.map((v, i) => (
-                        <span key={i} style={{ padding: '4px 12px', backgroundColor: '#fee2e2', color: '#dc2626', fontSize: '12px', fontWeight: 600, borderRadius: '8px', border: '1px solid #fecaca' }}>
+                        <span key={i} className="px-3 py-1 bg-[#fee2e2] text-[#dc2626] text-[12px] font-semibold rounded-lg border border-[#fecaca]">
                           {v}
                         </span>
                       ))}
@@ -364,26 +333,29 @@ export function HistoryPage() {
                 {/* Per-person breakdown */}
                 {selectedDetection.persons && selectedDetection.persons.length > 0 && (
                   <div>
-                    <p style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>Per-Person PPE Status</p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <p className="text-[12px] font-semibold text-[#64748b] uppercase tracking-[0.06em] m-0 mb-2">Per-Person PPE Status</p>
+                    <div className="flex flex-col gap-2">
                       {selectedDetection.persons.map((person) => (
-                        <div key={person.id} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: person.is_compliant ? '#f0fdf4' : '#fff1f2', border: `1px solid ${person.is_compliant ? '#bbf7d0' : '#fecaca'}`, borderRadius: '10px' }}>
+                        <div
+                          key={person.id}
+                          className={`flex items-start justify-between px-[14px] py-[10px] rounded-[10px] border ${person.is_compliant ? 'bg-[#f0fdf4] border-[#bbf7d0]' : 'bg-[#fff1f2] border-[#fecaca]'}`}
+                        >
                           <div>
-                            <p style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>Person {person.id}</p>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                            <p className="text-[13px] font-semibold text-[#0f172a] m-0 mb-1">Person {person.id}</p>
+                            <div className="flex flex-wrap gap-1">
                               {person.wearing?.map((item, i) => (
-                                <span key={`w${i}`} style={{ fontSize: '11px', color: '#16a34a', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                <span key={`w${i}`} className="text-[11px] text-[#16a34a] flex items-center gap-[3px]">
                                   <CheckCircle size={11} /> {item}
                                 </span>
                               ))}
                               {person.not_wearing?.map((item, i) => (
-                                <span key={`nw${i}`} style={{ fontSize: '11px', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                <span key={`nw${i}`} className="text-[11px] text-[#dc2626] flex items-center gap-[3px]">
                                   <X size={11} /> {item}
                                 </span>
                               ))}
                             </div>
                           </div>
-                          <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '6px', backgroundColor: person.is_compliant ? '#dcfce7' : '#fee2e2', color: person.is_compliant ? '#16a34a' : '#dc2626', flexShrink: 0 }}>
+                          <span className={`text-[11px] font-semibold px-2 py-[2px] rounded-md shrink-0 ${person.is_compliant ? 'bg-[#dcfce7] text-[#16a34a]' : 'bg-[#fee2e2] text-[#dc2626]'}`}>
                             {Math.round(person.confidence * 100)}%
                           </span>
                         </div>
@@ -397,7 +369,6 @@ export function HistoryPage() {
         )}
 
       </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </Layout>
   )
 }
