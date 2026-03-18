@@ -386,22 +386,6 @@ export function DetectionPage() {
                           />
                           {/* Hidden capture canvas */}
                           <canvas ref={captureCanvasRef} className="hidden" />
-                          
-                          {/* Custom video controls */}
-                          <div className="flex items-center gap-2 px-3 py-2 bg-black/60 rounded-b-lg absolute bottom-0 left-0 right-0">
-                            <button
-                              onClick={(e) => { 
-                                e.stopPropagation(); 
-                                videoRef.current?.paused ? videoRef.current?.play() : videoRef.current?.pause() 
-                              }}
-                              className="bg-white/15 border border-white/20 text-white rounded-md px-3 py-1 cursor-pointer text-[13px] font-semibold hover:bg-white/25 transition-colors"
-                            >
-                              {isLiveDetecting ? '⏸ Pause' : '▶ Play'}
-                            </button>
-                            <span className="text-[11px] text-[#94a3b8] ml-auto font-medium">
-                              {isLiveDetecting ? `🔴 LIVE · ${liveFrameCount} frames analyzed` : 'Press Play to start live detection'}
-                            </span>
-                          </div>
                         </div>
                       ) : (
                         <div className="relative w-full bg-[#f8fafc] rounded-lg overflow-hidden flex items-center justify-center min-h-[300px]">
@@ -444,24 +428,41 @@ export function DetectionPage() {
                   )}
                 </div>
 
-                {/* Detect / Reset buttons */}
+                {/* Actions / Detect / Reset buttons */}
                 {preview && hasValidFile && (
                   <div className="flex gap-[10px] mt-4">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDetect() }}
-                      disabled={isLoading}
-                      className={
-                        isLoading
-                          ? 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#93c5fd] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-not-allowed shadow-sm transition-all'
-                          : 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-pointer shadow-sm transition-all'
-                      }
-                    >
-                      {isLoading ? (
-                        <><Loader2 size={16} className="animate-spin" /> Processing Detection...</>
-                      ) : (
-                        <><ShieldCheck size={16} /> Start Detection</>
-                      )}
-                    </button>
+                    {activeTab === 'image' ? (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDetect() }}
+                        disabled={isLoading}
+                        className={
+                          isLoading
+                            ? 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#93c5fd] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-not-allowed shadow-sm transition-all'
+                            : 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-pointer shadow-sm transition-all'
+                        }
+                      >
+                        {isLoading ? (
+                          <><Loader2 size={16} className="animate-spin" /> Processing Detection...</>
+                        ) : (
+                          <><ShieldCheck size={16} /> Start Detection</>
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          videoRef.current?.paused ? videoRef.current?.play() : videoRef.current?.pause() 
+                        }}
+                        className={
+                          isLiveDetecting
+                            ? 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#ef4444] hover:bg-[#dc2626] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-pointer shadow-sm transition-all'
+                            : 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-pointer shadow-sm transition-all'
+                        }
+                      >
+                        {isLiveDetecting ? '⏸ Pause Detection' : '▶ Play Live Detection'}
+                      </button>
+                    )}
+                    
                     <button
                       onClick={(e) => { e.stopPropagation(); handleReset() }}
                       className="flex items-center justify-center px-[14px] py-[11px] bg-[#f1f5f9] hover:bg-[#e2e8f0] text-[#64748b] hover:text-[#0f172a] border-none rounded-[10px] cursor-pointer transition-colors"
@@ -469,6 +470,12 @@ export function DetectionPage() {
                       <X size={16} />
                     </button>
                   </div>
+                )}
+                
+                {activeTab === 'video' && isLiveDetecting && (
+                  <p className="text-center text-[12px] text-[#22c55e] font-semibold mt-3 animate-pulse">
+                    Live Detection Active • {liveFrameCount} frames analyzed
+                  </p>
                 )}
 
                 {/* Progress bar */}

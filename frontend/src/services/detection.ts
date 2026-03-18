@@ -50,8 +50,12 @@ export const detectionService = {
     return response.data
   },
 
-  async getAnalytics(days = 7): Promise<AnalyticsData> {
-    const response = await api.get(`/detection/analytics/daily?days=${days}`)
+  async getAnalytics(days = 7, startDate?: string, endDate?: string): Promise<AnalyticsData> {
+    let url = `/detection/analytics/daily?days=${days}`
+    if (startDate && endDate) {
+      url += `&start_date=${startDate}&end_date=${endDate}`
+    }
+    const response = await api.get(url)
     return response.data
   },
 
