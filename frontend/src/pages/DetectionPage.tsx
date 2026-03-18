@@ -20,12 +20,121 @@ import toast from 'react-hot-toast'
 
 type TabType = 'image' | 'video'
 
+const drawDetectionOverlay = (
+  ctx: CanvasRenderingContext2D,
+  canvasWidth: number,
+  canvasHeight: number,
+  naturalWidth: number,
+  naturalHeight: number,
+  det: Detection | null
+) => {
+  if (!det?.persons || det.persons.length === 0) return
+
+  const scaleX = canvasWidth / naturalWidth
+  const scaleY = canvasHeight / naturalHeight
+
+  det.persons.forEach((person) => {
+    if (!person.bbox) return
+    const [x1, y1, x2, y2] = person.bbox.map((v: number, i: number) =>
+      i % 2 === 0 ? v * scaleX : v * scaleY
+    )
+    const color = person.is_compliant ? '#22c55e' : '#ef4444'
+    const lineW = Math.max(2, canvasWidth / 300)
+    ctx.strokeStyle = color
+    ctx.lineWidth = lineW
+    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1)
+
+    const cl = Math.min(20, (x2 - x1) / 5, (y2 - y1) / 5)
+    const corners: [number, number, number, number][] = [
+      [x1, y1, 1, 1], [x2, y1, -1, 1], [x1, y2, 1, -1], [x2, y2, -1, -1]
+    ]
+    ctx.lineWidth = lineW * 2.5
+    corners.forEach(([cx, cy, dx, dy]) => {
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + cl * dx, cy); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, cy + cl * dy); ctx.stroke()
+    })
+
+    const label = `Person ${person.id} · ${person.is_compliant ? '✓ Safe' : '✗ Violation'}`
+    const fontSize = Math.max(11, canvasWidth / 60)
+    ctx.font = `bold ${fontSize}px Inter, sans-serif`
+    const tw = ctx.measureText(label).width
+    const lh = fontSize + 8
+    
+    ctx.fillStyle = color
+    ctx.fillRect(x1, y1 - lh - 2, tw + 12, lh + 2)
+    ctx.fillStyle = '#fff'
+    ctx.fillText(label, x1 + 6, y1 - 6)
+
+    let ty = y1 + 4 + fontSize
+    const drawPpe = (text: string, ok: boolean) => {
+      const fs2 = Math.max(9, fontSize - 3)
+      ctx.font = `600 ${fs2}px Inter, sans-serif`
+      const tw2 = ctx.measureText(text).width
+      ctx.fillStyle = ok ? 'rgba(34,197,94,0.85)' : 'rgba(239,68,68,0.85)'
+      ctx.fillRect(x1 + 5, ty - fs2, tw2 + 10, fs2 + 6)
+      ctx.fillStyle = '#fff'
+      ctx.fillText(text, x1 + 10, ty)
+      ty += fs2 + 10
+    }
+
+    person.wearing?.forEach((item: string) => drawPpe(`✓ ${item === 'helmet' ? 'หมวกนิรภัย' : item === 'vest' ? 'เสื้อสะท้อนแสง' : item}`, true))
+    person.not_wearing?.forEach((item: string) => drawPpe(`✗ ${item === 'helmet' ? 'หมวกนิรภัย' : item === 'vest' ? 'เสื้อสะท้อนแสง' : item}`, false))
+  })
+
+  // Top banner
+  const msg = det.summary?.message || ''
+  const bannerH = Math.max(28, canvasWidth / 25)
+  const isViolation = det.has_violation
+  ctx.fillStyle = isViolation ? 'rgba(200,30,30,0.82)' : 'rgba(22,163,74,0.82)'
+  ctx.fillRect(0, 0, canvasWidth, bannerH)
+  ctx.fillStyle = '#fff'
+  ctx.font = `bold ${Math.max(11, bannerH * 0.5)}px Inter, sans-serif`
+  ctx.fillText(msg, 12, bannerH * 0.72)
+}
+
 export function DetectionPage() {
   const [activeTab, setActiveTab] = useState<TabType>('image')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const [result, setResult] = useState<Detection | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+
+  // ── Image detection overlay ──────────────────────────
+  const imageCanvasRef = useRef<HTMLCanvasElement>(null)
+  const imageRef = useRef<HTMLImageElement>(null)
+
+  useEffect(() => {
+    if (activeTab === 'image' && preview) {
+      const img = imageRef.current
+      const canvas = imageCanvasRef.current
+      if (!img || !canvas) return
+
+      const draw = () => {
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+        
+        // Match canvas dimensions to actual image dimensions
+        const natW = img.naturalWidth || img.width
+        const natH = img.naturalHeight || img.height
+        canvas.width = natW
+        canvas.height = natH
+
+        // Draw original image
+        ctx.drawImage(img, 0, 0, natW, natH)
+
+        // Draw the AI overlays on top if we have results
+        if (result) {
+          drawDetectionOverlay(ctx, natW, natH, natW, natH, result)
+        }
+      }
+
+      if (img.complete) {
+        draw()
+      } else {
+        img.onload = draw
+      }
+    }
+  }, [activeTab, preview, result])
 
   // ── Real-time video detection with canvas overlay ──────────────────────────
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -44,64 +153,25 @@ export function DetectionPage() {
     if (!video || !canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+    
     canvas.width = video.videoWidth || canvas.width
     canvas.height = video.videoHeight || canvas.height
+    
+    // Draw raw video frame
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    
+    // Draw overlays
     const det = lastDetectionRef.current
-    if (det?.persons && det.persons.length > 0) {
-      const scaleX = canvas.width / (video.videoWidth || canvas.width)
-      const scaleY = canvas.height / (video.videoHeight || canvas.height)
-      det.persons.forEach((person) => {
-        if (!person.bbox) return
-        const [x1, y1, x2, y2] = person.bbox.map((v: number, i: number) =>
-          i % 2 === 0 ? v * scaleX : v * scaleY
-        )
-        const color = person.is_compliant ? '#22c55e' : '#ef4444'
-        const lineW = Math.max(2, canvas.width / 300)
-        ctx.strokeStyle = color
-        ctx.lineWidth = lineW
-        ctx.strokeRect(x1, y1, x2 - x1, y2 - y1)
-        const cl = Math.min(20, (x2 - x1) / 5, (y2 - y1) / 5)
-        const corners: [number, number, number, number][] = [
-          [x1, y1, 1, 1], [x2, y1, -1, 1], [x1, y2, 1, -1], [x2, y2, -1, -1]
-        ]
-        ctx.lineWidth = lineW * 2.5
-        corners.forEach(([cx, cy, dx, dy]) => {
-          ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + cl * dx, cy); ctx.stroke()
-          ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, cy + cl * dy); ctx.stroke()
-        })
-        const label = `Person ${person.id} · ${person.is_compliant ? '✓ Safe' : '✗ Violation'}`
-        const fontSize = Math.max(11, canvas.width / 60)
-        ctx.font = `bold ${fontSize}px Inter, sans-serif`
-        const tw = ctx.measureText(label).width
-        const lh = fontSize + 8
-        ctx.fillStyle = color
-        ctx.fillRect(x1, y1 - lh - 2, tw + 12, lh + 2)
-        ctx.fillStyle = '#fff'
-        ctx.fillText(label, x1 + 6, y1 - 6)
-        let ty = y1 + 4 + fontSize
-        const drawPpe = (text: string, ok: boolean) => {
-          const fs2 = Math.max(9, fontSize - 3)
-          ctx.font = `600 ${fs2}px Inter, sans-serif`
-          const tw2 = ctx.measureText(text).width
-          ctx.fillStyle = ok ? 'rgba(34,197,94,0.85)' : 'rgba(239,68,68,0.85)'
-          ctx.fillRect(x1 + 5, ty - fs2, tw2 + 10, fs2 + 6)
-          ctx.fillStyle = '#fff'
-          ctx.fillText(text, x1 + 10, ty)
-          ty += fs2 + 10
-        }
-        person.wearing?.forEach((item: string) => drawPpe(`✓ ${item}`, true))
-        person.not_wearing?.forEach((item: string) => drawPpe(`✗ ${item}`, false))
-      })
-      const msg = det.summary?.message || ''
-      const bannerH = Math.max(28, canvas.width / 25)
-      const isViolation = det.has_violation
-      ctx.fillStyle = isViolation ? 'rgba(200,30,30,0.82)' : 'rgba(22,163,74,0.82)'
-      ctx.fillRect(0, 0, canvas.width, bannerH)
-      ctx.fillStyle = '#fff'
-      ctx.font = `bold ${Math.max(11, bannerH * 0.5)}px Inter, sans-serif`
-      ctx.fillText(msg, 12, bannerH * 0.72)
-    }
+    drawDetectionOverlay(
+      ctx,
+      canvas.width,
+      canvas.height,
+      video.videoWidth || canvas.width,
+      video.videoHeight || canvas.height,
+      det
+    )
+
+    // Draw "LIVE DETECT" badge
     if (!video.paused && !video.ended) {
       const badgeH = 22; const bx = 10; const by = (det?.persons?.length ? 38 : 10)
       const badgeW = 110; const r = 11
@@ -121,6 +191,7 @@ export function DetectionPage() {
       ctx.font = `bold 11px Inter, sans-serif`
       ctx.fillText('LIVE DETECT', bx + 28, by + 15)
     }
+
     if (!video.paused && !video.ended) {
       rafRef.current = requestAnimationFrame(renderLoop)
     }
@@ -140,6 +211,8 @@ export function DetectionPage() {
         const frameFile = new File([blob], 'frame.jpg', { type: 'image/jpeg' })
         const detection = await detectionService.uploadImage(frameFile)
         lastDetectionRef.current = detection
+        
+        // Setting state here triggers the overall right-panel updates for video as well
         setResult(detection)
         setLiveFrameCount(prev => prev + 1)
       } catch (err) { console.error('Frame detect error:', err) }
@@ -163,6 +236,7 @@ export function DetectionPage() {
 
   useEffect(() => () => stopLiveDetection(), [stopLiveDetection])
 
+  // ── Drag n Drop Handlers ──────────────────────────
   const imageDropzone = useDropzone({
     onDrop: useCallback((files: File[]) => {
       const f = files[0]
@@ -189,7 +263,10 @@ export function DetectionPage() {
 
   const handleTabChange = (tab: TabType) => {
     stopLiveDetection()
-    setActiveTab(tab); setSelectedFile(null); setPreview(null); setResult(null)
+    setActiveTab(tab)
+    setSelectedFile(null)
+    setPreview(null)
+    setResult(null)
   }
 
   const handleDetect = async () => {
@@ -199,6 +276,7 @@ export function DetectionPage() {
       const detection = activeTab === 'video'
         ? await detectionService.uploadVideo(selectedFile)
         : await detectionService.uploadImage(selectedFile)
+      
       setResult(detection)
       toast.success('ตรวจจับสำเร็จ')
     } catch (error) {
@@ -211,7 +289,9 @@ export function DetectionPage() {
 
   const handleReset = () => {
     stopLiveDetection()
-    setSelectedFile(null); setPreview(null); setResult(null)
+    setSelectedFile(null)
+    setPreview(null)
+    setResult(null)
     setLiveFrameCount(0)
   }
 
@@ -259,10 +339,9 @@ export function DetectionPage() {
         {/* ── Two column layout ── */}
         <div className="grid gap-5 items-start" style={{ gridTemplateColumns: '1fr 360px' }}>
 
-          {/* ── LEFT: Upload + Result image ── */}
+          {/* ── LEFT: Upload area + Live Canvas ── */}
           <div className="flex flex-col gap-4">
 
-            {/* Upload card */}
             <div className="bg-white border border-[#e5eaf0] rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
               <div className="flex items-center justify-between px-5 py-[14px] border-b border-[#f1f5f9]">
                 <p className="text-[14px] font-semibold text-[#0f172a] m-0">
@@ -289,7 +368,7 @@ export function DetectionPage() {
                   {preview ? (
                     <div className="w-full">
                       {activeTab === 'video' ? (
-                        <div className="relative w-full bg-black rounded-lg overflow-hidden">
+                        <div className="relative w-full bg-black rounded-lg overflow-hidden flex items-center justify-center min-h-[300px]">
                           {/* Hidden video source */}
                           <video
                             ref={videoRef}
@@ -303,52 +382,53 @@ export function DetectionPage() {
                           <canvas
                             ref={canvasRef}
                             className="w-full block rounded-lg"
-                            style={{ maxHeight: '380px' }}
+                            style={{ maxHeight: '460px', objectFit: 'contain' }}
                           />
                           {/* Hidden capture canvas */}
                           <canvas ref={captureCanvasRef} className="hidden" />
+                          
                           {/* Custom video controls */}
                           <div className="flex items-center gap-2 px-3 py-2 bg-black/60 rounded-b-lg absolute bottom-0 left-0 right-0">
                             <button
-                              onClick={() => { videoRef.current?.paused ? videoRef.current?.play() : videoRef.current?.pause() }}
-                              className="bg-white/15 border-none text-white rounded-md px-3 py-1 cursor-pointer text-[13px] font-semibold"
+                              onClick={(e) => { 
+                                e.stopPropagation(); 
+                                videoRef.current?.paused ? videoRef.current?.play() : videoRef.current?.pause() 
+                              }}
+                              className="bg-white/15 border border-white/20 text-white rounded-md px-3 py-1 cursor-pointer text-[13px] font-semibold hover:bg-white/25 transition-colors"
                             >
                               {isLiveDetecting ? '⏸ Pause' : '▶ Play'}
                             </button>
-                            <span className="text-[11px] text-[#94a3b8] ml-auto">
-                              {isLiveDetecting ? `🔴 LIVE · ${liveFrameCount} frames detected` : 'Press Play to start live detection'}
+                            <span className="text-[11px] text-[#94a3b8] ml-auto font-medium">
+                              {isLiveDetecting ? `🔴 LIVE · ${liveFrameCount} frames analyzed` : 'Press Play to start live detection'}
                             </span>
                           </div>
                         </div>
                       ) : (
-                        <div className="relative w-full">
+                        <div className="relative w-full bg-[#f8fafc] rounded-lg overflow-hidden flex items-center justify-center min-h-[300px]">
+                          {/* Hidden pure image element for measuring and drawing */}
                           <img
-                            src={result && activeTab === 'image' ? detectionService.getResultImageUrl(result.id) : preview}
-                            alt={result ? "Detection Result" : "Preview"}
-                            className="w-full rounded-lg object-contain"
-                            style={{ maxHeight: '340px' }}
+                            ref={imageRef}
+                            src={preview}
+                            alt="Hidden original measure"
+                            className="hidden"
                           />
-                          {result && activeTab === 'image' && (
-                            <div className="absolute top-3 left-3 flex gap-2">
-                              <div className={
-                                result.has_violation
-                                  ? 'flex items-center gap-2 px-3 py-1.5 bg-[#fee2e2]/90 backdrop-blur-sm text-[#dc2626] rounded-lg text-xs font-semibold border border-[#fecaca]'
-                                  : 'flex items-center gap-2 px-3 py-1.5 bg-[#dcfce7]/90 backdrop-blur-sm text-[#16a34a] rounded-lg text-xs font-semibold border border-[#bbf7d0]'
-                              }>
-                                {result.has_violation
-                                  ? <><ShieldAlert size={14} /> Violation Detected</>
-                                  : <><ShieldCheck size={14} /> Compliant</>
-                                }
-                              </div>
-                            </div>
-                          )}
+                          
+                          {/* The visible Canvas that receives both Image and Overlays */}
+                          <canvas
+                            ref={imageCanvasRef}
+                            className="w-full h-auto block rounded-lg transition-opacity duration-300 shadow-sm"
+                            style={{ maxHeight: '460px', objectFit: 'contain' }}
+                          />
                         </div>
                       )}
-                      <p className="text-[12px] text-[#94a3b8] mt-2 text-center">{selectedFile?.name}</p>
+                      
+                      <p className="text-[12px] font-medium text-[#64748b] mt-3 mb-0 text-center bg-white px-3 py-1 rounded-full border border-[#e2e8f0] inline-block shadow-sm">
+                        File: {selectedFile?.name}
+                      </p>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center gap-[10px] py-5">
-                      <div className="w-14 h-14 rounded-[14px] bg-[#eff6ff] flex items-center justify-center">
+                      <div className="w-14 h-14 rounded-[14px] bg-[#eff6ff] flex items-center justify-center border border-[#dbeafe]">
                         <Upload size={26} color="#2563eb" />
                       </div>
                       <div>
@@ -357,7 +437,7 @@ export function DetectionPage() {
                         </p>
                         <p className="text-[13px] text-[#94a3b8] m-0">or click to browse</p>
                       </div>
-                      <p className="text-[11px] text-[#cbd5e1] mt-1">
+                      <p className="text-[11px] text-[#cbd5e1] mt-1 font-medium">
                         {activeTab === 'image' ? 'Supported: JPG, PNG, WebP' : 'Supported: MP4, AVI, MOV'}
                       </p>
                     </div>
@@ -368,23 +448,23 @@ export function DetectionPage() {
                 {preview && hasValidFile && (
                   <div className="flex gap-[10px] mt-4">
                     <button
-                      onClick={handleDetect}
+                      onClick={(e) => { e.stopPropagation(); handleDetect() }}
                       disabled={isLoading}
                       className={
                         isLoading
-                          ? 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#93c5fd] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-not-allowed'
-                          : 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#2563eb] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-pointer'
+                          ? 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#93c5fd] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-not-allowed shadow-sm transition-all'
+                          : 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-pointer shadow-sm transition-all'
                       }
                     >
                       {isLoading ? (
-                        <><Loader2 size={16} className="animate-spin" /> Processing...</>
+                        <><Loader2 size={16} className="animate-spin" /> Processing Detection...</>
                       ) : (
                         <><ShieldCheck size={16} /> Start Detection</>
                       )}
                     </button>
                     <button
-                      onClick={handleReset}
-                      className="flex items-center justify-center px-[14px] py-[11px] bg-[#f1f5f9] text-[#64748b] border-none rounded-[10px] cursor-pointer"
+                      onClick={(e) => { e.stopPropagation(); handleReset() }}
+                      className="flex items-center justify-center px-[14px] py-[11px] bg-[#f1f5f9] hover:bg-[#e2e8f0] text-[#64748b] hover:text-[#0f172a] border-none rounded-[10px] cursor-pointer transition-colors"
                     >
                       <X size={16} />
                     </button>
@@ -393,13 +473,12 @@ export function DetectionPage() {
 
                 {/* Progress bar */}
                 {isLoading && (
-                  <div className="h-1 bg-[#e2e8f0] rounded-sm overflow-hidden mt-3">
-                    <div className="h-full w-[60%] bg-[#2563eb] rounded-sm animate-pulse" />
+                  <div className="h-1.5 bg-[#e2e8f0] rounded-sm overflow-hidden mt-3 max-w-[200px] mx-auto">
+                    <div className="h-full bg-[#2563eb] rounded-sm progress-bar-animation" />
                   </div>
                 )}
               </div>
             </div>
-
 
           </div>
 
@@ -527,16 +606,15 @@ export function DetectionPage() {
         </div>
       </div>
 
-      {/* Keyframe animations */}
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes progressPulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
+        @keyframes progress-bar {
+          0% { width: 0%; transform: translateX(-10%); }
+          50% { width: 40%; transform: translateX(50%); }
+          100% { width: 100%; transform: translateX(110%); }
         }
-        @keyframes livePulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.5; transform: scale(0.75); }
+        .progress-bar-animation {
+          animation: progress-bar 1.5s infinite ease-in-out;
         }
       `}</style>
     </Layout>
