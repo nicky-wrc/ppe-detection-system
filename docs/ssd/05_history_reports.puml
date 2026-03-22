@@ -1,0 +1,35 @@
+@startuml
+skinparam shadowing false
+skinparam responseMessageBelowArrow true
+
+title SSD-5 — ประวัติ รายละเอียด และรายงาน
+
+actor "ผู้ใช้" as U
+participant "เว็บแอป" as FE
+participant "API" as API
+database "ฐานข้อมูล" as DB
+
+FE -> API : GET /detection/history
+API -> DB : ค้นหาประวัติ
+DB --> API
+API --> FE : รายการ
+
+FE -> API : GET /detection/{id}
+API -> DB : โหลดรายละเอียด
+DB --> API
+API --> FE : รายละเอียด
+
+FE -> API : GET /detection/{id}/image/result หรือ /video/result
+API --> FE : สตรีมไฟล์ผลลัพธ์
+
+FE -> API : GET /detection/stats
+API -> DB : รวมสถิติ
+DB --> API
+API --> FE : สถิติรวม
+
+FE -> API : GET /detection/analytics/daily
+API -> DB : สรุปรายวัน
+DB --> API
+API --> FE : ข้อมูลรายงาน
+
+@enduml

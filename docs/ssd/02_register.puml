@@ -1,0 +1,19 @@
+@startuml
+skinparam shadowing false
+skinparam responseMessageBelowArrow true
+
+title SSD-2 — ลงทะเบียนขอใช้งาน
+
+actor "ผู้ใช้" as U
+participant "เว็บแอป" as FE
+participant "API" as API
+database "ฐานข้อมูล" as DB
+
+U -> FE : กรอกแบบฟอร์มลงทะเบียน
+FE -> API : POST /auth/register
+API -> DB : ตรวจสอบซ้ำ / บันทึกผู้ใช้ใหม่
+DB --> API : ยืนยัน
+API --> FE : ข้อมูลผู้ใช้ที่สร้างแล้ว
+FE -> U : แจ้งผล / ไปหน้าเข้าสู่ระบบ
+
+@enduml

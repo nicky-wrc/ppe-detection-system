@@ -1,0 +1,23 @@
+@startuml
+skinparam shadowing false
+skinparam responseMessageBelowArrow true
+
+title SSD-7 — ตั้งค่าส่วนตัว
+
+actor "ผู้ใช้" as U
+participant "เว็บแอป" as FE
+participant "API" as API
+database "ฐานข้อมูล" as DB
+
+FE -> API : GET /settings/me
+API -> DB : โหลดหรือสร้าง UserSettings
+DB --> API
+API --> FE : การตั้งค่า
+
+U -> FE : แก้ไขค่า
+FE -> API : PUT /settings/me
+API -> DB : บันทึก
+DB --> API
+API --> FE : การตั้งค่าหลังบันทึก
+
+@enduml

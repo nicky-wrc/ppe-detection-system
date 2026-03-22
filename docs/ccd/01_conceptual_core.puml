@@ -1,0 +1,72 @@
+@startuml conceptual_core
+left to right direction
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+hide circle
+hide empty members
+skinparam nodesep 120
+skinparam ranksep 100
+skinparam packagePadding 36
+skinparam Padding 12
+skinparam roundCorner 8
+
+title Conceptual Class Diagram — แกนหลักระบบตรวจจับ PPE
+
+package "ผู้ใช้และการตั้งค่า" {
+  class User {
+    email
+    fullName
+    role
+    isActive
+  }
+
+  class UserSettings {
+    alertSound
+    saveEvidence
+    confidenceThreshold
+    ppeDetectionSensitivity
+    activePpeRules
+  }
+}
+
+package "พื้นที่โซน" {
+  class Zone {
+    name
+    polygonPoints
+    requiredPpe
+    riskLevel
+    isActive
+  }
+}
+
+package "ผลการตรวจจับและแจ้งเตือน" {
+  class Detection {
+    originalMediaPath
+    resultMediaPath
+    persons
+    violations
+    hasViolation
+    summary
+    createdAt
+  }
+
+  class Alert {
+    alertType
+    message
+    status
+    resolutionNote
+    createdAt
+  }
+}
+
+User -[hidden]down- UserSettings
+User "1" -- "0..1" UserSettings : มีการตั้งค่า >
+
+Detection -[hidden]down- Alert
+Detection "1" *-- "0..*" Alert : ก่อให้เกิด >
+
+User "1" o-- "0..*" Detection : เป็นผู้ส่งตรวจจับ >
+Zone "1" o-- "0..*" Detection : เป็นบริบทโซน >
+User "0..1" o-- "0..*" Alert : รับทราบ/ปิดเคส >
+
+@enduml

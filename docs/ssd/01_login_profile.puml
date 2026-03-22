@@ -1,0 +1,23 @@
+@startuml
+skinparam shadowing false
+skinparam responseMessageBelowArrow true
+
+title SSD-1 — เข้าสู่ระบบและโหลดโปรไฟล์
+
+actor "ผู้ใช้" as U
+participant "เว็บแอป" as FE
+participant "API" as API
+database "ฐานข้อมูล" as DB
+
+U -> FE : กรอกอีเมลและรหัสผ่าน
+FE -> API : POST /auth/login
+API -> DB : ตรวจสอบผู้ใช้และรหัสผ่าน
+DB --> API : ข้อมูลผู้ใช้
+API --> FE : JWT (access_token)
+FE -> API : GET /auth/me + Authorization Bearer
+API -> DB : โหลดผู้ใช้จากโทเค็น
+DB --> API : ข้อมูลผู้ใช้
+API --> FE : โปรไฟล์ผู้ใช้
+FE -> U : แสดงหน้าหลังเข้าสู่ระบบ
+
+@enduml

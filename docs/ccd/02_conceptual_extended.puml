@@ -1,0 +1,77 @@
+@startuml conceptual_extended
+' แนวซ้าย→ขวา + เพิ่มระยะห่าง (nodesep / ranksep)
+left to right direction
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+hide circle
+skinparam nodesep 120
+skinparam ranksep 100
+skinparam packagePadding 36
+skinparam Padding 12
+skinparam roundCorner 8
+
+title Conceptual Class Diagram — กล้อง บันทึกการฝ่าฝืน กฎ และสถิติ
+
+package "โซนและกล้อง" {
+  class Zone
+  class Camera {
+    name
+    rtspUrl
+    location
+    isActive
+    isOnline
+    lastSeen
+  }
+}
+
+package "บันทึกการฝ่าฝืน" {
+  class ViolationLog {
+    violationType
+    confidenceScore
+    snapshotPath
+    status
+    createdAt
+  }
+}
+
+package "อ้างอิง (แผนที่หลัก)" as REF {
+  class Detection
+  class User
+}
+
+hide Zone members
+hide Detection members
+hide User members
+
+' บังคับ Zone อยู่เหนือกล้อง (แล้วค่อยลากความสัมพันธ์จริง)
+Zone -[hidden]down- Camera
+Zone "1" o-- "0..*" Camera : มีกล้องในโซน >
+
+Camera "0..1" o-- "0..*" ViolationLog : บันทึกจากกล้อง >
+Zone "0..1" o-- "0..*" ViolationLog : เกิดในโซน >
+
+Detection "0..1" o-- "0..*" ViolationLog : อ้างอิงผลตรวจจับ >
+User "0..1" o-- "0..*" ViolationLog : รับทราบ >
+
+package "นิยามและสรุป" {
+  class SafetyRule {
+    name
+    code
+    ppeType
+    severity
+    isActive
+  }
+  class DailyStats {
+    date
+    totalDetections
+    totalViolations
+    complianceRate
+    zoneStats
+  }
+}
+
+' แยกแถวล่างให้ห่างจาก ViolationLog
+ViolationLog -[hidden]down- SafetyRule
+SafetyRule -[hidden]right- DailyStats
+
+@enduml

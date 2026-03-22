@@ -1,0 +1,27 @@
+@startuml
+skinparam shadowing false
+skinparam responseMessageBelowArrow true
+
+title SSD-6 — แจ้งเตือน
+
+actor "ผู้ใช้" as U
+participant "เว็บแอป" as FE
+participant "API" as API
+database "ฐานข้อมูล" as DB
+
+FE -> API : GET /alerts/
+API -> DB : ค้นหาแจ้งเตือน
+DB --> API
+API --> FE : รายการ
+
+U -> FE : รับทราบหรือปิดเคส
+alt รับทราบ
+  FE -> API : PUT /alerts/{id}/acknowledge
+else ปิดเคส
+  FE -> API : PUT /alerts/{id}/resolve
+end
+API -> DB : อัปเดตสถานะ
+DB --> API
+API --> FE : Alert หลังอัปเดต
+
+@enduml

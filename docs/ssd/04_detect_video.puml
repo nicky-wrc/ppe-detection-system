@@ -1,0 +1,32 @@
+@startuml
+skinparam shadowing false
+skinparam responseMessageBelowArrow true
+
+title SSD-4 — ตรวจจับ PPE จากวิดีโอ
+
+actor "ผู้ใช้" as U
+participant "เว็บแอป" as FE
+participant "API" as API
+participant "บริการตรวจจับ" as SVC
+participant "ตัวตรวจจับ PPE" as ML
+database "ฐานข้อมูล" as DB
+
+U -> FE : เลือกไฟล์วิดีโอและโซน (ถ้ามี)
+FE -> API : POST /detection/video (multipart, JWT, zone_id?)
+API -> SVC : process_video()
+SVC -> SVC : จัดเก็บไฟล์วิดีโออัปโหลด
+SVC -> DB : โหลดโซนและ required_ppe (ถ้ามี zone_id)
+DB --> SVC : ข้อมูลโซน
+SVC -> ML : ประมวลผลทีละเฟรม + ประยุกต์กฎ PPE
+ML --> SVC : สรุปผลรวม (บุคคล, การฝ่าฝืน, วิดีโอผลลัพธ์)
+SVC -> DB : บันทึก Detection (path วิดีโอผลลัพธ์)
+opt พบการฝ่าฝืน
+  loop แต่ละรายการฝ่าฝืน
+    SVC -> DB : สร้าง Alert
+  end
+end
+SVC --> API : ผลการตรวจจับ
+API --> FE : DetectionResponse
+FE -> U : แสดงผล / เล่นวิดีโอผลลัพธ์
+
+@enduml

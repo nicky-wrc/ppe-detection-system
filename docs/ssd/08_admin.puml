@@ -1,0 +1,42 @@
+@startuml
+skinparam shadowing false
+skinparam responseMessageBelowArrow true
+
+title SSD-8 — ผู้ดูแลระบบ
+
+actor "ผู้ดูแลระบบ" as AD
+participant "เว็บแอป" as FE
+participant "API" as API
+database "ฐานข้อมูล" as DB
+
+== A1 เริ่มต้นบัญชีผู้ดูแลระบบ ==
+AD -> FE : ติดตั้งครั้งแรก
+FE -> API : POST /auth/init-admin
+API -> DB : ตรวจสอบและสร้างแอดมินแรก
+DB --> API
+API --> FE : ข้อมูลผู้ดูแลระบบ
+
+== A2 จัดการบัญชีผู้ใช้และบทบาท ==
+FE -> API : GET /admin/users
+API -> DB : ค้นหาผู้ใช้ทั้งหมด
+DB --> API
+API --> FE : รายการผู้ใช้
+FE -> API : PATCH /admin/users/{id} (role, is_active)
+API -> DB : อัปเดตผู้ใช้
+DB --> API
+API --> FE : ผู้ใช้หลังอัปเดต
+
+== A3 กำหนดโซนและ PPE บังคับ ==
+FE -> API : GET /zones/
+API -> DB : ค้นหาโซน
+DB --> API
+API --> FE : รายการโซน
+FE -> API : POST /zones/ หรือ PUT /zones/{id}
+note right of API
+  รวม required_ppe และข้อมูลโซน
+end note
+API -> DB : บันทึกหรืออัปเดตโซน
+DB --> API
+API --> FE : ข้อมูลโซนหลังบันทึก
+
+@enduml

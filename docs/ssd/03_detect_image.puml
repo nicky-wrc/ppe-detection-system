@@ -1,0 +1,32 @@
+@startuml
+skinparam shadowing false
+skinparam responseMessageBelowArrow true
+
+title SSD-3 — ตรวจจับ PPE จากรูปภาพ
+
+actor "ผู้ใช้" as U
+participant "เว็บแอป" as FE
+participant "API" as API
+participant "บริการตรวจจับ" as SVC
+participant "ตัวตรวจจับ PPE" as ML
+database "ฐานข้อมูล" as DB
+
+U -> FE : เลือกรูปและโซน (ถ้ามี)
+FE -> API : POST /detection/image (multipart, JWT, zone_id?)
+API -> SVC : process_image()
+SVC -> SVC : จัดเก็บไฟล์อัปโหลด
+SVC -> DB : โหลดโซนและ required_ppe (ถ้ามี zone_id)
+DB --> SVC : ข้อมูลโซน
+SVC -> ML : ตรวจจับ + ประยุกต์กฎ PPE
+ML --> SVC : ผล (บุคคล, การฝ่าฝืน)
+SVC -> DB : บันทึก Detection
+opt พบการฝ่าฝืน
+  loop แต่ละรายการฝ่าฝืน
+    SVC -> DB : สร้าง Alert
+  end
+end
+SVC --> API : ผลการตรวจจับ
+API --> FE : DetectionResponse
+FE -> U : แสดงผล
+
+@enduml
