@@ -1,0 +1,138 @@
+<mxfile host="app.diagrams.net" modified="2026-03-24T00:00:00.000Z" agent="Cursor" version="22.1.0" type="device">
+  <diagram name="Site Map PPE" id="sitemap-ppe">
+    <mxGraphModel dx="1300" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="920" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Root -->
+        <mxCell id="root" value="ระบบตรวจจับและรายงานความปลอดภัย PPE&#xa;(PPE Guard AI)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;strokeWidth=3;fontStyle=1;fontSize=14;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="400" y="32" width="400" height="76" as="geometry" />
+        </mxCell>
+
+        <!-- Trunk + horizontal bar (orthogonal style) -->
+        <mxCell id="trunk" style="endArrow=none;html=1;strokeWidth=2;strokeColor=#424242;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="600" y="108" as="sourcePoint" />
+            <mxPoint x="600" y="168" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="bar" style="endArrow=none;html=1;strokeWidth=2;strokeColor=#424242;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="140" y="168" as="sourcePoint" />
+            <mxPoint x="1060" y="168" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Drop stems to categories -->
+        <mxCell id="stemL1" style="endArrow=none;html=1;strokeWidth=2;strokeColor=#2E7D32;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="160" y="168" as="sourcePoint" /><mxPoint x="160" y="196" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="stemL2" style="endArrow=none;html=1;strokeWidth=2;strokeColor=#E65100;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="380" y="168" as="sourcePoint" /><mxPoint x="380" y="196" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="stemL3" style="endArrow=none;html=1;strokeWidth=2;strokeColor=#1565C0;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="600" y="168" as="sourcePoint" /><mxPoint x="600" y="196" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="stemR1" style="endArrow=none;html=1;strokeWidth=2;strokeColor=#C62828;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="760" y="168" as="sourcePoint" /><mxPoint x="760" y="196" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="stemR2" style="endArrow=none;html=1;strokeWidth=2;strokeColor=#6A1B9A;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="920" y="168" as="sourcePoint" /><mxPoint x="920" y="196" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="stemR3" style="endArrow=none;html=1;strokeWidth=2;strokeColor=#00695C;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="1080" y="168" as="sourcePoint" /><mxPoint x="1080" y="196" as="targetPoint" /></mxGeometry>
+        </mxCell>
+
+        <!-- LEFT: Green — หน้าแรก -->
+        <mxCell id="c1" value="หน้าแรก" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;strokeWidth=3;fontStyle=1;fontSize=13;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="50" y="196" width="220" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="p1" value="หน้าเข้าสู่ระบบ&#xa;`/login`" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;strokeWidth=1;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="70" y="258" width="180" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;strokeColor=#2E7D32;strokeWidth=2;" edge="1" parent="1" source="c1" target="p1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- LEFT: Orange — หน้าหลักแอป -->
+        <mxCell id="c2" value="หน้าหลักแอป&#xa;(ต้องล็อกอิน)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B2;strokeColor=#E65100;strokeWidth=3;fontStyle=1;fontSize=13;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="270" y="196" width="220" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="p2a" value="แดชบอร์ด — สถิติและกราฟ&#xa;`/`" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;strokeWidth=1;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="290" y="258" width="180" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="p2b" value="ส่งออกรายงาน PDF&#xa;(จากหน้าแดชบอร์ด)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#E65100;strokeWidth=1;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="290" y="312" width="180" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="e2a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#E65100;strokeWidth=2;" edge="1" parent="1" source="c2" target="p2a"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#E65100;strokeWidth=2;" edge="1" parent="1" source="p2a" target="p2b"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- LEFT: Blue — การตรวจจับ PPE -->
+        <mxCell id="c3" value="การตรวจจับ PPE" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#BBDEFB;strokeColor=#1565C0;strokeWidth=3;fontStyle=1;fontSize=13;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="490" y="196" width="220" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="p3a" value="ตรวจจับจากรูปภาพ&#xa;`/detection`" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;strokeWidth=1;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="510" y="258" width="180" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="p3b" value="ตรวจจับจากวิดีโอ&#xa;`/detection`" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;strokeWidth=1;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="510" y="310" width="180" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="p3c" value="เลือกโซนและอัปโหลดสื่อ&#xa;(บนหน้าเดียวกัน)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1565C0;strokeWidth=1;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="510" y="362" width="180" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="e3a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#1565C0;strokeWidth=2;" edge="1" parent="1" source="c3" target="p3a"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#1565C0;strokeWidth=2;" edge="1" parent="1" source="p3a" target="p3b"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3c" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#1565C0;strokeWidth=2;" edge="1" parent="1" source="p3b" target="p3c"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- RIGHT: Red — รายงาน (แถวเดียวกับซ้าย แบบตัวอย่างเล่ม) -->
+        <mxCell id="c4" value="รายงานและประวัติ" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFCDD2;strokeColor=#C62828;strokeWidth=3;fontStyle=1;fontSize=13;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="650" y="196" width="220" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="p4a" value="ตารางประวัติการตรวจจับ&#xa;`/reports`" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFEBEE;strokeColor=#C62828;strokeWidth=1;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="670" y="258" width="180" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="p4b" value="รายละเอียดรายการ&#xa;(โมดัล)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFEBEE;strokeColor=#C62828;strokeWidth=1;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="670" y="312" width="180" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="p4c" value="ดู / ดาวน์โหลดผลลัพธ์&#xa;(ภาพหรือวิดีโอ)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFEBEE;strokeColor=#C62828;strokeWidth=1;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="670" y="364" width="180" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="e4a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#C62828;strokeWidth=2;" edge="1" parent="1" source="c4" target="p4a"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e4b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#C62828;strokeWidth=2;" edge="1" parent="1" source="p4a" target="p4b"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e4c" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#C62828;strokeWidth=2;" edge="1" parent="1" source="p4b" target="p4c"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- RIGHT: Purple — บัญชี -->
+        <mxCell id="c5" value="ข้อมูลบัญชีผู้ใช้" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1BEE7;strokeColor=#6A1B9A;strokeWidth=3;fontStyle=1;fontSize=13;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="810" y="196" width="220" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="p5a" value="แสดงโปรไฟล์ในแถบเมนู&#xa;(ไม่มี path แยก)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;strokeWidth=1;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="830" y="258" width="180" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="p5b" value="ออกจากระบบ&#xa;→ `/login`" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#6A1B9A;strokeWidth=1;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="830" y="312" width="180" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="e5a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#6A1B9A;strokeWidth=2;" edge="1" parent="1" source="c5" target="p5a"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e5b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#6A1B9A;strokeWidth=2;" edge="1" parent="1" source="p5a" target="p5b"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- RIGHT: Teal — แบบจำลองข้อมูล -->
+        <mxCell id="c6" value="บันทึกการฝ่าฝืน&#xa;(แบบจำลองข้อมูล)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B2DFDB;strokeColor=#00695C;strokeWidth=3;fontStyle=1;fontSize=13;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="970" y="196" width="210" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="p6a" value="ตาราง `violation_logs`&#xa;(ยังไม่มีหน้าเว็บ)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F2F1;strokeColor=#00695C;strokeWidth=1;align=center;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="985" y="258" width="180" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="p6b" value="รายละเอียดฝ่าฝืนจริงใน `detections`&#xa;หน้า `/reports`" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F2F1;strokeColor=#00695C;strokeWidth=1;align=center;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="985" y="310" width="180" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="e6a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#00695C;strokeWidth=2;" edge="1" parent="1" source="c6" target="p6a"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e6b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#00695C;strokeWidth=2;" edge="1" parent="1" source="p6a" target="p6b"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- Footnote: excluded from this sitemap -->
+        <mxCell id="note" value="ไม่รวมในแผนที่นี้: หน้า Camera, Alerts, Settings (ตามขอบเขตเล่ม)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;fontColor=#616161;fontSize=11;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="50" y="820" width="520" height="40" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

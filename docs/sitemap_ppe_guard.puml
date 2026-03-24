@@ -1,0 +1,67 @@
+@startuml sitemap_ppe_vertical
+' แนวตั้งสูง — เหมาะใส่เล่ม (แบบรากกลางแยกซ้ายขวาใช้ sitemap_ppe_guard.drawio)
+
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName sans-serif
+skinparam ArrowColor #424242
+skinparam ArrowThickness 1.2
+skinparam nodesep 8
+skinparam ranksep 28
+hide circle
+top to bottom direction
+
+title Site Map — ระบบตรวจจับและรายงานความปลอดภัย PPE 
+
+rectangle "ระบบตรวจจับและรายงานความปลอดภัย PPE" as ROOT #FFFFFF
+
+rectangle "หมวด: หน้าแรก" as H1 #C8E6C9
+rectangle "หน้าเข้าสู่ระบบ\n/login" as P1 #E8F5E9
+ROOT -[hidden]down- H1
+H1 -down-> P1
+
+rectangle "หมวด: หน้าหลักแอป (ต้องล็อกอิน)" as H2 #FFE0B2
+rectangle "แดชบอร์ด — สถิติและกราฟ\n/" as P2a #FFF3E0
+rectangle "ส่งออกรายงาน PDF\n(จากแดชบอร์ด)" as P2b #FFF3E0
+P1 -[hidden]down- H2
+H2 -down-> P2a
+P2a -down-> P2b
+
+rectangle "หมวด: การตรวจจับ PPE" as H3 #BBDEFB
+rectangle "ตรวจจับจากรูปภาพ\n/detection" as P3a #E3F2FD
+rectangle "ตรวจจับจากวิดีโอ\n/detection" as P3b #E3F2FD
+rectangle "เลือกโซนและอัปโหลดสื่อ\n(หน้าเดียวกัน)" as P3c #E3F2FD
+P2b -[hidden]down- H3
+H3 -down-> P3a
+P3a -down-> P3b
+P3b -down-> P3c
+
+rectangle "หมวด: รายงานและประวัติ" as H4 #FFCDD2
+rectangle "ตารางประวัติการตรววจจับ\n/reports" as P4a #FFEBEE
+rectangle "รายละเอียดรายการ\n(โมดัล)" as P4b #FFEBEE
+rectangle "ดู / ดาวน์โหลดผลลัพธ์\n(ภาพหรือวิดีโอ)" as P4c #FFEBEE
+P3c -[hidden]down- H4
+H4 -down-> P4a
+P4a -down-> P4b
+P4b -down-> P4c
+
+rectangle "หมวด: ข้อมูลบัญชีผู้ใช้" as H5 #E1BEE7
+rectangle "แสดงโปรไฟล์ในแถบเมนู\n(ไม่มี path แยก)" as P5a #F3E5F5
+rectangle "ออกจากระบบ\n→ /login" as P5b #F3E5F5
+P4c -[hidden]down- H5
+H5 -down-> P5a
+P5a -down-> P5b
+
+rectangle "หมวด: บันทึกการฝ่าฝืน (แบบจำลองข้อมูล)" as H6 #B2DFDB
+rectangle "ตาราง violation_logs\n(ยังไม่มีหน้าเว็บ)" as P6a #E0F2F1
+rectangle "รายละเอียดฝ่าฝืนที่ใช้จริง\nใน detections — หน้า /reports" as P6b #E0F2F1
+P5b -[hidden]down- H6
+H6 -down-> P6a
+P6a -down-> P6b
+
+note bottom
+  เส้นประ (hidden) คั่นระหว่างหมวดเพื่อเรียงแนวตั้งในเล่ม — ไม่ได้หมายถึงลำดับการใช้งานจริง
+  แบบ Site Map แยกซ้าย–ขวาเหมือนตัวอย่างเล่ม: เปิด docs/sitemap_ppe_guard.drawio ใน diagrams.net
+end note
+
+@enduml

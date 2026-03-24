@@ -1,0 +1,25 @@
+@startmindmap
+skinparam shadowing false
+
+caption Mindmap ย่อ — ไม่รวม Camera / Alerts / Settings\nแบบแนวตั้งใส่เล่ม: sitemap_ppe_guard.puml\nแบบรากบนแยกซ้ายขวา: sitemap_ppe_guard.drawio
+
+*[#FFFFFF] ระบบตรวจจับและรายงาน\nความปลอดภัย PPE
+
+left side
+**[#C8E6C9] หน้าแรก
+***[#E8F5E9] เข้าสู่ระบบ `/login`
+**[#FFE0B2] หน้าหลักแอป
+***[#FFF3E0] แดชบอร์ด `/`
+***[#FFF3E0] ส่งออก PDF
+**[#BBDEFB] การตรวจจับ PPE
+***[#E3F2FD] รูป / วิดีโอ `/detection`
+
+right side
+**[#FFCDD2] รายงานและประวัติ
+***[#FFEBEE] `/reports` และรายละเอียด
+**[#E1BEE7] บัญชีผู้ใช้
+***[#F3E5F5] เมนูโปรไฟล์ / Logout
+**[#B2DFDB] แบบจำลอง violation_logs
+***[#E0F2F1] ไม่มีหน้าเว็บ — ดูรายละเอียดที่ detections
+
+@endmindmap

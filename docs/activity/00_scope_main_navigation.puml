@@ -1,0 +1,37 @@
+@startuml
+skinparam shadowing false
+skinparam swimlaneWidth 240
+
+title Activity Diagram — ภาพรวมการสลับใช้งานหลังล็อกอิน\nขอบเขตตามเล่ม: Dashboard, Detection, Reports เท่านั้น
+
+note as N
+  ไม่รวมในขอบเขตเล่ม (ไม่มีแผนภาพกิจกรรมแยก)
+  หน้า Camera / สตรีมกล้อง
+  หน้า Alerts / จัดการแจ้งเตือน
+  หน้า Settings
+  จัดการโซน (CRUD) และการเริ่มต้นบัญชีแอดมินพิเศษ
+end note
+
+|ผู้ใช้|
+start
+:"ล็อกอินสำเร็จแล้วอยู่ภายในระบบ";
+
+repeat
+  if ("เลือกเมนู Dashboard?") then (ใช่)
+    :"เปิดหน้า Dashboard\n(ดูแผนภาพที่ 03)";
+  elseif ("เลือกเมนู Detection?") then (ใช่)
+    :"เปิดหน้า Detection\n(ดูแผนภาพที่ 01)";
+  elseif ("เลือกเมนู Reports?") then (ใช่)
+    :"เปิดหน้า Reports / ประวัติ\n(ดูแผนภาพที่ 04)";
+  endif
+
+  :"ใช้งานฟังก์ชันของหน้านั้นตามแผนภาพย่อย";
+
+repeat while ("ยังใช้งานต่อในระบบ (ยังไม่ Logout)?") is (ใช่)
+->ไม่;
+
+:"เมื่อต้องการจบเซสชัน ให้ดำเนินการตามแผนภาพที่ 05 (Logout)";
+
+stop
+
+@enduml

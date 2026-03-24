@@ -1,0 +1,17 @@
+@startwbs
+skinparam shadowing false
+
+title Site Map — เว็บแอป PPE Guard AI (frontend routes)
+
+* เว็บแอป PPE Detection
+** ไม่ต้องล็อกอิน
+*** "/login" — เข้าสู่ระบบ (LoginPage)
+** ต้องล็อกอิน (PrivateRoute → ถ้าไม่มี session ไป "/login")
+*** "/" — แดชบอร์ด (DashboardPage)
+*** "/detection" — ตรวจจับ PPE (DetectionPage)
+*** "/camera" — กล้อง (CameraPage)
+*** "/reports" — รายงานและประวัติ (HistoryPage)
+*** "/alerts" — แจ้งเตือน (AlertsPage)
+*** "/settings" — ตั้งค่า (SettingsPage)
+
+@endwbs
