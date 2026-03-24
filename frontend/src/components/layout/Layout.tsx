@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
-import { Shield, Bell, User, LogOut, Camera, FileText, LayoutDashboard, Menu, X, Settings } from 'lucide-react'
+import { Shield, Bell, User, LogOut, Camera, FileText, LayoutDashboard, Menu, X, Settings, ScanLine } from 'lucide-react'
 import { useState } from 'react'
 
 interface LayoutProps {
@@ -10,6 +10,7 @@ interface LayoutProps {
 const navItems = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/detection', icon: Camera, label: 'Detection' },
+  { path: '/camera', icon: ScanLine, label: 'Camera' },
   { path: '/reports', icon: FileText, label: 'Reports' },
   { path: '/alerts', icon: Bell, label: 'Alerts' },
   { path: '/settings', icon: Settings, label: 'Settings' },
@@ -29,7 +30,7 @@ export function Layout({ children }: LayoutProps) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', backgroundColor: '#f0f4f8' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', backgroundColor: '#f8fafc' }}>
 
       {/* ── Navbar ── */}
       <header style={{
@@ -47,55 +48,56 @@ export function Layout({ children }: LayoutProps) {
         position: 'relative',
       }}>
 
-        {/* Left: Logo */}
-        <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
-          <div style={{
-            width: '38px', height: '38px',
-            backgroundColor: '#2563eb',
-            borderRadius: '10px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Shield size={20} color="#ffffff" />
-          </div>
-          <span style={{ fontWeight: 700, fontSize: '17px', color: '#0f172a', letterSpacing: '-0.3px' }}>
-            PPE Guard AI
-          </span>
-        </Link>
+        {/* Left: Logo & Nav */}
+        <div style={{ display: 'flex', alignItems: 'center', height: '100%', gap: '56px' }}>
+          <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
+            <div style={{
+              width: '38px', height: '38px',
+              backgroundColor: '#2563eb',
+              borderRadius: '10px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Shield size={20} color="#ffffff" />
+            </div>
+            <span style={{ fontWeight: 700, fontSize: '17px', color: '#0f172a', letterSpacing: '-0.3px' }}>
+              PPE Guard AI
+            </span>
+          </Link>
 
-        {/* Center: Nav links — absolutely centered */}
-        <nav style={{
-          position: 'absolute',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-        }}>
-          {navItems.map((item) => {
-            const isActive =
-              location.pathname === item.path ||
-              (item.path !== '/' && location.pathname.startsWith(item.path))
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  padding: '6px 14px 4px',
-                  fontSize: '14px',
-                  fontWeight: isActive ? 600 : 500,
-                  color: isActive ? '#2563eb' : '#64748b',
-                  textDecoration: 'none',
-                  borderBottom: isActive ? '2px solid #2563eb' : '2px solid transparent',
-                  transition: 'color 0.15s',
-                }}
-              >
-                {item.label}
-              </Link>
-            )
-          })}
-        </nav>
+          {/* Nav links */}
+          <nav style={{
+            display: 'flex',
+            height: '100%',
+            gap: '24px',
+          }}>
+            {navItems.map((item) => {
+              const isActive =
+                location.pathname === item.path ||
+                (item.path !== '/' && location.pathname.startsWith(item.path))
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    height: '100%',
+                    padding: '0 2px',
+                    fontSize: '14px',
+                    fontWeight: isActive ? 600 : 500,
+                    color: isActive ? '#2563eb' : '#64748b',
+                    textDecoration: 'none',
+                    borderBottom: isActive ? '2px solid #2563eb' : '2px solid transparent',
+                    transition: 'color 0.15s, border-color 0.15s',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  {item.label}
+                </Link>
+              )
+            })}
+          </nav>
+        </div>
 
         {/* Right: Bell + Avatar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -235,16 +237,16 @@ export function Layout({ children }: LayoutProps) {
       )}
 
       {/* Main Content */}
-      <main style={{ flex: 1, overflowY: 'auto', backgroundColor: '#f0f4f8' }}>
+      <main style={{ flex: 1, overflowY: 'auto', backgroundColor: '#f8fafc' }}>
         <div style={{
           width: '100%',
-          maxWidth: '1280px',
+          maxWidth: '1180px',
           marginLeft: 'auto',
           marginRight: 'auto',
-          paddingLeft: '40px',
-          paddingRight: '40px',
-          paddingTop: '32px',
-          paddingBottom: '32px',
+          paddingLeft: '18px',
+          paddingRight: '18px',
+          paddingTop: '14px',
+          paddingBottom: '16px',
         }}>
           {children}
         </div>
@@ -261,7 +263,23 @@ export function Layout({ children }: LayoutProps) {
         justifyContent: 'space-between',
         paddingLeft: '32px',
         paddingRight: '32px',
+        fontSize: '11px',
+        fontWeight: 600,
+        color: '#94a3b8'
       }}>
+        <div style={{ display: 'flex', gap: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }} />
+            AI CORE: OPERATIONAL
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }} />
+            NETWORK: STABLE
+          </div>
+        </div>
+        <div>
+          LAST UPDATED: {new Date().toLocaleTimeString()}
+        </div>
       </footer>
     </div>
   )

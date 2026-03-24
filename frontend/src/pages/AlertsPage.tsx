@@ -1,17 +1,26 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Layout } from '../components/layout/Layout'
-import { Bell, AlertTriangle, CheckCircle, Clock, ShieldAlert } from 'lucide-react'
+import { Bell, AlertTriangle, CheckCircle, Clock, Eye, X, ShieldAlert } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { alertsService } from '../services/alerts'
-import type { Alert } from '../types'
+import { detectionService } from '../services/detection'
+import type { Alert, Detection } from '../types'
+
+interface AlertGroup extends Alert {
+  alert_ids: number[]
+  alert_types: string[]
+}
 
 export function AlertsPage() {
-  const [alerts, setAlerts] = useState<Alert[]>([])
+  const [alerts, setAlerts] = useState<AlertGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [perPage] = useState(20)
   const [total, setTotal] = useState(0)
   const [activeStatus, setActiveStatus] = useState<string | undefined>(undefined) // undefined = all
+  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null)
+  const [selectedDetection, setSelectedDetection] = useState<Detection | null>(null)
+  const [loadingDetail, setLoadingDetail] = useState(false)
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / perPage)), [total, perPage])
 
@@ -19,7 +28,35 @@ export function AlertsPage() {
     setLoading(true)
     try {
       const res = await alertsService.list(page, perPage, activeStatus)
-      setAlerts(res.items || [])
+      const grouped = (res.items || []).reduce<Record<number, AlertGroup>>((acc, current) => {
+        const key = current.detection_id
+        if (!acc[key]) {
+          acc[key] = {
+            ...current,
+            alert_ids: [current.id],
+            alert_types: [current.alert_type],
+          }
+        } else {
+          acc[key].alert_ids.push(current.id)
+          if (!acc[key].alert_types.includes(current.alert_type)) {
+            acc[key].alert_types.push(current.alert_type)
+          }
+          // Prefer newest status if any item is still "new", then "acknowledged", else "resolved"
+          if (current.status === 'new' || (current.status === 'acknowledged' && acc[key].status === 'resolved')) {
+            acc[key].status = current.status
+          }
+          // Keep latest creation time for ordering display
+          if (new Date(current.created_at).getTime() > new Date(acc[key].created_at).getTime()) {
+            acc[key].created_at = current.created_at
+          }
+        }
+        return acc
+      }, {})
+
+      const sortedGroups = Object.values(grouped).sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )
+      setAlerts(sortedGroups)
       setTotal(res.total || 0)
     } catch (e) {
       console.error(e)
@@ -34,10 +71,11 @@ export function AlertsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, activeStatus])
 
-  const handleAcknowledge = async (id: number) => {
+  const handleAcknowledge = async (alertGroup: AlertGroup) => {
     try {
-      const updated = await alertsService.acknowledge(id)
-      setAlerts((prev) => prev.map((a) => (a.id === id ? updated : a)))
+      const ids = alertGroup.alert_ids.length ? alertGroup.alert_ids : [alertGroup.id]
+      await Promise.all(ids.map((id) => alertsService.acknowledge(id)))
+      setAlerts((prev) => prev.map((a) => (a.detection_id === alertGroup.detection_id ? { ...a, status: 'acknowledged' } : a)))
       toast.success('รับทราบแล้ว')
     } catch (e) {
       console.error(e)
@@ -45,10 +83,11 @@ export function AlertsPage() {
     }
   }
 
-  const handleResolve = async (id: number) => {
+  const handleResolve = async (alertGroup: AlertGroup) => {
     try {
-      const updated = await alertsService.resolve(id)
-      setAlerts((prev) => prev.map((a) => (a.id === id ? updated : a)))
+      const ids = alertGroup.alert_ids.length ? alertGroup.alert_ids : [alertGroup.id]
+      await Promise.all(ids.map((id) => alertsService.resolve(id)))
+      setAlerts((prev) => prev.map((a) => (a.detection_id === alertGroup.detection_id ? { ...a, status: 'resolved' } : a)))
       toast.success('ปิดการแจ้งเตือนแล้ว')
     } catch (e) {
       console.error(e)
@@ -56,9 +95,33 @@ export function AlertsPage() {
     }
   }
 
+  const handleViewDetail = async (alert: Alert) => {
+    setSelectedAlert(alert)
+    setSelectedDetection(null)
+    setLoadingDetail(true)
+    try {
+      const detection = await detectionService.getDetection(alert.detection_id)
+      setSelectedDetection(detection)
+    } catch (e) {
+      console.error(e)
+      toast.error('โหลดรายละเอียดการตรวจจับไม่สำเร็จ')
+    } finally {
+      setLoadingDetail(false)
+    }
+  }
+
   const newAlertsCount = alerts.filter(a => a.status === 'new').length
   const readAlertsCount = alerts.filter(a => a.status === 'acknowledged').length
   const resolvedAlertsCount = alerts.filter(a => a.status === 'resolved').length
+
+  const getViolationBadgeClass = (type: string) => {
+    const t = type.toUpperCase()
+    if (t.includes('HELMET') || t.includes('HARDHAT') || t.includes('หมวก'))
+      return 'inline-flex px-[10px] py-[3px] rounded-[6px] text-[11px] font-bold bg-[#fee2e2] text-[#dc2626] border border-[#fecaca]'
+    if (t.includes('VEST') || t.includes('เสื้อ'))
+      return 'inline-flex px-[10px] py-[3px] rounded-[6px] text-[11px] font-bold bg-[#ffedd5] text-[#ea580c] border border-[#fed7aa]'
+    return 'inline-flex px-[10px] py-[3px] rounded-[6px] text-[11px] font-bold bg-[#fef3c7] text-[#d97706] border border-[#fde68a]'
+  }
 
   return (
     <Layout>
@@ -67,7 +130,9 @@ export function AlertsPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
-              <Bell className="w-8 h-8 text-blue-600" />
+              <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-[#eff6ff] border border-[#dbeafe]">
+                <Bell className="w-5 h-5 text-blue-600" />
+              </span>
               ศูนย์การแจ้งเตือน
             </h1>
             <p className="text-slate-500 mt-1">รายการแจ้งเตือนและเหตุการณ์ฝ่าฝืนกฎความปลอดภัย</p>
@@ -85,89 +150,87 @@ export function AlertsPage() {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col items-center sm:items-start relative overflow-hidden group hover:shadow-md transition-shadow">
-            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:scale-110 transition-transform duration-500">
-              <ShieldAlert className="w-24 h-24 text-rose-600" />
+        <div className="grid grid-cols-1 sm:grid-cols-3" style={{ gap: '24px' }}>
+          {/* New Alerts */}
+          <div className="bg-white border border-[#e2e8f0] rounded-[16px] shadow-sm min-h-[110px] flex flex-col justify-between" style={{ padding: '24px', boxSizing: 'border-box' }}>
+            <div className="flex items-start justify-between">
+              <p className="text-[13px] text-[#64748b] font-medium m-0">แจ้งเตือนใหม่</p>
+              <Bell size={18} className="text-[#94a3b8]" strokeWidth={2} />
             </div>
-            <div className="w-12 h-12 bg-rose-50 rounded-xl flex items-center justify-center mb-4 relative z-10">
-              <Bell className="w-6 h-6 text-rose-600" />
-            </div>
-            <div className="relative z-10 text-center sm:text-left">
-              <p className="text-3xl font-bold text-slate-900">{newAlertsCount}</p>
-              <p className="text-sm font-medium text-slate-500 mt-1 uppercase">แจ้งเตือนใหม่</p>
+            <div className="mt-2 text-left">
+              <p className="text-[34px] font-extrabold text-[#0f172a] m-0 leading-[1] tracking-tight">{newAlertsCount}</p>
             </div>
           </div>
-          
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col items-center sm:items-start relative overflow-hidden group hover:shadow-md transition-shadow">
-            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:scale-110 transition-transform duration-500">
-              <Clock className="w-24 h-24 text-amber-500" />
+
+          {/* Pending Alerts */}
+          <div className="bg-white border border-[#e2e8f0] rounded-[16px] shadow-sm min-h-[110px] flex flex-col justify-between" style={{ padding: '24px', boxSizing: 'border-box' }}>
+            <div className="flex items-start justify-between">
+              <p className="text-[13px] text-[#64748b] font-medium m-0">รับทราบ / รอดำเนินการ</p>
+              <Clock size={18} className="text-[#94a3b8]" strokeWidth={2} />
             </div>
-            <div className="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center mb-4 relative z-10">
-              <Clock className="w-6 h-6 text-amber-600" />
-            </div>
-            <div className="relative z-10 text-center sm:text-left">
-              <p className="text-3xl font-bold text-slate-900">{readAlertsCount}</p>
-              <p className="text-sm font-medium text-slate-500 mt-1 uppercase">รับทราบ/รอดำเนินการ</p>
+            <div className="mt-2 text-left">
+              <p className="text-[34px] font-extrabold text-[#0f172a] m-0 leading-[1] tracking-tight">{readAlertsCount}</p>
             </div>
           </div>
-          
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col items-center sm:items-start relative overflow-hidden group hover:shadow-md transition-shadow">
-            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:scale-110 transition-transform duration-500">
-              <CheckCircle className="w-24 h-24 text-emerald-600" />
+
+          {/* Resolved Alerts */}
+          <div className="bg-white border border-[#e2e8f0] rounded-[16px] shadow-sm min-h-[110px] flex flex-col justify-between" style={{ padding: '24px', boxSizing: 'border-box' }}>
+            <div className="flex items-start justify-between">
+              <p className="text-[13px] text-[#64748b] font-medium m-0">แก้ไขเรียบร้อยแล้ว</p>
+              <CheckCircle size={18} className="text-[#94a3b8]" strokeWidth={2} />
             </div>
-            <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center mb-4 relative z-10">
-              <CheckCircle className="w-6 h-6 text-emerald-600" />
-            </div>
-            <div className="relative z-10 text-center sm:text-left">
-              <p className="text-3xl font-bold text-slate-900">{resolvedAlertsCount}</p>
-              <p className="text-sm font-medium text-slate-500 mt-1 uppercase">แก้ไขเรียบร้อยแล้ว</p>
+            <div className="mt-2 text-left">
+              <p className="text-[34px] font-extrabold text-[#0f172a] m-0 leading-[1] tracking-tight">{resolvedAlertsCount}</p>
             </div>
           </div>
         </div>
 
         {/* Alerts List */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <div className="p-5 sm:p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-            <h2 className="text-lg font-bold text-slate-900">รายการแจ้งเตือน</h2>
-            <div className="flex items-center gap-2">
+        <div className="bg-white rounded-[20px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] border border-[#e5eaf0] overflow-hidden">
+          <div className="border-b border-[#e5eaf0] bg-[#f8fafc] flex flex-wrap items-center justify-between gap-4" style={{ padding: '16px 24px' }}>
+            <h2 className="text-[16px] font-bold text-[#0f172a] m-0">รายการแจ้งเตือน</h2>
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => { setPage(1); setActiveStatus(undefined) }}
-                className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${
-                  !activeStatus ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                className={`rounded-full text-[13px] font-semibold border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  !activeStatus ? 'bg-[#2563eb] text-white border-[#2563eb] shadow-sm' : 'bg-white text-[#64748b] border-[#e5eaf0] hover:bg-[#f8fafc]'
                 }`}
+                style={{ padding: '8px 20px' }}
               >
                 ทั้งหมด
               </button>
               <button
                 onClick={() => { setPage(1); setActiveStatus('new') }}
-                className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${
-                  activeStatus === 'new' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                className={`rounded-full text-[13px] font-semibold border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  activeStatus === 'new' ? 'bg-[#e11d48] text-white border-[#e11d48] shadow-sm' : 'bg-white text-[#64748b] border-[#e5eaf0] hover:bg-[#f8fafc]'
                 }`}
+                style={{ padding: '8px 20px' }}
               >
                 ใหม่
               </button>
               <button
                 onClick={() => { setPage(1); setActiveStatus('acknowledged') }}
-                className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${
-                  activeStatus === 'acknowledged' ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                className={`rounded-full text-[13px] font-semibold border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  activeStatus === 'acknowledged' ? 'bg-[#f59e0b] text-white border-[#f59e0b] shadow-sm' : 'bg-white text-[#64748b] border-[#e5eaf0] hover:bg-[#f8fafc]'
                 }`}
+                style={{ padding: '8px 20px' }}
               >
                 รับทราบ
               </button>
               <button
                 onClick={() => { setPage(1); setActiveStatus('resolved') }}
-                className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${
-                  activeStatus === 'resolved' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                className={`rounded-full text-[13px] font-semibold border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  activeStatus === 'resolved' ? 'bg-[#10b981] text-white border-[#10b981] shadow-sm' : 'bg-white text-[#64748b] border-[#e5eaf0] hover:bg-[#f8fafc]'
                 }`}
+                style={{ padding: '8px 20px' }}
               >
                 ปิดแล้ว
               </button>
-              <div className="text-sm text-slate-500 font-medium ml-2">ทั้งหมด {total} รายการ</div>
+              <div className="text-[13px] text-[#64748b] font-medium ml-2">ทั้งหมด {total} รายการ</div>
             </div>
           </div>
           
-          <div className="p-0 sm:p-2 divide-y divide-slate-100">
+          <div className="p-0 overflow-y-auto" style={{ maxHeight: '640px' }}>
             {loading ? (
               <div className="text-center py-16 px-4 text-slate-500 font-medium">กำลังโหลด...</div>
             ) : alerts.length === 0 ? (
@@ -185,85 +248,96 @@ export function AlertsPage() {
                 {alerts.map((alert) => (
                   <div
                     key={alert.id}
-                    className={`p-5 sm:p-6 transition-colors hover:bg-slate-50 ${
-                      alert.status === 'new' ? 'bg-rose-50/30' : ''
+                    className={`transition-colors border-b border-[#f1f5f9] last:border-0 hover:bg-[#f8fafc] ${
+                      alert.status === 'new' ? 'bg-[#fff1f2]/40' : 'bg-white'
                     }`}
+                    style={{ padding: '24px' }}
                   >
-                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
                       {/* Left side: Icon + Message */}
-                      <div className="flex items-start gap-4">
-                        <div className={`shrink-0 p-3 rounded-xl ${
+                      <div className="flex items-start gap-5">
+                        <div className={`shrink-0 p-3 rounded-xl border ${
                           alert.status === 'new' 
-                            ? 'bg-rose-100 text-rose-600' 
+                            ? 'bg-[#fff1f2] text-[#e11d48] border-[#fecdd3]' 
                             : alert.status === 'acknowledged'
-                              ? 'bg-amber-100 text-amber-600'
-                              : 'bg-emerald-100 text-emerald-600'
+                              ? 'bg-[#fffbeb] text-[#d97706] border-[#fde68a]'
+                              : 'bg-[#ecfdf5] text-[#059669] border-[#a7f3d0]'
                         }`}>
                           {alert.status === 'resolved' ? (
-                            <CheckCircle className="w-6 h-6" />
+                            <CheckCircle size={24} />
                           ) : (
-                            <AlertTriangle className="w-6 h-6" />
+                            <AlertTriangle size={24} />
                           )}
                         </div>
                         
                         <div>
-                          <p className={`font-semibold text-base sm:text-lg mb-1 leading-tight ${
-                            alert.status === 'new' ? 'text-slate-900' : 'text-slate-700'
-                          }`}>
-                            {alert.message || alert.alert_type}
-                          </p>
-                          <div className="flex items-center gap-3 text-sm text-slate-500">
-                            <span className="flex items-center gap-1 font-medium">
-                              <Clock className="w-4 h-4" />
+                          <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <p className={`font-bold text-[16px] m-0 leading-tight ${
+                              alert.status === 'new' ? 'text-[#0f172a]' : 'text-[#334155]'
+                            }`}>
+                              {`ตรวจพบ: ${alert.alert_types.join(', ')}`}
+                            </p>
+                            <div className="flex items-center gap-1.5">
+                              {alert.status === 'new' && (
+                                <span className="bg-[#ffe4e6] text-[#e11d48] text-[11px] font-medium rounded-md border border-[#fda4af]" style={{ padding: '2px 8px' }}>ใหม่ล่าสุด</span>
+                              )}
+                              {alert.status === 'acknowledged' && (
+                                <span className="bg-[#fef3c7] text-[#f59e0b] text-[11px] font-medium rounded-md border border-[#fde68a]" style={{ padding: '2px 8px' }}>รับทราบแล้ว</span>
+                              )}
+                              {alert.status === 'resolved' && (
+                                <span className="bg-[#d1fae5] text-[#10b981] text-[11px] font-medium rounded-md border border-[#a7f3d0]" style={{ padding: '2px 8px' }}>แก้ไขเรียบร้อย</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3 text-[13px] text-[#64748b]">
+                            <span className="flex items-center gap-1.5 font-medium">
+                              <Clock size={16} />
                               {new Date(alert.created_at).toLocaleString('th-TH', {
                                 year: 'numeric', month: 'short', day: 'numeric',
                                 hour: '2-digit', minute: '2-digit'
                               })}
                             </span>
-                            <span className="text-slate-300">•</span>
-                            <span className="uppercase text-xs font-bold tracking-wider">
+                            <span className="text-[#cbd5e1]">•</span>
+                            <span className="uppercase font-bold tracking-wider text-[#94a3b8]">
                               ID: {alert.id.toString().padStart(5, '0')}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Right side: Badges & Actions */}
-                      <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-3 pl-14 sm:pl-0 border-t border-slate-100 sm:border-0 pt-4 sm:pt-0">
-                        {/* Badges */}
-                        <div>
-                          {alert.status === 'new' && (
-                            <span className="px-3 py-1 bg-rose-100 text-rose-700 text-xs font-bold rounded-full border border-rose-200 shadow-sm">ใหม่ล่าสุด</span>
-                          )}
-                          {alert.status === 'acknowledged' && (
-                            <span className="px-3 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded-full border border-amber-200 shadow-sm">รับทราบแล้ว</span>
-                          )}
-                          {alert.status === 'resolved' && (
-                            <span className="px-3 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full border border-emerald-200 shadow-sm">แก้ไขเรียบร้อย</span>
-                          )}
-                        </div>
-
+                      {/* Right side: Actions */}
+                      <div className="flex flex-col items-start md:items-end gap-3 shrink-0">
                         {/* Action Buttons */}
-                        {alert.status !== 'resolved' && (
-                          <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2 mt-2 md:mt-0">
+                          <button
+                            onClick={() => handleViewDetail(alert)}
+                            className="text-[13px] font-bold text-[#334155] bg-white border border-[#e2e8f0] rounded-full cursor-pointer hover:bg-[#f8fafc] hover:text-[#2563eb] hover:border-[#bfdbfe] transition-all inline-flex items-center gap-2"
+                            style={{ padding: '8px 20px' }}
+                          >
+                            <Eye size={14} />
+                            ดูรายละเอียด
+                          </button>
                             {alert.status === 'new' && (
                               <button
-                                onClick={() => handleAcknowledge(alert.id)}
-                                className="px-3 py-1.5 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:text-blue-600 focus:ring-2 focus:ring-blue-100 transition-all shadow-sm"
+                                onClick={() => handleAcknowledge(alert)}
+                                className="text-[13px] font-bold text-[#475569] bg-white border border-[#e2e8f0] rounded-full cursor-pointer hover:bg-[#f8fafc] hover:text-[#2563eb] hover:border-[#bfdbfe] transition-all"
+                                style={{ padding: '8px 24px' }}
                               >
                                 รับทราบ
                               </button>
                             )}
+                          {alert.status !== 'resolved' && (
                             <button
-                              onClick={() => handleResolve(alert.id)}
-                              className="px-3 py-1.5 text-sm font-medium text-white bg-emerald-600 border border-transparent rounded-lg hover:bg-emerald-700 focus:ring-2 focus:ring-emerald-200 transition-all shadow-sm"
+                              onClick={() => handleResolve(alert)}
+                              className="text-[13px] font-bold text-white bg-[#10b981] border border-[#059669] rounded-full cursor-pointer hover:bg-[#059669] transition-all"
+                              style={{ padding: '8px 24px' }}
                             >
                               ปิดจ็อบ
                             </button>
+                          )}
                           </div>
-                        )}
+                        </div>
                       </div>
-                    </div>
                   </div>
                 ))}
 
@@ -293,6 +367,112 @@ export function AlertsPage() {
           </div>
         </div>
       </div>
+
+      {selectedAlert && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-[rgba(15,23,42,0.45)]" onClick={() => setSelectedAlert(null)} />
+          <div className="relative w-full max-w-[960px] max-h-[90vh] bg-white rounded-2xl border border-[#e2e8f0] shadow-[0_20px_60px_rgba(0,0,0,0.18)] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-7 py-5 border-b border-[#eef2f7]">
+              <div className="flex items-center gap-2">
+                <ShieldAlert size={16} className="text-[#6366f1]" />
+                <p className="text-[18px] font-bold text-[#1e293b] m-0 leading-none">Violation Details</p>
+              </div>
+              <button
+                onClick={() => setSelectedAlert(null)}
+                className="w-9 h-9 rounded-xl bg-[#f1f5f9] border-none text-[#64748b] cursor-pointer flex items-center justify-center"
+              >
+                <X size={17} />
+              </button>
+            </div>
+
+            <div className="px-7 py-6 bg-[#fbfcfe] overflow-y-auto">
+              {loadingDetail ? (
+                <div className="py-12 text-center text-[#64748b] text-[14px]">กำลังโหลดรายละเอียด...</div>
+              ) : selectedDetection ? (
+                <div className="flex justify-center">
+                <div className="w-full max-w-[760px] space-y-6">
+                  <div className="rounded-2xl overflow-hidden border border-[#dbe3ee] bg-white">
+                    <img
+                      src={detectionService.getResultImageUrl(selectedDetection.id)}
+                      alt="Detection result"
+                      className="w-full h-[360px] object-contain"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-5">
+                    <div className="bg-white border border-[#e2e8f0] rounded-xl p-4">
+                      <p className="text-[14px] text-[#94a3b8] font-bold tracking-[0.06em] uppercase m-0 mb-1">Date & Time</p>
+                      <p className="text-[20px] font-semibold text-[#0f172a] m-0 leading-tight">
+                        {new Date(selectedDetection.created_at).toLocaleString('th-TH')}
+                      </p>
+                    </div>
+                    <div className="bg-white border border-[#e2e8f0] rounded-xl p-4">
+                      <p className="text-[14px] text-[#94a3b8] font-bold tracking-[0.06em] uppercase m-0 mb-1">Reference ID</p>
+                      <p className="text-[24px] font-semibold text-[#0f172a] m-0 leading-tight">
+                        DET-{String(selectedDetection.id).padStart(5, '0')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="px-1">
+                    <p className="text-[14px] text-[#94a3b8] font-bold tracking-[0.06em] uppercase m-0 mb-2">Violation Type</p>
+                    <div className="flex flex-wrap gap-2">
+                      {(selectedDetection.violations || [selectedAlert.alert_type]).map((v, i) => (
+                        <span key={i} className={getViolationBadgeClass(v)}>
+                          {v.toUpperCase().includes('HELMET') ? 'MISSING HELMET' :
+                           v.toUpperCase().includes('VEST') ? 'MISSING VEST' :
+                           v.toUpperCase()}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="px-1">
+                    <p className="text-[14px] text-[#94a3b8] font-bold tracking-[0.06em] uppercase m-0 mb-2">Message</p>
+                    <div className="rounded-xl border border-[#e2e8f0] bg-[#f3f6fb] px-5 py-4 text-[15px] text-[#334155] leading-relaxed">
+                      {selectedDetection.summary?.message || selectedAlert.message || selectedAlert.alert_type}
+                    </div>
+                  </div>
+
+                  <div className="px-1">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[14px] text-[#94a3b8] font-bold tracking-[0.06em] uppercase m-0">Detailed Breakdown</p>
+                      <span className="text-[12px] px-3 py-1 rounded-md bg-[#e2e8f0] text-[#0f172a] font-semibold">
+                        Total Persons Detected: {selectedDetection.person_count}
+                      </span>
+                    </div>
+                    {selectedDetection.persons?.filter((p) => !p.is_compliant).map((person) => (
+                      <div key={person.id} className="rounded-xl border border-[#fecaca] bg-[#fff1f2] px-4 py-3 mb-3">
+                        <p className="text-[14px] font-semibold text-[#dc2626] m-0 mb-1">Person {person.id} (Violation)</p>
+                        <div className="flex flex-wrap gap-2">
+                          {person.not_wearing?.map((item, idx) => (
+                            <span key={idx} className="text-[13px] text-[#dc2626]">x Missing {item}</span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    <p className="text-[14px] text-[#64748b] m-0">
+                      + {selectedDetection.persons?.filter((p) => p.is_compliant).length ?? 0} person(s) fully compliant
+                    </p>
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      onClick={() => setSelectedAlert(null)}
+                      className="px-6 py-3 rounded-xl border-none bg-[#e2e8f0] text-[#334155] text-[14px] font-semibold cursor-pointer hover:bg-[#cbd5e1]"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+                </div>
+              ) : (
+                <div className="py-12 text-center text-[#64748b] text-[14px]">ไม่พบข้อมูล detection</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   )
 }

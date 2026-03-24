@@ -12,7 +12,14 @@ export interface DailyData {
 
 export interface AnalyticsData {
   daily: DailyData[]
-  hourly: { hour: string; count: number }[]
+  hourly: {
+    hour: string
+    count: number
+    detections?: number
+    persons?: number
+    violations?: number
+    compliance?: number
+  }[]
   period: { start: string; end: string; days: number }
 }
 

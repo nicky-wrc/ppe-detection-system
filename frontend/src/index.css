@@ -1,5 +1,5 @@
-/* Google Font - Kanit for Thai language support */
-@import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap');
+/* Google Fonts: Inter for UI/Numbers, Prompt for Thai */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&display=swap');
 
 @import "tailwindcss";
 
@@ -23,7 +23,7 @@
 }
 
 body {
-  font-family: 'Kanit', system-ui, sans-serif;
+  font-family: 'Inter', 'Prompt', system-ui, sans-serif;
   background-color: var(--color-bg);
   color: var(--color-text);
 }

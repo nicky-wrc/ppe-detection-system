@@ -6,6 +6,7 @@ import { authService } from './services/auth'
 import { LoginPage } from './pages/LoginPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { DetectionPage } from './pages/DetectionPage'
+import { CameraPage } from './pages/CameraPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { AlertsPage } from './pages/AlertsPage'
@@ -52,6 +53,7 @@ function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
         <Route path="/detection" element={<PrivateRoute><DetectionPage /></PrivateRoute>} />
+        <Route path="/camera" element={<PrivateRoute><CameraPage /></PrivateRoute>} />
         <Route path="/reports" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
         <Route path="/alerts" element={<PrivateRoute><AlertsPage /></PrivateRoute>} />
         <Route path="/settings" element={<PrivateRoute><SettingsPage /></PrivateRoute>} />

@@ -12,12 +12,12 @@ const ToggleSwitch = ({ checked, onChange }: { checked: boolean; onChange: () =>
     role="switch"
     aria-checked={checked}
     onClick={onChange}
-    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
-      checked ? 'bg-[#06b6d4]' : 'bg-slate-600'
+    className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)] ${
+      checked ? 'bg-[#2563eb]' : 'bg-[#cbd5e1]'
     }`}
   >
     <span
-      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ease-in-out ${
+      className={`pointer-events-none inline-block h-[24px] w-[24px] transform rounded-full bg-white shadow-sm transition duration-200 ease-in-out border border-[#e2e8f0] ${
         checked ? 'translate-x-5' : 'translate-x-0'
       }`}
     />
@@ -122,24 +122,27 @@ export function SettingsPage() {
     <Layout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
           <div>
-            <h1 className="text-[22px] font-bold text-[#0f172a] m-0">System Settings</h1>
-            <p className="text-[13px] text-[#64748b] mt-1">
+            <h1 className="text-[24px] font-bold text-[#0f172a] m-0 flex items-center gap-[12px]">
+              <Shield size={28} className="text-[#2563eb]" />
+              System Settings
+            </h1>
+            <p className="text-[14px] text-[#64748b] mt-2 m-0">
               Configure AI detection, notification preferences, and zone PPE requirements.
             </p>
           </div>
           <button
             onClick={handleSave}
             disabled={isSaving || isLoading || !settings}
-            className="flex items-center gap-2 px-5 py-[10px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[10px] text-[13px] font-semibold disabled:opacity-70 transition-colors shadow-sm"
+            className="flex items-center justify-center gap-[9px] min-w-[190px] px-8 py-[14px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[14px] text-[16px] font-bold border-none cursor-pointer disabled:opacity-70 transition-colors shadow-[0_3px_8px_rgba(37,99,235,0.25)]"
           >
             {isSaving ? (
-              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <div className="w-5 h-5 border-[2.5px] border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
-              <Save className="w-5 h-5" />
+              <Save size={19} />
             )}
-            Save All Settings
+            Save Changes
           </button>
         </div>
 
@@ -150,10 +153,10 @@ export function SettingsPage() {
         )}
 
         {!isLoading && settings && (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-[32px]">
           {/* Sidebar Nav */}
           <div className="lg:col-span-1">
-            <nav className="bg-white border border-[#e5eaf0] rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+            <nav className="bg-white border border-[#e5eaf0] rounded-[20px] overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-3 flex flex-col gap-1">
               {[
                 { icon: Cpu, label: 'AI & Detection', active: true },
                 { icon: Monitor, label: 'Cameras', active: false },
@@ -163,13 +166,13 @@ export function SettingsPage() {
               ].map((item, i) => (
                 <button
                   key={i}
-                  className={`w-full flex items-center gap-3.5 px-5 py-4 text-base font-medium transition-colors text-left ${
+                  className={`w-full flex items-center gap-[12px] px-4 py-3 text-[14px] font-semibold transition-colors text-left rounded-xl border-none cursor-pointer ${
                     item.active
                       ? 'bg-[#eff6ff] text-[#2563eb]'
-                      : 'text-[#64748b] hover:text-[#0f172a] hover:bg-[#f8fafc]'
+                      : 'bg-transparent text-[#64748b] hover:text-[#0f172a] hover:bg-[#f8fafc]'
                   }`}
                 >
-                  <item.icon className="w-5 h-5" />
+                  <item.icon size={20} />
                   {item.label}
                 </button>
               ))}
@@ -177,18 +180,18 @@ export function SettingsPage() {
           </div>
 
           {/* Main Settings */}
-          <div className="lg:col-span-3 space-y-8">
+          <div className="lg:col-span-3 space-y-[32px]">
             {/* AI Settings */}
-            <div className="bg-white border border-[#e5eaf0] rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-              <div className="px-8 py-6 border-b border-[#f1f5f9]">
-                <h2 className="text-[15px] font-semibold text-[#0f172a] m-0">AI & Detection Settings</h2>
+            <div className="bg-white border border-[#e5eaf0] rounded-[20px] overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+              <div className="px-[32px] py-[24px] border-b border-[#f1f5f9]">
+                <h2 className="text-[16px] font-bold text-[#0f172a] m-0">AI & Detection Settings</h2>
               </div>
-              <div className="p-8 space-y-8">
+              <div className="px-[32px] py-[32px] space-y-[40px]">
                 {/* Person Detection Sensitivity */}
                 <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <label className="text-[13px] font-semibold text-[#334155]">Person Detection Sensitivity</label>
-                    <span className="px-3 py-1 bg-[#eff6ff] text-[#2563eb] font-bold rounded-lg text-[12px] border border-[#dbeafe]">
+                  <div className="flex items-center justify-between mb-4">
+                    <label className="text-[14px] font-semibold text-[#0f172a] m-0">Person Detection Sensitivity</label>
+                    <span className="px-[12px] py-[4px] bg-[#eff6ff] text-[#2563eb] font-bold rounded-lg text-[13px] border border-[#dbeafe]">
                       {settings.confidence_threshold}%
                     </span>
                   </div>
@@ -199,15 +202,16 @@ export function SettingsPage() {
                     step="5"
                     value={settings.confidence_threshold}
                     onChange={(e) => setSettings({ ...settings, confidence_threshold: parseInt(e.target.value) })}
-                    className="w-full h-2 bg-[#e2e8f0] rounded-lg appearance-none cursor-pointer accent-[#2563eb]"
+                    className="w-full h-[8px] bg-[#e2e8f0] rounded-full appearance-none cursor-pointer accent-[#2563eb]"
                   />
+                  <p className="text-[12px] text-[#94a3b8] m-0 mt-3">Determines how strict the AI is when detecting people in the frame.</p>
                 </div>
 
                 {/* PPE Detection Sensitivity */}
                 <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <label className="text-[13px] font-semibold text-[#334155]">PPE Detection Sensitivity</label>
-                    <span className="px-3 py-1 bg-[#eff6ff] text-[#2563eb] font-bold rounded-lg text-[12px] border border-[#dbeafe]">
+                  <div className="flex items-center justify-between mb-4">
+                    <label className="text-[14px] font-semibold text-[#0f172a] m-0">PPE Detection Sensitivity</label>
+                    <span className="px-[12px] py-[4px] bg-[#eff6ff] text-[#2563eb] font-bold rounded-lg text-[13px] border border-[#dbeafe]">
                       {settings.ppe_detection_sensitivity}%
                     </span>
                   </div>
@@ -218,94 +222,111 @@ export function SettingsPage() {
                     step="5"
                     value={settings.ppe_detection_sensitivity}
                     onChange={(e) => setSettings({ ...settings, ppe_detection_sensitivity: parseInt(e.target.value) })}
-                    className="w-full h-2 bg-[#e2e8f0] rounded-lg appearance-none cursor-pointer accent-[#2563eb]"
+                    className="w-full h-[8px] bg-[#e2e8f0] rounded-full appearance-none cursor-pointer accent-[#2563eb]"
                   />
+                  <p className="text-[12px] text-[#94a3b8] m-0 mt-3">Determines how strict the AI is when classifying PPE equipment like hard hats or vests.</p>
                 </div>
 
                 {/* Active PPE Rules */}
-                <div>
-                  <label className="text-[11px] font-semibold text-[#94a3b8] uppercase tracking-[0.06em] mb-3 block">
+                <div className="pt-2">
+                  <label className="text-[12px] font-bold text-[#94a3b8] uppercase tracking-[0.06em] mb-4 block m-0">
                     Active PPE Rules
                   </label>
                   <div className="flex flex-wrap gap-3">
-                    {PPE_RULES.map((rule) => (
-                      <button
-                        key={rule.key}
-                        onClick={() => toggleRule(rule.key)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                          (settings.active_ppe_rules || {})[rule.key]
-                            ? 'bg-[#eff6ff] border-[#dbeafe] text-[#2563eb]'
-                            : 'bg-white border-[#e5eaf0] text-[#64748b] hover:bg-[#f8fafc]'
-                        }`}
-                      >
-                        {(settings.active_ppe_rules || {})[rule.key] && <span>&#10003;</span>}
-                        {rule.label}
-                      </button>
-                    ))}
+                    {PPE_RULES.map((rule) => {
+                      const isActive = (settings.active_ppe_rules || {})[rule.key]
+                      return (
+                        <button
+                          key={rule.key}
+                          onClick={() => toggleRule(rule.key)}
+                          className={`flex items-center gap-[8px] px-[16px] py-[10px] rounded-full text-[13px] font-semibold border transition-all cursor-pointer shadow-sm ${
+                            isActive
+                              ? 'bg-[#eff6ff] border-[#bfdbfe] text-[#2563eb]'
+                              : 'bg-white border-[#e2e8f0] text-[#64748b] hover:bg-[#f8fafc] hover:border-[#cbd5e1]'
+                          }`}
+                        >
+                          {isActive && <div className="w-[6px] h-[6px] rounded-full bg-[#2563eb]" />}
+                          {rule.label}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Zone PPE Requirements */}
-            <div className="bg-white border border-[#e5eaf0] rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-              <div className="px-8 py-6 border-b border-[#f1f5f9] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="bg-white border border-[#e5eaf0] rounded-[20px] overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+              <div className="px-[32px] py-[24px] border-b border-[#f1f5f9] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-[15px] font-semibold text-[#0f172a] m-0">Zone PPE Requirements</h2>
-                  <p className="text-[13px] text-[#64748b] mt-1">
+                  <h2 className="text-[16px] font-bold text-[#0f172a] m-0">Zone PPE Requirements</h2>
+                  <p className="text-[13px] text-[#64748b] mt-1 m-0">
                     Define required PPE per zone (affects violation detection when selecting a zone).
                   </p>
                 </div>
-                <select
-                  value={selectedZoneId}
-                  onChange={(e) => setSelectedZoneId(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
-                  className="px-3 py-2 rounded-lg bg-white border border-[#e2e8f0] text-[#334155] text-sm outline-none"
-                >
-                  {zones.length === 0 ? (
-                    <option value="all">ไม่มีโซน</option>
-                  ) : (
-                    zones.map((z) => (
-                      <option key={z.id} value={z.id}>{z.name}</option>
-                    ))
-                  )}
-                </select>
+                <div className="relative shrink-0">
+                  <select
+                    value={selectedZoneId}
+                    onChange={(e) => setSelectedZoneId(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+                    className="appearance-none pl-[16px] pr-[36px] py-[10px] rounded-xl bg-white border border-[#e2e8f0] text-[#0f172a] text-[13px] font-semibold outline-none cursor-pointer focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb] min-w-[160px] shadow-sm"
+                  >
+                    {zones.length === 0 ? (
+                      <option value="all">ไม่มีโซน</option>
+                    ) : (
+                      zones.map((z) => (
+                        <option key={z.id} value={z.id}>{z.name}</option>
+                      ))
+                    )}
+                  </select>
+                  <div className="absolute right-[12px] top-1/2 -translate-y-1/2 pointer-events-none text-[#64748b]">
+                    ▼
+                  </div>
+                </div>
               </div>
 
-              <div className="p-8">
+              <div className="px-[32px] py-[32px]">
                 {!selectedZone ? (
-                  <div className="text-[#64748b] text-sm">
+                  <div className="text-[#64748b] text-[13px] bg-[#f8fafc] rounded-xl p-6 text-center border border-[#e5eaf0] border-dashed">
                     No zones found. Create one via API `POST /api/v1/zones/` then refresh.
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-6">
+                    <div className="flex items-center justify-between bg-[#f8fafc] p-[20px] rounded-2xl border border-[#f1f5f9]">
                       <div>
-                        <p className="text-[#0f172a] font-semibold m-0">{selectedZone.name}</p>
-                        <p className="text-[#94a3b8] text-xs mt-1">{selectedZone.description || '—'}</p>
+                        <p className="text-[15px] text-[#0f172a] font-bold m-0">{selectedZone.name}</p>
+                        <p className="text-[#64748b] text-[13px] mt-1 m-0">{selectedZone.description || 'No description assigned'}</p>
                       </div>
-                      <div className="text-xs text-[#94a3b8]">
-                        Required: {(selectedZone.required_ppe || []).length ? selectedZone.required_ppe.join(', ') : '—'}
+                      <div className="flex flex-col items-end">
+                        <span className="text-[12px] font-bold text-[#94a3b8] uppercase tracking-[0.05em] mb-1 m-0">Required Items</span>
+                        <span className="text-[13px] font-semibold text-[#0f172a] m-0">
+                          {(selectedZone.required_ppe || []).length ? selectedZone.required_ppe.length + ' Rules' : 'None'}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-3">
-                      {PPE_RULES.map((rule) => {
-                        const enabled = (selectedZone.required_ppe || []).includes(rule.key)
-                        return (
-                          <button
-                            key={rule.key}
-                            onClick={() => toggleZoneRequired(selectedZone.id, rule.key)}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                              enabled
-                                ? 'bg-[#f0fdf4] border-[#bbf7d0] text-[#16a34a]'
-                                : 'bg-white border-[#e5eaf0] text-[#64748b] hover:bg-[#f8fafc]'
-                            }`}
-                          >
-                            {enabled && <span>&#10003;</span>}
-                            {rule.label}
-                          </button>
-                        )
-                      })}
+                    <div className="pt-2">
+                      <label className="text-[12px] font-bold text-[#94a3b8] uppercase tracking-[0.06em] mb-4 block m-0">
+                        Select Required PPE
+                      </label>
+                      <div className="flex flex-wrap gap-3">
+                        {PPE_RULES.map((rule) => {
+                          const enabled = (selectedZone.required_ppe || []).includes(rule.key)
+                          return (
+                            <button
+                              key={rule.key}
+                              onClick={() => toggleZoneRequired(selectedZone.id, rule.key)}
+                              className={`flex items-center gap-[8px] px-[16px] py-[10px] rounded-full text-[13px] font-semibold border transition-all cursor-pointer shadow-sm ${
+                                enabled
+                                  ? 'bg-[#ecfdf5] border-[#a7f3d0] text-[#059669]'
+                                  : 'bg-white border-[#e2e8f0] text-[#64748b] hover:bg-[#f8fafc] hover:border-[#cbd5e1]'
+                              }`}
+                            >
+                              {enabled && <div className="w-[6px] h-[6px] rounded-full bg-[#059669]" />}
+                              {rule.label}
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -313,17 +334,19 @@ export function SettingsPage() {
             </div>
 
             {/* Notification Settings */}
-            <div className="bg-white border border-[#e5eaf0] rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-              <div className="px-8 py-6 border-b border-[#f1f5f9]">
-                <h2 className="text-[15px] font-semibold text-[#0f172a] m-0">Notification Preferences</h2>
+            <div className="bg-white border border-[#e5eaf0] rounded-[20px] overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+              <div className="px-[32px] py-[24px] border-b border-[#f1f5f9]">
+                <h2 className="text-[16px] font-bold text-[#0f172a] m-0">Notification Preferences</h2>
               </div>
-              <div className="p-8 space-y-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Bell className="w-5 h-5 text-[#94a3b8]" />
+              <div className="px-[32px] py-[32px] flex flex-col gap-6">
+                <div className="flex items-center justify-between py-2">
+                  <div className="flex items-center gap-[16px]">
+                    <div className="w-11 h-11 rounded-xl bg-[#f8fafc] border border-[#e2e8f0] flex items-center justify-center shrink-0">
+                      <Bell size={20} className="text-[#64748b]" />
+                    </div>
                     <div>
-                      <p className="font-medium text-[#0f172a] m-0">เสียงเตือนแบบเรียลไทม์</p>
-                      <p className="text-xs text-[#94a3b8] mt-1 m-0">เปิดเสียงเตือนเมื่อพบการฝ่าฝืน</p>
+                      <p className="font-semibold text-[14px] text-[#0f172a] m-0 mb-1">เสียงเตือนแบบเรียลไทม์</p>
+                      <p className="text-[13px] text-[#64748b] m-0">เปิดเสียงเตือนตี้ดๆ เมื่อตรวจพบการฝ่าฝืนหน้ากล้อง</p>
                     </div>
                   </div>
                   <ToggleSwitch
@@ -334,12 +357,14 @@ export function SettingsPage() {
 
                 <div className="border-t border-[#f1f5f9]" />
 
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <HardDrive className="w-5 h-5 text-[#94a3b8]" />
+                <div className="flex items-center justify-between py-2">
+                  <div className="flex items-center gap-[16px]">
+                    <div className="w-11 h-11 rounded-xl bg-[#f8fafc] border border-[#e2e8f0] flex items-center justify-center shrink-0">
+                      <HardDrive size={20} className="text-[#64748b]" />
+                    </div>
                     <div>
-                      <p className="font-medium text-[#0f172a] m-0">บันทึกภาพเป็นหลักฐาน</p>
-                      <p className="text-xs text-[#94a3b8] mt-1 m-0">เก็บภาพต้นฉบับและผลตรวจจับ</p>
+                      <p className="font-semibold text-[14px] text-[#0f172a] m-0 mb-1">บันทึกภาพเป็นหลักฐาน</p>
+                      <p className="text-[13px] text-[#64748b] m-0">บันทึกรูปภาพเหตุการณ์ลงพื้นที่จัดเก็บของเซิร์ฟเวอร์</p>
                     </div>
                   </div>
                   <ToggleSwitch
@@ -351,26 +376,29 @@ export function SettingsPage() {
             </div>
 
             {/* System Health */}
-            <div className="bg-white border border-[#e5eaf0] rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-              <div className="px-8 py-6 border-b border-[#f1f5f9]">
-                <h2 className="text-[15px] font-semibold text-[#0f172a] m-0">System Health</h2>
+            <div className="bg-white border border-[#e5eaf0] rounded-[20px] overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+              <div className="px-[32px] py-[24px] border-b border-[#f1f5f9]">
+                <h2 className="text-[16px] font-bold text-[#0f172a] m-0">System Health</h2>
               </div>
-              <div className="p-8">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="bg-[#f8fafc] border border-[#e5eaf0] rounded-lg p-4">
-                    <p className="text-xs text-[#94a3b8] uppercase mb-1">Server Status</p>
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="text-emerald-400 font-semibold">Healthy</span>
+              <div className="px-[32px] py-[32px]">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-[20px]">
+                  <div className="bg-[#f8fafc] border border-[#e2e8f0] rounded-2xl p-[24px]">
+                    <p className="text-[12px] font-bold text-[#64748b] uppercase tracking-[0.05em] m-0 mb-3">Server Status</p>
+                    <div className="flex items-center gap-[8px]">
+                      <span className="relative flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-[12px] w-[12px] rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-[12px] w-[12px] bg-emerald-500"></span>
+                      </span>
+                      <span className="text-[16px] text-[#0f172a] font-bold m-0">Healthy</span>
                     </div>
                   </div>
-                  <div className="bg-[#f8fafc] border border-[#e5eaf0] rounded-lg p-4">
-                    <p className="text-xs text-[#94a3b8] uppercase mb-1">Software Version</p>
-                    <p className="text-[#0f172a] font-semibold m-0">v2.0.0</p>
+                  <div className="bg-[#f8fafc] border border-[#e2e8f0] rounded-2xl p-[24px]">
+                    <p className="text-[12px] font-bold text-[#64748b] uppercase tracking-[0.05em] m-0 mb-3">Software Version</p>
+                    <p className="text-[16px] text-[#0f172a] font-bold m-0">v2.0.0 (Latest)</p>
                   </div>
-                  <div className="bg-[#f8fafc] border border-[#e5eaf0] rounded-lg p-4">
-                    <p className="text-xs text-[#94a3b8] uppercase mb-1">AI Model</p>
-                    <p className="text-[#2563eb] font-semibold m-0">YOLO (SH17)</p>
+                  <div className="bg-[#f8fafc] border border-[#e2e8f0] rounded-2xl p-[24px]">
+                    <p className="text-[12px] font-bold text-[#64748b] uppercase tracking-[0.05em] m-0 mb-3">AI Model</p>
+                    <p className="text-[16px] text-[#2563eb] font-bold m-0 flex items-center gap-[6px]">YOLO (SH17) <span className="px-[8px] py-[2px] bg-[#dbeafe] text-[#1d4ed8] text-[11px] font-bold rounded-full border border-[#bfdbfe]">Active</span></p>
                   </div>
                 </div>
               </div>
