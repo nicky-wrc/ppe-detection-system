@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
-import { Shield, Bell, User, LogOut, Camera, FileText, LayoutDashboard, Menu, X, Settings, ScanLine } from 'lucide-react'
+import { Shield, User, LogOut, Camera, FileText, LayoutDashboard, Menu, X, Settings, ScanLine } from 'lucide-react'
 import { useState } from 'react'
 
 interface LayoutProps {
@@ -10,10 +10,10 @@ interface LayoutProps {
 const navItems = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/detection', icon: Camera, label: 'Detection' },
-  { path: '/camera', icon: ScanLine, label: 'Camera' },
+  //  { path: '/camera', icon: ScanLine, label: 'Camera' },
   { path: '/reports', icon: FileText, label: 'Reports' },
-  { path: '/alerts', icon: Bell, label: 'Alerts' },
-  { path: '/settings', icon: Settings, label: 'Settings' },
+  //{ path: '/alerts', icon: Bell, label: 'Alerts' },
+  // { path: '/settings', icon: Settings, label: 'Settings' },
 ]
 
 export function Layout({ children }: LayoutProps) {
@@ -48,8 +48,8 @@ export function Layout({ children }: LayoutProps) {
         position: 'relative',
       }}>
 
-        {/* Left: Logo & Nav */}
-        <div style={{ display: 'flex', alignItems: 'center', height: '100%', gap: '56px' }}>
+        {/* Left: Logo */}
+        <div style={{ display: 'flex', alignItems: 'center', height: '100%', flex: 1 }}>
           <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
             <div style={{
               width: '38px', height: '38px',
@@ -63,46 +63,48 @@ export function Layout({ children }: LayoutProps) {
               PPE Guard AI
             </span>
           </Link>
-
-          {/* Nav links */}
-          <nav style={{
-            display: 'flex',
-            height: '100%',
-            gap: '24px',
-          }}>
-            {navItems.map((item) => {
-              const isActive =
-                location.pathname === item.path ||
-                (item.path !== '/' && location.pathname.startsWith(item.path))
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    height: '100%',
-                    padding: '0 2px',
-                    fontSize: '14px',
-                    fontWeight: isActive ? 600 : 500,
-                    color: isActive ? '#2563eb' : '#64748b',
-                    textDecoration: 'none',
-                    borderBottom: isActive ? '2px solid #2563eb' : '2px solid transparent',
-                    transition: 'color 0.15s, border-color 0.15s',
-                    boxSizing: 'border-box'
-                  }}
-                >
-                  {item.label}
-                </Link>
-              )
-            })}
-          </nav>
         </div>
 
-        {/* Right: Bell + Avatar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Center: Nav links */}
+        <nav style={{
+          display: 'flex',
+          height: '100%',
+          gap: '32px',
+          justifyContent: 'center',
+          flex: 1,
+        }}>
+          {navItems.map((item) => {
+            const isActive =
+              location.pathname === item.path ||
+              (item.path !== '/' && location.pathname.startsWith(item.path))
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  height: '100%',
+                  padding: '0 2px',
+                  fontSize: '14px',
+                  fontWeight: isActive ? 600 : 500,
+                  color: isActive ? '#2563eb' : '#64748b',
+                  textDecoration: 'none',
+                  borderBottom: isActive ? '2px solid #2563eb' : '2px solid transparent',
+                  transition: 'color 0.15s, border-color 0.15s',
+                  boxSizing: 'border-box'
+                }}
+              >
+                {item.label}
+              </Link>
+            )
+          })}
+        </nav>
 
-          {/* Bell */}
+        {/* Right: Bell + Avatar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, justifyContent: 'flex-end' }}>
+
+          {/* Bell 
           <button
             aria-label="Notifications"
             onClick={() => navigate('/alerts')}
@@ -119,6 +121,7 @@ export function Layout({ children }: LayoutProps) {
           >
             <Bell size={19} />
           </button>
+          */}
 
           {/* User avatar */}
           <div style={{ position: 'relative' }}>
