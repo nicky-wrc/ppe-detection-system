@@ -18,6 +18,16 @@ class UserLogin(BaseModel):
     password: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ForgotPasswordConfirmRequest(BaseModel):
+    email: EmailStr
+    token: str
+    new_password: str
+
+
 class UserResponse(UserBase):
     id: int
     is_active: bool

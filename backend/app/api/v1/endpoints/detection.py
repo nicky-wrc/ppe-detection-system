@@ -87,6 +87,7 @@ async def get_detection_history(
     detections, total = service.get_detections(
         skip=skip,
         limit=per_page,
+        user_id=current_user.id,
         zone_id=zone_id,
         has_violation=has_violation
     )
@@ -108,7 +109,7 @@ async def get_detection_stats(
 ):
     """ดูสถิติการตรวจจับ"""
     service = DetectionService(db)
-    return service.get_stats(zone_id=zone_id)
+    return service.get_stats(user_id=current_user.id, zone_id=zone_id)
 
 
 @router.get("/analytics/daily")
@@ -121,7 +122,12 @@ async def get_daily_analytics(
 ):
     """ดูสถิติรายวัน"""
     service = DetectionService(db)
-    return service.get_daily_analytics(days=days, start_date=start_date, end_date=end_date)
+    return service.get_daily_analytics(
+        days=days,
+        user_id=current_user.id,
+        start_date=start_date,
+        end_date=end_date
+    )
 
 
 @router.get("/{detection_id}/image/result")
@@ -184,7 +190,7 @@ async def get_detection(
 ):
     """ดูรายละเอียดการตรวจจับ"""
     service = DetectionService(db)
-    detection = service.get_detection(detection_id)
+    detection = service.get_detection(detection_id, user_id=current_user.id)
     
     if detection is None:
         raise HTTPException(

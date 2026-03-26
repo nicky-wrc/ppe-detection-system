@@ -1,4 +1,6 @@
-from datetime import timedelta
+from datetime import datetime, timezone, timedelta
+import hashlib
+import secrets
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -6,7 +8,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.core.security import verify_password, get_password_hash, create_access_token, get_current_user
 from app.models import User
-from app.schemas import UserCreate, UserResponse, Token
+from app.schemas import UserCreate, UserResponse, Token, ForgotPasswordRequest, ForgotPasswordConfirmRequest
 
 router = APIRouter()
 
@@ -58,6 +60,60 @@ async def register(
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.post("/forgot-password")
+async def forgot_password_request(
+    payload: ForgotPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.email == payload.email).first()
+    # Always return generic message to avoid user enumeration.
+    if not user:
+        return {"message": "หากอีเมลมีอยู่ในระบบ ระบบได้ส่งรหัสรีเซ็ตรหัสผ่านแล้ว"}
+
+    raw_token = secrets.token_urlsafe(8)
+    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    user.reset_token_hash = token_hash
+    user.reset_token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+    db.commit()
+
+    # TODO: In production, send this via email provider.
+    # For now, print to server log only (not returned to frontend).
+    print(f"[SECURITY] Password reset token for {user.email}: {raw_token}")
+    return {"message": "หากอีเมลมีอยู่ในระบบ ระบบได้ส่งรหัสรีเซ็ตรหัสผ่านแล้ว"}
+
+
+@router.post("/forgot-password/confirm")
+async def forgot_password_confirm(
+    payload: ForgotPasswordConfirmRequest,
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.email == payload.email).first()
+    if not user or not user.reset_token_hash or not user.reset_token_expires_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ข้อมูลรีเซ็ตรหัสผ่านไม่ถูกต้อง"
+        )
+
+    if user.reset_token_expires_at < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="รหัสรีเซ็ตหมดอายุแล้ว กรุณาขอรหัสใหม่"
+        )
+
+    incoming_hash = hashlib.sha256(payload.token.encode("utf-8")).hexdigest()
+    if incoming_hash != user.reset_token_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="รหัสยืนยันไม่ถูกต้อง"
+        )
+
+    user.hashed_password = get_password_hash(payload.new_password)
+    user.reset_token_hash = None
+    user.reset_token_expires_at = None
+    db.commit()
+    return {"message": "เปลี่ยนรหัสผ่านเรียบร้อยแล้ว"}
 
 
 @router.post("/init-admin", response_model=UserResponse)

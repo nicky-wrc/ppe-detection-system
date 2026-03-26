@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models import User, Alert
+from app.models import User, Alert, Detection
 from app.schemas import AlertResponse, AlertResolve
 
 router = APIRouter()
@@ -18,7 +18,7 @@ async def get_alerts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    query = db.query(Alert)
+    query = db.query(Alert).join(Detection, Alert.detection_id == Detection.id).filter(Detection.user_id == current_user.id)
     
     if status:
         query = query.filter(Alert.status == status)
@@ -41,7 +41,12 @@ async def acknowledge_alert(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    alert = db.query(Alert).filter(Alert.id == alert_id).first()
+    alert = (
+        db.query(Alert)
+        .join(Detection, Alert.detection_id == Detection.id)
+        .filter(Alert.id == alert_id, Detection.user_id == current_user.id)
+        .first()
+    )
     if alert is None:
         raise HTTPException(status_code=404, detail="ไม่พบการแจ้งเตือน")
     
@@ -61,7 +66,12 @@ async def resolve_alert(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    alert = db.query(Alert).filter(Alert.id == alert_id).first()
+    alert = (
+        db.query(Alert)
+        .join(Detection, Alert.detection_id == Detection.id)
+        .filter(Alert.id == alert_id, Detection.user_id == current_user.id)
+        .first()
+    )
     if alert is None:
         raise HTTPException(status_code=404, detail="ไม่พบการแจ้งเตือน")
     
