@@ -371,16 +371,17 @@ export function DashboardPage() {
         {/* Filter Bar */}
         <div className="bg-white border border-[#e2e8f0] rounded-[16px] shadow-sm flex items-center justify-between flex-wrap" style={{ padding: '16px 24px', gap: '8px', boxSizing: 'border-box' }}>
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1 bg-[#f1f5f9] p-1 rounded-full border border-[#f1f5f9]">
+            <div className="flex items-center gap-1 bg-[#f1f5f9] rounded-full border border-[#f1f5f9] overflow-hidden">
               {['Today', '7 days', '30 days', 'Custom'].map((f) => (
                 <button
                   key={f}
                   onClick={() => setActiveFilter(f)}
                   className={
                     activeFilter === f
-                      ? 'px-4 py-1.5 rounded-full text-[13px] font-semibold bg-white text-[#0f172a] shadow-sm cursor-pointer transition-all'
-                      : 'px-4 py-1.5 rounded-full text-[13px] font-medium bg-transparent text-[#64748b] cursor-pointer hover:text-[#0f172a]'
+                      ? 'px-6 py-[10px] text-[14px] font-bold bg-white text-[#0f172a] shadow-sm cursor-pointer transition-all tracking-tight h-full'
+                      : 'px-6 py-[10px] text-[14px] font-bold bg-transparent text-[#64748b] cursor-pointer hover:bg-black/5 hover:text-[#0f172a] tracking-tight h-full'
                   }
+                  style={{ borderRadius: activeFilter === f ? '9999px' : '0' }}
                 >
                   {f}
                 </button>
@@ -392,14 +393,14 @@ export function DashboardPage() {
                   type="date"
                   value={customStartDate}
                   onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="px-3 py-1.5 rounded-lg border border-[#e2e8f0] text-[13px] text-[#475569] outline-none"
+                  className="px-6 py-[10px] rounded-full border border-[#e2e8f0] text-[14px] font-bold text-[#475569] outline-none focus:border-[#2563eb] transition-colors"
                 />
-                <span className="text-[#94a3b8] text-[13px]">-</span>
+                <span className="text-[#94a3b8] text-[15px] font-bold px-1">-</span>
                 <input
                   type="date"
                   value={customEndDate}
                   onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="px-3 py-1.5 rounded-lg border border-[#e2e8f0] text-[13px] text-[#475569] outline-none"
+                  className="px-6 py-[10px] rounded-full border border-[#e2e8f0] text-[14px] font-bold text-[#475569] outline-none focus:border-[#2563eb] transition-colors"
                 />
               </div>
             )}
@@ -412,14 +413,6 @@ export function DashboardPage() {
             >
               <Download size={18} strokeWidth={2.5} />
               Export PDF
-            </button>
-            <button
-              onClick={() => navigate('/reports')}
-              className="flex items-center justify-center gap-2 bg-[#f8fafc] text-[#475569] border-none rounded-full cursor-pointer hover:bg-[#f1f5f9]"
-              style={{ padding: '10px 24px', fontSize: '14px', fontWeight: 700, letterSpacing: '-0.2px' }}
-            >
-              <SlidersHorizontal size={18} strokeWidth={2.5} className="text-[#64748b]" />
-              Filters
             </button>
           </div>
         </div>

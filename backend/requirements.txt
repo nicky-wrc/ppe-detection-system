@@ -31,3 +31,6 @@ aiofiles==23.2.1
 # Testing
 pytest==8.0.0
 httpx==0.26.0
+
+# Email
+email-validator
