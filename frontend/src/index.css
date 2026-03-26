@@ -16,10 +16,18 @@
   --color-warning: #f59e0b;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* Must stay inside @layer so Tailwind utilities (e.g. p-8) can override padding */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+  }
 }
 
 body {

@@ -60,7 +60,7 @@ export function Layout({ children }: LayoutProps) {
               <Shield size={20} color="#ffffff" />
             </div>
             <span style={{ fontWeight: 700, fontSize: '17px', color: '#0f172a', letterSpacing: '-0.3px' }}>
-              PPE Guard AI
+              PPE Detection System
             </span>
           </Link>
         </div>

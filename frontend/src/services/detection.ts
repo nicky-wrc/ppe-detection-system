@@ -75,6 +75,14 @@ export const detectionService = {
     return `${window.location.protocol}//${window.location.hostname}:8000/api/v1/detection/${id}/image/result`
   },
 
+  /** Fetches annotated result file (image or video) with auth — use for PDF; plain fetch() omits Bearer token. */
+  async getResultMediaBlob(detectionId: number): Promise<Blob> {
+    const response = await api.get(`/detection/${detectionId}/image/result`, {
+      responseType: 'blob',
+    })
+    return response.data as Blob
+  },
+
   getResultVideoUrl(id: number): string {
     return `${window.location.protocol}//${window.location.hostname}:8000/api/v1/detection/${id}/video/result`
   },

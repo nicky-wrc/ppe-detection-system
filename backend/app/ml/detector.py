@@ -128,7 +128,12 @@ class PPEDetector:
         elif violation_count == 0:
             status, msg = "compliant", f"พบ {n} คน - สวม PPE ครบถ้วนทุกคน"
         else:
-            status, msg = "violation", f"พบ {n} คน - มี {violation_count} คนฝ่าฝืน"
+            status = "violation"
+            msg = (
+                "ตรวจพบ: " + " และ ".join(violations)
+                if violations
+                else f"พบ {n} คน - มี {violation_count} คนฝ่าฝืน"
+            )
 
         return {
             "detected_objects": [
@@ -367,7 +372,12 @@ class PPEDetector:
         elif vc == 0:
             st, msg = "compliant", f"พบ {n} คน - สวม PPE ครบถ้วนทุกคน"
         else:
-            st, msg = "violation", f"พบ {n} คน - มี {vc} คนฝ่าฝืน"
+            st = "violation"
+            msg = (
+                "ตรวจพบ: " + " และ ".join(violations)
+                if violations
+                else f"พบ {n} คน - มี {vc} คนฝ่าฝืน"
+            )
 
         return {
             "persons": persons, "violations": violations,
@@ -510,7 +520,13 @@ class PPEDetector:
         elif not has_v:
             st, msg = "compliant", f"พบ {best_pc} คน - สวม PPE ครบถ้วนทุกคน"
         else:
-            st, msg = "violation", f"พบ {best_pc} คน - มี {best_vc} คนฝ่าฝืน"
+            st = "violation"
+            viol_sorted = sorted(all_violations) if all_violations else []
+            msg = (
+                "ตรวจพบ: " + " และ ".join(viol_sorted)
+                if viol_sorted
+                else f"พบ {best_pc} คน - มี {best_vc} คนฝ่าฝืน"
+            )
 
         print(f"[VIDEO] Done {ms:.0f}ms | persons={best_pc} | violations={best_vc}")
 

@@ -651,7 +651,20 @@ export function DashboardPage() {
                     <div className="bg-white border border-[#e2e8f0] rounded-2xl p-5 shadow-sm">
                       <p className="text-[12px] text-[#94a3b8] font-bold tracking-[0.08em] uppercase m-0 mb-3">Message</p>
                       <div className="rounded-xl border border-[#e2e8f0] bg-[#f3f6fb] px-5 py-4 text-[15px] text-[#334155] leading-relaxed">
-                        {selectedViolation.message || fullDetectionDetails?.summary?.message || selectedViolation.violationTypes.join(', ')}
+                        {(() => {
+                          const types =
+                            (fullDetectionDetails?.violations?.length
+                              ? fullDetectionDetails.violations
+                              : selectedViolation.violationTypes) ?? []
+                          if (types.length > 0) {
+                            return `ตรวจพบ: ${types.join(' และ ')}`
+                          }
+                          return (
+                            fullDetectionDetails?.summary?.message ||
+                            selectedViolation.message ||
+                            '—'
+                          )
+                        })()}
                       </div>
                     </div>
 

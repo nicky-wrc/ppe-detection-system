@@ -355,7 +355,7 @@ export function DetectionPage() {
           <div className="flex flex-col gap-4">
 
             <div className="bg-white border border-[#e5eaf0] rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-              <div className="flex items-center justify-between px-5 py-[14px] border-b border-[#f1f5f9]">
+              <div className="flex items-center justify-between pl-11 pr-10 py-5 border-b border-[#f1f5f9]">
                 <p className="text-[14px] font-semibold text-[#0f172a] m-0">
                   {activeTab === 'image' ? 'Upload Image' : 'Upload Video'}
                 </p>
@@ -365,7 +365,7 @@ export function DetectionPage() {
                   </button>
                 )}
               </div>
-              <div className="p-5">
+              <div className="pl-11 pr-10 pb-7 pt-5">
                 {/* Dropzone */}
                 <div
                   {...getRootProps()}
@@ -504,10 +504,10 @@ export function DetectionPage() {
 
           {/* ── RIGHT: Status panel ── */}
           <div className="bg-white border border-[#e5eaf0] rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)] sticky top-5">
-            <div className="flex items-center justify-between px-5 py-[14px] border-b border-[#f1f5f9]">
+            <div className="flex items-center justify-between pl-11 pr-10 py-5 border-b border-[#f1f5f9]">
               <p className="text-[14px] font-semibold text-[#0f172a] m-0">Detection Status</p>
             </div>
-            <div className="px-[18px] py-4 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 180px)' }}>
+            <div className="pl-11 pr-10 py-5 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 180px)' }}>
               {result ? (
                 <>
                   {/* Status alert */}

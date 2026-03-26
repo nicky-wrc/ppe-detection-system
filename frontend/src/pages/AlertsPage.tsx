@@ -430,7 +430,21 @@ export function AlertsPage() {
                   <div className="px-1">
                     <p className="text-[14px] text-[#94a3b8] font-bold tracking-[0.06em] uppercase m-0 mb-2">Message</p>
                     <div className="rounded-xl border border-[#e2e8f0] bg-[#f3f6fb] px-5 py-4 text-[15px] text-[#334155] leading-relaxed">
-                      {selectedDetection.summary?.message || selectedAlert.message || selectedAlert.alert_type}
+                      {(() => {
+                        const types = selectedDetection.violations?.length
+                          ? selectedDetection.violations
+                          : selectedAlert.alert_type
+                            ? [selectedAlert.alert_type]
+                            : []
+                        if (types.length > 0) {
+                          return `ตรวจพบ: ${types.join(' และ ')}`
+                        }
+                        return (
+                          selectedDetection.summary?.message ||
+                          selectedAlert.message ||
+                          '—'
+                        )
+                      })()}
                     </div>
                   </div>
 
