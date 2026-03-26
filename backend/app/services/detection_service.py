@@ -212,8 +212,9 @@ class DetectionService:
                 end_dt = start_dt + timedelta(days=29, hours=23, minutes=59, seconds=59, microseconds=999999)
         else:
             range_days = days
+            # Include "today" in the last N-day window.
             end_dt = now
-            start_dt = end_dt - timedelta(days=range_days)
+            start_dt = datetime.combine((end_dt - timedelta(days=range_days - 1)).date(), datetime.min.time())
         
         # Get daily stats
         daily_data = []
@@ -235,7 +236,8 @@ class DetectionService:
             
             persons = int(stats.persons) if stats.persons else 0
             violations = int(stats.violations) if stats.violations else 0
-            compliance = 100 if persons == 0 else round(((persons - violations) / persons) * 100)
+            # Use 0 when there are no detected persons to avoid misleading 100% flat lines.
+            compliance = 0 if persons == 0 else round(((persons - violations) / persons) * 100)
             
             daily_data.append({
                 "date": d.strftime("%Y-%m-%d"),
@@ -267,7 +269,8 @@ class DetectionService:
 
                 persons = int(stats.persons) if stats and stats.persons else 0
                 violations = int(stats.violations) if stats and stats.violations else 0
-                compliance = 100 if persons == 0 else round(((persons - violations) / persons) * 100)
+                # Use 0 when there are no detected persons to avoid misleading 100% flat lines.
+                compliance = 0 if persons == 0 else round(((persons - violations) / persons) * 100)
 
                 hourly_data.append({
                     "hour": f"{hour:02d}:00",

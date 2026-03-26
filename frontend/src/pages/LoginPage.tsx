@@ -33,36 +33,41 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex h-screen w-full bg-[#f8f9fc] overflow-hidden font-sans">
-      
+    <div className="flex min-h-screen w-full bg-[#f1f5f9] overflow-hidden font-sans">
       {/* Left Panel */}
-      <div className="hidden lg:block w-1/2 bg-[url('/bglogin.png')] bg-cover bg-center bg-no-repeat"></div>
+      <div className="hidden lg:block w-1/2 bg-[url('/bglogin.png')] bg-cover bg-center bg-no-repeat" />
 
       {/* Right Panel */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center px-6 lg:px-12 bg-[#f8fafc]">
-        <div className="w-full max-w-[400px]">
-
+      <div className="w-full lg:w-1/2 flex items-center justify-center px-6 py-10 lg:px-14 bg-gradient-to-br from-[#f8fbff] to-[#f1f5f9]">
+        <div className="w-full max-w-[560px] rounded-2xl border border-[#e2e8f0] bg-white shadow-[0_18px_40px_rgba(15,23,42,0.08)] px-8 py-10 sm:px-11 sm:py-12">
           {/* Header */}
-          <h2 className="text-3xl font-extrabold text-[#0f172a] mb-2">
-            Welcome Back
-          </h2>
-          <p className="text-[#64748b] text-sm mb-8">
-            Access the Secure Industrial Portal with your credentials.
-          </p>
+          <div className="mb-12">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#dbeafe] bg-[#eff6ff] px-3 py-1.5 mb-6">
+              <Shield className="w-4 h-4 text-[#2563eb]" />
+              <span className="text-[12px] font-semibold tracking-[0.03em] text-[#1d4ed8]" style={{ wordSpacing: '0.08em' }}>
+                PPE Guard System
+              </span>
+            </div>
+            <h2 className="text-[34px] leading-[1.2] font-extrabold tracking-[0.01em] text-[#0f172a] mb-4" style={{ wordSpacing: '0.06em' }}>
+              Welcome Back
+            </h2>
+            <p className="text-[#64748b] text-[16px] leading-7 tracking-[0.01em]" style={{ wordSpacing: '0.05em' }}>
+              Access the secure industrial portal with your credentials.
+            </p>
+          </div>
 
           {/* Error */}
           {error && (
-            <div className="mb-6 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm flex items-center gap-2">
+            <div className="mb-6 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-[14px] flex items-center gap-2">
               <Shield className="w-4 h-4" />
               {error}
             </div>
           )}
 
           <form onSubmit={handleSubmit}>
-            
             {/* Email */}
-            <div className="mb-8">
-              <label className="block text-sm font-semibold text-[#334155] mb-2 flex items-center gap-2">
+            <div className="mb-9">
+              <label className="block text-[15px] font-semibold text-[#334155] mb-4 flex items-center gap-2 tracking-[0.01em]" style={{ wordSpacing: '0.05em' }}>
                 <AtSign className="w-4 h-4" />
                 Username or Email
               </label>
@@ -72,18 +77,18 @@ export function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@company.com"
                 required
-                className="w-full px-4 py-3 rounded-lg border border-[#e2e8f0] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#0ea5e9]/30 focus:border-[#0ea5e9] transition"
+                className="w-full h-[56px] px-5 rounded-2xl border border-[#d8e1ee] bg-[#f8fbff] text-[16px] font-medium text-[#0f172a] placeholder:text-[#93a4ba] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] focus:outline-none focus:ring-4 focus:ring-[#0ea5e9]/20 focus:border-[#38bdf8] focus:bg-white transition"
               />
             </div>
 
             {/* Password */}
-            <div className="mb-8">
-              <div className="flex justify-between items-center mb-2">
-                <label className="text-sm font-semibold text-[#334155] flex items-center gap-2">
+            <div className="mb-11">
+              <div className="flex justify-between items-center mb-4">
+                <label className="text-[15px] font-semibold text-[#334155] flex items-center gap-2 tracking-[0.01em]" style={{ wordSpacing: '0.05em' }}>
                   <Lock className="w-4 h-4" />
                   Password
                 </label>
-                <a href="#" className="text-xs text-[#0ea5e9] hover:underline">
+                <a href="#" className="text-[13px] font-medium text-[#0284c7] hover:underline tracking-[0.01em]" style={{ wordSpacing: '0.05em' }}>
                   Forgot password?
                 </a>
               </div>
@@ -95,18 +100,18 @@ export function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full px-4 py-3 pr-10 rounded-lg border border-[#e2e8f0] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#0ea5e9]/30 focus:border-[#0ea5e9] transition"
+                  className="w-full h-[56px] px-5 pr-12 rounded-2xl border border-[#d8e1ee] bg-[#f8fbff] text-[16px] font-medium text-[#0f172a] placeholder:text-[#93a4ba] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] focus:outline-none focus:ring-4 focus:ring-[#0ea5e9]/20 focus:border-[#38bdf8] focus:bg-white transition"
                 />
 
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94a3b8]"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-[#94a3b8] hover:text-[#475569] transition"
                 >
                   {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
+                    <EyeOff className="w-5 h-5" />
                   ) : (
-                    <Eye className="w-4 h-4" />
+                    <Eye className="w-5 h-5" />
                   )}
                 </button>
               </div>
@@ -116,11 +121,12 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="mt-4 w-full py-3 rounded-lg bg-[#0ea5e9] hover:bg-[#0284c7] text-white font-semibold text-sm transition flex items-center justify-center gap-2 disabled:opacity-70"
+              className="mt-5 w-full py-3.5 rounded-xl bg-[#0ea5e9] hover:bg-[#0284c7] text-white font-semibold text-[16px] tracking-[0.01em] transition flex items-center justify-center gap-2 shadow-[0_10px_18px_rgba(14,165,233,0.28)] disabled:opacity-70 disabled:shadow-none"
+              style={{ wordSpacing: '0.06em' }}
             >
               {isLoading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-5 h-5 animate-spin" />
                   Signing in...
                 </>
               ) : (
@@ -130,7 +136,6 @@ export function LoginPage() {
                 </>
               )}
             </button>
-
           </form>
         </div>
       </div>

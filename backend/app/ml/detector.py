@@ -50,7 +50,7 @@ class PPEDetector:
 
     def _load_model(self):
         model_dir = Path(__file__).resolve().parent.parent.parent
-        candidates = ["yolo8m.pt", "yolo8s.pt", "yolo8n.pt"]
+        candidates = ["yolo8m.pt", "yolo8s.pt", "yolo8n.pt", "yolo11n.pt"]
         for name in candidates:
             p = model_dir / name
             if p.exists():

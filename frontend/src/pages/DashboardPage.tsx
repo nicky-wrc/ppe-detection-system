@@ -152,8 +152,9 @@ export function DashboardPage() {
         }
 
         const analytics = await detectionService.getAnalytics(days, start, end)
+        const isSingleDay = activeFilter === 'Today' || (activeFilter === 'Custom' && start === end)
 
-        if (activeFilter === 'Today' || (activeFilter === 'Custom' && start === end)) {
+        if (isSingleDay) {
           if (analytics?.hourly?.length) {
             const mapped = analytics.hourly.map((d: { hour: string; violations?: number; compliance?: number }) => ({
               name: d.hour,
@@ -162,14 +163,20 @@ export function DashboardPage() {
             }))
             setDailyData(mapped)
             setWeeklyData(mapped)
+          } else {
+            setDailyData([])
+            setWeeklyData([])
           }
         } else {
           if (analytics?.daily?.length) {
-            const mapped = analytics.daily.map((d: { day?: string; date: string; violations?: number; compliance?: number }) => ({
-              name: d.day || d.date?.slice(5) || '',
+            const mapped = analytics.daily.map((d: { day?: string; date: string; violations?: number; compliance?: number }, idx: number) => {
+              const isLongRange = (analytics?.daily?.length ?? 0) > 7
+              return {
+              // For long ranges, show date labels to avoid repeated weekday names.
+              name: isLongRange ? d.date?.slice(5) || `D${idx + 1}` : d.day || d.date?.slice(5) || '',
               value: d.violations ?? 0,
               compliance: d.compliance ?? 0,
-            }))
+            }})
             setDailyData(mapped)
             setWeeklyData(mapped)
           } else {
@@ -587,49 +594,49 @@ export function DashboardPage() {
       {selectedViolation && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-[rgba(15,23,42,0.45)]" onClick={() => setSelectedViolation(null)} />
-          <div className="relative w-full max-w-[960px] max-h-[90vh] bg-white rounded-2xl border border-[#e2e8f0] shadow-[0_20px_60px_rgba(0,0,0,0.18)] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-7 py-5 border-b border-[#eef2f7]">
+          <div className="relative w-full max-w-[900px] max-h-[95vh] bg-white rounded-3xl border border-[#dbe3ee] shadow-[0_24px_70px_rgba(15,23,42,0.2)] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-8 py-6 border-b border-[#e9eff6] bg-[#f8fbff]">
               <div className="flex items-center gap-2">
                 <ShieldAlert size={16} className="text-[#6366f1]" />
                 <p className="text-[18px] font-bold text-[#1e293b] m-0 leading-none">Violation Details</p>
               </div>
               <button
                 onClick={() => setSelectedViolation(null)}
-                className="w-9 h-9 rounded-xl bg-[#f1f5f9] border-none text-[#64748b] cursor-pointer flex items-center justify-center"
+                className="w-10 h-10 rounded-xl bg-[#eef2f7] border-none text-[#64748b] cursor-pointer flex items-center justify-center hover:bg-[#e2e8f0] transition-colors"
               >
                 <X size={17} />
               </button>
             </div>
 
-            <div className="px-7 py-6 bg-[#fbfcfe] overflow-y-auto">
+            <div className="px-8 py-8 bg-[#f8fafc] overflow-y-auto">
               {isLoadingDetails ? (
                 <div className="py-12 text-center text-[#64748b] text-[14px]">Loading details...</div>
               ) : (
                 <div className="flex justify-center">
-                  <div className="w-full max-w-[760px] space-y-6">
-                    <div className="rounded-2xl overflow-hidden border border-[#dbe3ee] bg-white">
+                  <div className="w-full max-w-[740px] space-y-7">
+                    <div className="rounded-2xl overflow-hidden border border-[#d6e0ec] bg-white shadow-[0_6px_18px_rgba(15,23,42,0.08)]">
                       <img
                         src={detectionService.getResultImageUrl(selectedViolation.detectionId)}
                         alt={selectedViolation.refId}
-                        className="w-full h-[360px] object-contain"
+                        className="w-full h-[400px] object-contain bg-[#f8fafc]"
                       />
                     </div>
 
                     <div className="grid grid-cols-2 gap-5">
-                      <div className="bg-white border border-[#e2e8f0] rounded-xl p-4">
-                        <p className="text-[14px] text-[#94a3b8] font-bold tracking-[0.06em] uppercase m-0 mb-1">Date & Time</p>
-                        <p className="text-[20px] font-semibold text-[#0f172a] m-0 leading-tight">
+                      <div className="bg-white border border-[#e2e8f0] rounded-2xl p-5 shadow-sm">
+                        <p className="text-[12px] text-[#94a3b8] font-bold tracking-[0.08em] uppercase m-0 mb-1">Date & Time</p>
+                        <p className="text-[22px] font-semibold text-[#0f172a] m-0 leading-tight">
                           {new Date(selectedViolation.createdAt).toLocaleString('th-TH')}
                         </p>
                       </div>
-                      <div className="bg-white border border-[#e2e8f0] rounded-xl p-4">
-                        <p className="text-[14px] text-[#94a3b8] font-bold tracking-[0.06em] uppercase m-0 mb-1">Reference ID</p>
-                        <p className="text-[24px] font-semibold text-[#0f172a] m-0 leading-tight">{selectedViolation.refId}</p>
+                      <div className="bg-white border border-[#e2e8f0] rounded-2xl p-5 shadow-sm">
+                        <p className="text-[12px] text-[#94a3b8] font-bold tracking-[0.08em] uppercase m-0 mb-1">Reference ID</p>
+                        <p className="text-[28px] font-semibold text-[#0f172a] m-0 leading-tight">{selectedViolation.refId}</p>
                       </div>
                     </div>
 
-                    <div className="px-1">
-                      <p className="text-[14px] text-[#94a3b8] font-bold tracking-[0.06em] uppercase m-0 mb-2">Violation Type</p>
+                    <div className="bg-white border border-[#e2e8f0] rounded-2xl p-5 shadow-sm">
+                      <p className="text-[12px] text-[#94a3b8] font-bold tracking-[0.08em] uppercase m-0 mb-3">Violation Type</p>
                       <div className="flex flex-wrap gap-2">
                         {selectedViolation.violationTypes.map((type, idx) => (
                           <span key={idx} className={getViolationBadgeClass(type)}>
@@ -641,17 +648,17 @@ export function DashboardPage() {
                       </div>
                     </div>
 
-                    <div className="px-1">
-                      <p className="text-[14px] text-[#94a3b8] font-bold tracking-[0.06em] uppercase m-0 mb-2">Message</p>
+                    <div className="bg-white border border-[#e2e8f0] rounded-2xl p-5 shadow-sm">
+                      <p className="text-[12px] text-[#94a3b8] font-bold tracking-[0.08em] uppercase m-0 mb-3">Message</p>
                       <div className="rounded-xl border border-[#e2e8f0] bg-[#f3f6fb] px-5 py-4 text-[15px] text-[#334155] leading-relaxed">
                         {selectedViolation.message || fullDetectionDetails?.summary?.message || selectedViolation.violationTypes.join(', ')}
                       </div>
                     </div>
 
                     {fullDetectionDetails?.persons && (
-                      <div className="px-1">
+                      <div className="bg-white border border-[#e2e8f0] rounded-2xl p-5 shadow-sm">
                         <div className="flex items-center justify-between mb-2">
-                          <p className="text-[14px] text-[#94a3b8] font-bold tracking-[0.06em] uppercase m-0">Detailed Breakdown</p>
+                          <p className="text-[12px] text-[#94a3b8] font-bold tracking-[0.08em] uppercase m-0">Detailed Breakdown</p>
                           <span className="text-[12px] px-3 py-1 rounded-md bg-[#e2e8f0] text-[#0f172a] font-semibold">
                             Total Persons Detected: {fullDetectionDetails.person_count}
                           </span>
@@ -672,10 +679,10 @@ export function DashboardPage() {
                       </div>
                     )}
 
-                    <div className="flex justify-end pt-1">
+                    <div className="flex justify-end pt-2">
                       <button
                         onClick={() => setSelectedViolation(null)}
-                        className="px-6 py-3 rounded-xl border-none bg-[#e2e8f0] text-[#334155] text-[14px] font-semibold cursor-pointer hover:bg-[#cbd5e1]"
+                        className="px-7 py-3 rounded-xl border-none bg-[#e2e8f0] text-[#334155] text-[14px] font-semibold cursor-pointer hover:bg-[#cbd5e1]"
                       >
                         Close
                       </button>
