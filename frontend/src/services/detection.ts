@@ -75,12 +75,41 @@ export const detectionService = {
     return `${window.location.protocol}//${window.location.hostname}:8000/api/v1/detection/${id}/image/result`
   },
 
-  /** Fetches annotated result file (image or video) with auth — use for PDF; plain fetch() omits Bearer token. */
+  /**
+   * Fetches annotated result file (image or video) for PDF embedding.
+   * Uses axios first; falls back to the same URL as thumbnails (no auth — endpoint is open)
+   * so PDF generation still works if axios/blob handling fails.
+   */
   async getResultMediaBlob(detectionId: number): Promise<Blob> {
-    const response = await api.get(`/detection/${detectionId}/image/result`, {
-      responseType: 'blob',
-    })
-    return response.data as Blob
+    const normalizeType = (blob: Blob, contentType: string | null | undefined): Blob => {
+      const ct = (contentType || '').split(';')[0].trim().toLowerCase()
+      if (ct && (!blob.type || blob.type === 'application/octet-stream')) {
+        return new Blob([blob], { type: ct })
+      }
+      return blob
+    }
+
+    try {
+      const response = await api.get(`/detection/${detectionId}/image/result`, {
+        responseType: 'blob',
+      })
+      const raw = response.data as Blob
+      const headerCt = response.headers['content-type'] as string | undefined
+      let blob = normalizeType(raw, headerCt)
+      if (blob.size < 2048 && (blob.type || '').includes('json')) {
+        const msg = await raw.text()
+        throw new Error(msg || 'Unexpected JSON body')
+      }
+      return blob
+    } catch {
+      const url = this.getResultImageUrl(detectionId)
+      const res = await fetch(url, { method: 'GET', cache: 'no-store' })
+      if (!res.ok) {
+        throw new Error(`Failed to load result media: ${res.status}`)
+      }
+      const blob = await res.blob()
+      return normalizeType(blob, res.headers.get('content-type'))
+    }
   },
 
   getResultVideoUrl(id: number): string {

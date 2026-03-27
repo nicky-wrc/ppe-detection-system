@@ -26,13 +26,13 @@ function formatPpeList(items: string[] | undefined): string {
   return items.map((k) => PPE_LABEL_TH[k] || k).join(', ')
 }
 
-/** Converts image blob to JPEG data URL (PNG/WebP → JPEG for embedding in HTML/PDF). */
-export async function imageBlobToJpegDataUrl(blob: Blob): Promise<string> {
-  const bmp = await createImageBitmap(blob)
-  const maxW = 1654
-  const maxH = 2200
-  let w = bmp.width
-  let h = bmp.height
+function drawToJpegDataUrl(
+  source: ImageBitmap | HTMLImageElement,
+  maxW: number,
+  maxH: number
+): string {
+  let w = source.width
+  let h = source.height
   if (w > maxW) {
     h = (h * maxW) / w
     w = maxW
@@ -48,13 +48,49 @@ export async function imageBlobToJpegDataUrl(blob: Blob): Promise<string> {
   if (!ctx) throw new Error('Canvas not available')
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
-  ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height)
-  bmp.close()
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height)
   return canvas.toDataURL('image/jpeg', 0.9)
 }
 
+/** Converts image blob to JPEG data URL (PNG/WebP → JPEG for embedding in HTML/PDF). */
+export async function imageBlobToJpegDataUrl(blob: Blob): Promise<string> {
+  const maxW = 1654
+  const maxH = 2200
+  try {
+    const bmp = await createImageBitmap(blob)
+    try {
+      return drawToJpegDataUrl(bmp, maxW, maxH)
+    } finally {
+      bmp.close()
+    }
+  } catch {
+    const url = URL.createObjectURL(blob)
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image()
+        el.onload = () => resolve(el)
+        el.onerror = () => reject(new Error('Image decode failed'))
+        el.src = url
+      })
+      if (!img.naturalWidth) throw new Error('Image has zero size')
+      return drawToJpegDataUrl(img, maxW, maxH)
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }
+}
+
+async function blobLooksLikeAviVideo(blob: Blob): Promise<boolean> {
+  if (blob.size < 12) return false
+  const buf = new Uint8Array(await blob.slice(0, 12).arrayBuffer())
+  const riff = buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46
+  const avi = buf[8] === 0x41 && buf[9] === 0x56 && buf[10] === 0x49
+  return riff && avi
+}
+
 export function isVideoMediaBlob(blob: Blob): boolean {
-  return (blob.type || '').startsWith('video/')
+  const t = (blob.type || '').toLowerCase()
+  return t.startsWith('video/')
 }
 
 function buildReportHtml(
@@ -208,6 +244,22 @@ async function appendHtmlAsPdfPages(pdf: jsPDF, innerHtml: string): Promise<void
     await document.fonts.ready
   }
 
+  await Promise.all(
+    Array.from(root.querySelectorAll('img')).map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          if (img.complete && img.naturalWidth > 0) {
+            resolve()
+            return
+          }
+          const done = () => resolve()
+          img.addEventListener('load', done, { once: true })
+          img.addEventListener('error', done, { once: true })
+          setTimeout(done, 10000)
+        })
+    )
+  )
+
   const canvas = await html2canvas(root, {
     scale: 2,
     useCORS: true,
@@ -249,7 +301,9 @@ export async function saveDetectionPdf(
     mediaMissing = true
   }
 
-  const isVideo = mediaBlob ? isVideoMediaBlob(mediaBlob) : false
+  const isVideo = mediaBlob
+    ? isVideoMediaBlob(mediaBlob) || (await blobLooksLikeAviVideo(mediaBlob))
+    : false
   let evidenceDataUrl: string | null = null
   if (mediaBlob && !isVideo) {
     try {

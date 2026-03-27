@@ -136,15 +136,42 @@ async def get_result_image(
     db: Session = Depends(get_db)
 ):
     """ดูรูปภาพผลการตรวจจับ"""
+    import os
+
     detection = db.query(Detection).filter(Detection.id == detection_id).first()
-    
+
     if detection is None or detection.result_image_path is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="ไม่พบรูปภาพ"
         )
-    
-    return FileResponse(detection.result_image_path)
+
+    path = detection.result_image_path
+    if not os.path.exists(path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="ไม่พบไฟล์ผลลัพธ์"
+        )
+
+    ext_map = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".mp4": "video/mp4",
+        ".avi": "video/x-msvideo",
+        ".webm": "video/webm",
+    }
+    ext = os.path.splitext(path)[1].lower()
+    media_type = ext_map.get(ext, "application/octet-stream")
+
+    return FileResponse(
+        path,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f"inline; filename=result_{detection_id}{ext}",
+        },
+    )
 
 
 @router.get("/{detection_id}/video/result")

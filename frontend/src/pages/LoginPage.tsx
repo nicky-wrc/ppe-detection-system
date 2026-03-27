@@ -184,6 +184,7 @@ export function LoginPage() {
                 </button>
               </form>
 
+              {/* Register / Forgot password — hidden on login card per product request
               <div className="mt-7 pt-6 border-t border-[#e2e8f0] flex items-center justify-between">
                 <button
                   type="button"
@@ -200,6 +201,7 @@ export function LoginPage() {
                   Forgot password
                 </button>
               </div>
+              */}
             </>
           )}
 

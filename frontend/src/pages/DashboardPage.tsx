@@ -55,6 +55,120 @@ const chartTooltipStyle = {
   labelStyle: { color: '#475569' },
 }
 
+function escapePdfHtml(s: string): string {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function getDashboardExportPeriod(
+  activeFilter: string,
+  customStartDate: string,
+  customEndDate: string
+): { labelTh: string; labelEn: string; isHourly: boolean } {
+  if (activeFilter === 'Today') {
+    const d = new Date()
+    return {
+      labelTh: `วันนี้ — ${d.toLocaleDateString('th-TH', { dateStyle: 'long' })}`,
+      labelEn: `Today — ${d.toLocaleDateString('en-GB', { dateStyle: 'full' })}`,
+      isHourly: true,
+    }
+  }
+  if (activeFilter === '7 days') {
+    const end = new Date()
+    const start = new Date()
+    start.setDate(end.getDate() - 6)
+    return {
+      labelTh: `7 วันย้อนหลัง — ${start.toLocaleDateString('th-TH')} ถึง ${end.toLocaleDateString('th-TH')}`,
+      labelEn: `Last 7 days — ${start.toLocaleDateString('en-GB')} to ${end.toLocaleDateString('en-GB')}`,
+      isHourly: false,
+    }
+  }
+  if (activeFilter === '30 days') {
+    const end = new Date()
+    const start = new Date()
+    start.setDate(end.getDate() - 29)
+    return {
+      labelTh: `30 วันย้อนหลัง — ${start.toLocaleDateString('th-TH')} ถึง ${end.toLocaleDateString('th-TH')}`,
+      labelEn: `Last 30 days — ${start.toLocaleDateString('en-GB')} to ${end.toLocaleDateString('en-GB')}`,
+      isHourly: false,
+    }
+  }
+  if (activeFilter === 'Custom' && customStartDate && customEndDate) {
+    const same = customStartDate === customEndDate
+    const s = new Date(`${customStartDate}T12:00:00`)
+    const e = new Date(`${customEndDate}T12:00:00`)
+    return {
+      labelTh: same
+        ? `วันเดียว — ${s.toLocaleDateString('th-TH', { dateStyle: 'long' })}`
+        : `กำหนดเอง — ${s.toLocaleDateString('th-TH')} ถึง ${e.toLocaleDateString('th-TH')}`,
+      labelEn: same
+        ? `Custom — ${s.toLocaleDateString('en-GB', { dateStyle: 'full' })}`
+        : `Custom range — ${s.toLocaleDateString('en-GB')} to ${e.toLocaleDateString('en-GB')}`,
+      isHourly: same,
+    }
+  }
+  return {
+    labelTh: 'กำหนดเอง — ยังไม่ได้เลือกช่วงวันที่ในแดชบอร์ด',
+    labelEn: 'Custom — select start and end dates on the dashboard filter bar',
+    isHourly: false,
+  }
+}
+
+async function dashboardPdfHtmlToCanvas(
+  innerHtml: string,
+  widthPx: number,
+  compact = false
+): Promise<{ dataUrl: string; cw: number; ch: number }> {
+  const host = document.createElement('div')
+  host.style.cssText = `position:fixed;left:-9000px;top:0;width:${widthPx}px;background:#ffffff;`
+  host.innerHTML = `
+  <style>
+    .db-pdf { font-family: "Prompt", "Inter", system-ui, sans-serif; color: #0f172a; }
+    .db-pdf h1 { margin: 0 0 10px; font-size: 20px; font-weight: 700; line-height: 1.3; }
+    .db-pdf h2 { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
+    .db-pdf p { margin: 0 0 8px; font-size: 11.5px; line-height: 1.5; color: #334155; }
+    .db-pdf .muted { color: #64748b; font-size: 10.5px; }
+    .db-pdf .box { border-left: 3px solid #2563eb; padding-left: 12px; margin-top: 12px; }
+    .db-pdf--compact { padding: 14px 18px !important; }
+    .db-pdf--compact h1 { font-size: 17px; margin-bottom: 6px; }
+    .db-pdf--compact h2 { font-size: 13px; margin-top: 12px; margin-bottom: 5px; }
+    .db-pdf--compact .box { margin-top: 8px; padding-left: 10px; }
+    .db-pdf--compact p { font-size: 10.5px; margin-bottom: 5px; line-height: 1.42; }
+    .db-pdf--compact .muted { font-size: 9.5px; }
+  </style>
+  <div class="db-pdf${compact ? ' db-pdf--compact' : ''}" style="padding:20px 22px;">${innerHtml}</div>`
+  document.body.appendChild(host)
+  const root = host.querySelector('.db-pdf') as HTMLElement
+  if (document.fonts?.ready) await document.fonts.ready
+  const canvas = await html2canvas(root, { scale: 2, backgroundColor: '#ffffff', logging: false })
+  const dataUrl = canvas.toDataURL('image/png', 1.0)
+  document.body.removeChild(host)
+  return { dataUrl, cw: canvas.width, ch: canvas.height }
+}
+
+function pdfAddImageFitWidth(
+  pdf: InstanceType<typeof jsPDF>,
+  dataUrl: string,
+  cw: number,
+  ch: number,
+  x: number,
+  y: number,
+  maxWidthMm: number,
+  maxHeightMm: number
+): number {
+  let w = maxWidthMm
+  let h = (ch * w) / cw
+  if (h > maxHeightMm) {
+    h = maxHeightMm
+    w = (cw * h) / ch
+  }
+  pdf.addImage(dataUrl, 'PNG', x, y, w, h)
+  return h
+}
+
 export function DashboardPage() {
   const [stats, setStats] = useState<DetectionStats | null>(null)
   const [violations, setViolations] = useState<ViolationRow[]>([])
@@ -227,63 +341,168 @@ export function DashboardPage() {
     loadComparisons()
   }, [])
 
-  const getChange = (current: number, previous: number) => {
-    if (!previous && !current) return { value: 0, isUp: false }
-    if (previous === 0) return { value: 100, isUp: true }
+  /** Day-over-day trend vs yesterday. When yesterday had no baseline (0), % change is undefined — do not show fake +100%. */
+  type DayTrend =
+    | { kind: 'percent'; value: number; isUp: boolean }
+    | { kind: 'stable' }
+    | { kind: 'from_zero_count'; value: number }
+    | { kind: 'from_zero_rate'; value: number }
+
+  const getDayTrend = (current: number, previous: number, mode: 'count' | 'rate'): DayTrend => {
+    if (previous === 0 && current === 0) return { kind: 'stable' }
+    if (previous === 0) {
+      return mode === 'count'
+        ? { kind: 'from_zero_count', value: current }
+        : { kind: 'from_zero_rate', value: current }
+    }
     const diff = ((current - previous) / previous) * 100
-    return { value: Math.abs(diff), isUp: diff >= 0 }
+    if (!Number.isFinite(diff)) return { kind: 'stable' }
+    if (Math.abs(diff) < 0.05) return { kind: 'stable' }
+    return { kind: 'percent', value: Math.abs(diff), isUp: diff >= 0 }
   }
 
   const cardChange = {
-    detections: getChange(todaySummary.detections, yesterdaySummary.detections),
-    violations: getChange(todaySummary.violations, yesterdaySummary.violations),
-    compliance: getChange(todaySummary.compliance, yesterdaySummary.compliance),
+    detections: getDayTrend(todaySummary.detections, yesterdaySummary.detections, 'count'),
+    violations: getDayTrend(todaySummary.violations, yesterdaySummary.violations, 'count'),
+    compliance: getDayTrend(todaySummary.compliance, yesterdaySummary.compliance, 'rate'),
   }
 
-
-
-  const renderTrend = (change: { value: number; isUp: boolean }) => {
-    const color = change.isUp ? 'text-[#10b981]' : 'text-[#ef4444]'
+  const renderTrend = (trend: DayTrend) => {
+    const sub = <span className="text-[#94a3b8] font-medium">(Compared From Yesterday)</span>
+    if (trend.kind === 'stable') {
+      return (
+        <div className="text-[12px] text-[#94a3b8] font-semibold mt-1.5 flex items-center gap-1.5 flex-wrap">
+          Stable {sub}
+        </div>
+      )
+    }
+    if (trend.kind === 'from_zero_count') {
+      return (
+        <div className="flex items-center gap-[3px] text-[12px] font-semibold text-[#10b981] mt-1.5 flex-wrap">
+          ↑ +{trend.value.toLocaleString()} {sub}
+        </div>
+      )
+    }
+    if (trend.kind === 'from_zero_rate') {
+      return (
+        <div className="flex items-center gap-[3px] text-[12px] font-semibold text-[#10b981] mt-1.5 flex-wrap">
+          ↑ +{trend.value.toFixed(1)} pts {sub}
+        </div>
+      )
+    }
+    const color = trend.isUp ? 'text-[#10b981]' : 'text-[#ef4444]'
     return (
-      <div className={`flex items-center gap-[3px] text-[12px] font-semibold ${color} mt-1.5`}>
-        {change.isUp ? '↑' : '↓'} {change.isUp ? '+' : '-'}{change.value.toFixed(1)}%
+      <div className={`flex items-center gap-[3px] text-[12px] font-semibold ${color} mt-1.5 flex-wrap`}>
+        {trend.isUp ? '↑' : '↓'} {trend.isUp ? '+' : '-'}
+        {trend.value.toFixed(1)}% {sub}
       </div>
     )
   }
 
   const handleExportPdf = async () => {
-    const selectedBlocks: Array<{ title: string; element: HTMLDivElement | null }> = []
-    if (exportTarget.compliance) selectedBlocks.push({ title: 'Compliance', element: complianceChartRef.current })
-    if (exportTarget.violation) selectedBlocks.push({ title: 'Violation', element: violationChartRef.current })
-    if (selectedBlocks.length === 0) return
+    const blocks: Array<{ key: 'compliance' | 'violation'; element: HTMLDivElement | null }> = []
+    if (exportTarget.compliance) blocks.push({ key: 'compliance', element: complianceChartRef.current })
+    if (exportTarget.violation) blocks.push({ key: 'violation', element: violationChartRef.current })
+    if (blocks.length === 0) return
 
     setIsExporting(true)
     try {
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-      let isFirstPage = true
+      const pageW = pdf.internal.pageSize.getWidth()
+      const pageH = pdf.internal.pageSize.getHeight()
+      const margin = 14
+      const contentW = pageW - 2 * margin
 
-      for (const block of selectedBlocks) {
+      const period = getDashboardExportPeriod(activeFilter, customStartDate, customEndDate)
+      const genTh = new Date().toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'medium' })
+      const genEn = new Date().toLocaleString('en-GB', { dateStyle: 'full', timeStyle: 'medium' })
+      const td = stats?.total_detections ?? 0
+      const tv = stats?.total_violations ?? 0
+      const cr = stats?.compliance_rate ?? 0
+
+      /** Same official header on every chart page (harder to crop graph without context). */
+      const reportHeaderHtml = `
+      <h1>รายงานแดชบอร์ดความปลอดภัย (PPE)</h1>
+      <p class="muted">PPE Detection System — Dashboard analytics export</p>
+      <div class="box">
+        <p><strong>วันที่และเวลาที่สร้างรายงาน</strong><br/>${escapePdfHtml(genTh)}</p>
+        <p class="muted" style="margin-top:4px">${escapePdfHtml(genEn)}</p>
+        <p style="margin-top:12px"><strong>ช่วงข้อมูลในกราฟ (ตามตัวกรองบนแดชบอร์ด)</strong><br/>${escapePdfHtml(period.labelTh)}</p>
+        <p class="muted" style="margin-top:4px">${escapePdfHtml(period.labelEn)}</p>
+        <p style="margin-top:12px"><strong>สรุปสถิติรวมระบบ (ณ เวลาที่ส่งออก)</strong><br/>
+          การตรวจจับทั้งหมด ${td.toLocaleString()} รายการ · การฝ่าฝืนรวม ${tv.toLocaleString()} ครั้ง · อัตราความสอดคล้อง ${cr}%</p>
+        <p class="muted" style="margin-top:8px">Total detections: ${td.toLocaleString()} · Total violations: ${tv.toLocaleString()} · Compliance rate: ${cr}%</p>
+      </div>
+    `
+
+      const axisNoteTh = period.isHourly
+        ? 'แกนนอน (X) แสดงชั่วโมงของวัน (00:00–23:00)'
+        : 'แกนนอน (X) แสดงแต่ละวันในช่วงที่เลือก'
+      const axisNoteEn = period.isHourly
+        ? 'X-axis: hour of day (00:00–23:00) for the selected calendar day.'
+        : 'X-axis: one column per calendar day in the selected range.'
+
+      let firstChartPage = true
+      for (const block of blocks) {
         if (!block.element) continue
-        const canvas = await html2canvas(block.element, { scale: 2, backgroundColor: '#ffffff' })
-        const imgData = canvas.toDataURL('image/png')
-        const pageWidth = pdf.internal.pageSize.getWidth()
-        const pageHeight = pdf.internal.pageSize.getHeight()
-        const maxWidth = pageWidth - 20
-        const ratio = maxWidth / canvas.width
-        const imgWidth = maxWidth
-        const imgHeight = canvas.height * ratio
-        const y = Math.max(10, (pageHeight - imgHeight) / 2)
+        if (!firstChartPage) pdf.addPage()
+        firstChartPage = false
 
-        if (!isFirstPage) {
-          pdf.addPage()
-        }
-        pdf.setFontSize(14)
-        pdf.text(`${block.title} Chart`, 10, 10)
-        pdf.addImage(imgData, 'PNG', 10, y, imgWidth, Math.min(imgHeight, pageHeight - 20))
-        isFirstPage = false
+        const sectionHtml =
+          block.key === 'compliance'
+            ? `
+          <h2>กราฟความสอดคล้อง (Daily Compliance)</h2>
+          <p><strong>คำอธิบาย</strong> แสดงอัตราการปฏิบัติตามกฎด้านความปลอดภัย (สัดส่วนผู้ที่ตรวจพบโดยไม่มีความผิดฝ่าฝืน) ในแต่ละช่วงเวลาของกราฟ แกนตั้ง (Y) 0–100 คือเปอร์เซ็นต์ความสอดคล้อง</p>
+          <p class="muted">Compliance rate (% of detected persons without violations) per bucket. Y-axis: 0–100 (compliance %).</p>
+          <p class="muted" style="margin-top:8px">${escapePdfHtml(axisNoteTh)}<br/>${escapePdfHtml(axisNoteEn)}</p>
+        `
+            : `
+          <h2>กราฟแนวโน้มการฝ่าฝืน (Violations)</h2>
+          <p><strong>คำอธิบาย</strong> แสดงจำนวนครั้งของความผิดฝ่าฝืนที่ระบบรวมได้ ต่อช่วงเวลาในกราฟ (แกนตั้ง Y = จำนวนครั้ง) เมื่อเลือกช่วงวันเดียว ข้อมูลจัดเป็นรายชั่วโมง เมื่อเลือกหลายวัน จัดเป็นรายวัน</p>
+          <p class="muted">Violation counts per time bucket. Y-axis: number of violations. Single-day: hourly. Multi-day: per day.</p>
+          <p class="muted" style="margin-top:8px">${escapePdfHtml(axisNoteTh)}<br/>${escapePdfHtml(axisNoteEn)}</p>
+        `
+
+        const topBlock = await dashboardPdfHtmlToCanvas(
+          `${reportHeaderHtml}${sectionHtml}`,
+          720,
+          true
+        )
+        let y = 10
+        const topMaxH = 118
+        const topH = pdfAddImageFitWidth(
+          pdf,
+          topBlock.dataUrl,
+          topBlock.cw,
+          topBlock.ch,
+          margin,
+          y,
+          contentW,
+          topMaxH
+        )
+        y += topH + 5
+
+        const chartCanvas = await html2canvas(block.element, {
+          scale: 2,
+          backgroundColor: '#ffffff',
+          logging: false,
+        })
+        const chartDataUrl = chartCanvas.toDataURL('image/png', 1.0)
+        const maxChartH = pageH - y - margin
+        pdfAddImageFitWidth(
+          pdf,
+          chartDataUrl,
+          chartCanvas.width,
+          chartCanvas.height,
+          margin,
+          y,
+          contentW,
+          Math.max(40, maxChartH)
+        )
       }
 
-      pdf.save(`dashboard-report-${new Date().toISOString().slice(0, 10)}.pdf`)
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+      pdf.save(`dashboard-report-${stamp}.pdf`)
       setIsExportOpen(false)
     } catch (error) {
       console.error('Export PDF failed:', error)
