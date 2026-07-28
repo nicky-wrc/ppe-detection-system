@@ -3,8 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from app.core.config import settings
-from app.core.database import init_db
+from app.core.database import init_db, SessionLocal
+from app.core.security import get_password_hash
 from app.api.v1.router import api_router
+from app.models import User
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -34,6 +36,22 @@ app.mount("/uploads", StaticFiles(directory=str(uploads_path)), name="uploads")
 @app.on_event("startup")
 async def startup():
     init_db()
+
+    db = SessionLocal()
+    try:
+        admin_exists = db.query(User).filter(User.role == "admin").first()
+        if not admin_exists:
+            admin = User(
+                email="admin@ppe-system.com",
+                hashed_password=get_password_hash("admin123"),
+                full_name="System Admin",
+                role="admin",
+            )
+            db.add(admin)
+            db.commit()
+            db.refresh(admin)
+    finally:
+        db.close()
 
 
 @app.get("/")

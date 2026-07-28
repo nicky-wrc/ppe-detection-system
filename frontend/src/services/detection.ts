@@ -35,6 +35,17 @@ export const detectionService = {
     return response.data
   },
 
+  async detectFrame(file: File, zoneId?: number): Promise<Detection> {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const params = zoneId ? `?zone_id=${zoneId}` : ''
+    const response = await api.post(`/detection/frame${params}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  },
+
   async uploadVideo(file: File, zoneId?: number): Promise<Detection> {
     const formData = new FormData()
     formData.append('file', file)

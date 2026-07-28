@@ -146,7 +146,7 @@ export function CameraPage() {
       }
       try {
         const frame = new File([blob], 'camera-frame.jpg', { type: 'image/jpeg' })
-        const result = await detectionService.uploadImage(frame)
+        const result = await detectionService.detectFrame(frame)
         setLastResult(result)
         setFramesAnalyzed((prev) => prev + 1)
       } catch (error) {

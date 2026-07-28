@@ -20,7 +20,6 @@ import {
   ShieldAlert,
   Clock,
   Download,
-  SlidersHorizontal,
   Activity,
   CheckCircle,
   Camera,

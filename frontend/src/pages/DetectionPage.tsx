@@ -14,10 +14,11 @@ import {
   Image as ImageIcon,
   ShieldCheck,
   Video,
+  Camera,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-type TabType = 'image' | 'video'
+type TabType = 'image' | 'video' | 'camera'
 
 const drawDetectionOverlay = (
   ctx: CanvasRenderingContext2D,
@@ -152,10 +153,14 @@ export function DetectionPage() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const captureCanvasRef = useRef<HTMLCanvasElement>(null)
+  const cameraStreamRef = useRef<MediaStream | null>(null)
   const rafRef = useRef<number | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const lastDetectionRef = useRef<Detection | null>(null)
+  const isFrameBusyRef = useRef(false)
   const [isLiveDetecting, setIsLiveDetecting] = useState(false)
+  const [isCameraOn, setIsCameraOn] = useState(false)
+  const [isCameraStarting, setIsCameraStarting] = useState(false)
   const [liveFrameCount, setLiveFrameCount] = useState(0)
   const DETECT_INTERVAL_MS = 2000
 
@@ -212,28 +217,38 @@ export function DetectionPage() {
   const captureAndDetect = useCallback(async () => {
     const video = videoRef.current
     const cap = captureCanvasRef.current
-    if (!video || !cap || video.paused || video.ended) return
+    if (!video || !cap || video.paused || video.ended || isFrameBusyRef.current) return
+    if (!video.videoWidth || !video.videoHeight) return
     cap.width = video.videoWidth; cap.height = video.videoHeight
     const ctx = cap.getContext('2d')
     if (!ctx) return
     ctx.drawImage(video, 0, 0, cap.width, cap.height)
+    isFrameBusyRef.current = true
     cap.toBlob(async (blob) => {
-      if (!blob) return
+      if (!blob) {
+        isFrameBusyRef.current = false
+        return
+      }
       try {
         const frameFile = new File([blob], 'frame.jpg', { type: 'image/jpeg' })
-        const detection = await detectionService.uploadImage(frameFile)
+        const detection = await detectionService.detectFrame(frameFile)
         lastDetectionRef.current = detection
         
         // Setting state here triggers the overall right-panel updates for video as well
         setResult(detection)
         setLiveFrameCount(prev => prev + 1)
-      } catch (err) { console.error('Frame detect error:', err) }
+      } catch (err) {
+        console.error('Frame detect error:', err)
+      } finally {
+        isFrameBusyRef.current = false
+      }
     }, 'image/jpeg', 0.8)
   }, [])
 
   const stopLiveDetection = useCallback(() => {
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
+    isFrameBusyRef.current = false
     setIsLiveDetecting(false)
   }, [])
 
@@ -246,7 +261,52 @@ export function DetectionPage() {
     intervalRef.current = setInterval(captureAndDetect, DETECT_INTERVAL_MS)
   }, [renderLoop, captureAndDetect])
 
-  useEffect(() => () => stopLiveDetection(), [stopLiveDetection])
+  const stopCamera = useCallback(() => {
+    stopLiveDetection()
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((track) => track.stop())
+      cameraStreamRef.current = null
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+    setIsCameraOn(false)
+    setIsCameraStarting(false)
+  }, [stopLiveDetection])
+
+  const startCamera = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error('เบราว์เซอร์นี้ไม่รองรับการเปิดกล้อง')
+      return
+    }
+
+    setIsCameraStarting(true)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'environment' },
+        audio: false,
+      })
+
+      cameraStreamRef.current = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        await videoRef.current.play()
+      }
+
+      setIsCameraOn(true)
+      setResult(null)
+      setLiveFrameCount(0)
+      startLiveDetection()
+      toast.success('เปิดกล้องและเริ่มตรวจจับแล้ว')
+    } catch (error) {
+      console.error(error)
+      toast.error('ไม่สามารถเปิดกล้องได้ กรุณากด Allow หรือเชื่อมต่ออุปกรณ์กล้อง')
+    } finally {
+      setIsCameraStarting(false)
+    }
+  }, [startLiveDetection])
+
+  useEffect(() => () => stopCamera(), [stopCamera])
 
   // ── Drag n Drop Handlers ──────────────────────────
   const imageDropzone = useDropzone({
@@ -269,16 +329,18 @@ export function DetectionPage() {
     disabled: activeTab !== 'video',
   })
 
+  const isCameraTab = activeTab === 'camera'
   const getRootProps = activeTab === 'image' ? imageDropzone.getRootProps : videoDropzone.getRootProps
   const getInputProps = activeTab === 'image' ? imageDropzone.getInputProps : videoDropzone.getInputProps
   const isDragActive = activeTab === 'image' ? imageDropzone.isDragActive : videoDropzone.isDragActive
 
   const handleTabChange = (tab: TabType) => {
-    stopLiveDetection()
+    stopCamera()
     setActiveTab(tab)
     setSelectedFile(null)
     setPreview(null)
     setResult(null)
+    setLiveFrameCount(0)
   }
 
   const handleDetect = async () => {
@@ -300,7 +362,7 @@ export function DetectionPage() {
   }
 
   const handleReset = () => {
-    stopLiveDetection()
+    stopCamera()
     setSelectedFile(null)
     setPreview(null)
     setResult(null)
@@ -309,7 +371,9 @@ export function DetectionPage() {
 
   const hasValidFile = activeTab === 'image'
     ? selectedFile?.type.startsWith('image/')
-    : selectedFile?.type.startsWith('video/')
+    : activeTab === 'video'
+      ? selectedFile?.type.startsWith('video/')
+      : isCameraOn
 
   return (
     <Layout>
@@ -345,6 +409,16 @@ export function DetectionPage() {
             >
               <Video size={14} /> Video
             </button>
+            <button
+              onClick={() => handleTabChange('camera')}
+              className={
+                activeTab === 'camera'
+                  ? 'flex items-center gap-[6px] px-[18px] py-[7px] rounded-[7px] text-[13px] font-semibold text-[#0f172a] bg-white border-none cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.1)]'
+                  : 'flex items-center gap-[6px] px-[18px] py-[7px] rounded-[7px] text-[13px] font-medium text-[#64748b] bg-transparent border-none cursor-pointer'
+              }
+            >
+              <Camera size={14} /> Camera
+            </button>
           </div>
         </div>
 
@@ -357,9 +431,9 @@ export function DetectionPage() {
             <div className="bg-white border border-[#e5eaf0] rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
               <div className="flex items-center justify-between pl-11 pr-10 py-5 border-b border-[#f1f5f9]">
                 <p className="text-[14px] font-semibold text-[#0f172a] m-0">
-                  {activeTab === 'image' ? 'Upload Image' : 'Upload Video'}
+                  {activeTab === 'image' ? 'Upload Image' : activeTab === 'video' ? 'Upload Video' : 'Live Camera'}
                 </p>
-                {selectedFile && (
+                {(selectedFile || isCameraOn) && (
                   <button onClick={handleReset} className="bg-transparent border-none cursor-pointer text-[#94a3b8] p-[2px]">
                     <X size={16} />
                   </button>
@@ -368,16 +442,54 @@ export function DetectionPage() {
               <div className="pl-11 pr-10 pb-7 pt-5">
                 {/* Dropzone */}
                 <div
-                  {...getRootProps()}
-                  className="flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 rounded-xl p-6"
+                  {...(isCameraTab ? {} : getRootProps())}
+                  className={`flex flex-col items-center justify-center text-center transition-all duration-200 rounded-xl p-6 ${isCameraTab ? 'cursor-default' : 'cursor-pointer'}`}
                   style={{
                     minHeight: '280px',
-                    border: `2px dashed ${isDragActive ? '#2563eb' : preview ? '#cbd5e1' : '#d1d8e4'}`,
-                    backgroundColor: isDragActive ? '#eff6ff' : preview ? '#f8fafc' : '#fafbfc',
+                    border: isCameraTab
+                      ? `2px solid ${isCameraOn ? '#bfdbfe' : '#d1d8e4'}`
+                      : `2px dashed ${isDragActive ? '#2563eb' : preview ? '#cbd5e1' : '#d1d8e4'}`,
+                    backgroundColor: isCameraTab
+                      ? '#f8fafc'
+                      : isDragActive ? '#eff6ff' : preview ? '#f8fafc' : '#fafbfc',
                   }}
                 >
-                  <input {...getInputProps()} />
-                  {preview ? (
+                  {!isCameraTab && <input {...getInputProps()} />}
+                  {isCameraTab ? (
+                    <div className="w-full">
+                      <div className="relative w-full bg-black rounded-lg overflow-hidden flex items-center justify-center min-h-[300px]">
+                        <video
+                          ref={videoRef}
+                          className="hidden"
+                          playsInline
+                          muted
+                        />
+                        <canvas
+                          ref={canvasRef}
+                          className="w-full block rounded-lg"
+                          style={{ maxHeight: '460px', objectFit: 'contain' }}
+                        />
+                        <canvas ref={captureCanvasRef} className="hidden" />
+                        {!isCameraOn && (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white bg-[#020617]">
+                            <div className="w-14 h-14 rounded-[14px] bg-white/10 flex items-center justify-center border border-white/15">
+                              <Camera size={26} />
+                            </div>
+                            <div>
+                              <p className="text-[15px] font-semibold m-0 mb-1">Connect a camera device</p>
+                              <p className="text-[13px] text-slate-300 m-0">
+                                Browser permission will appear after opening the camera.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <p className="text-[12px] font-medium text-[#64748b] mt-3 mb-0 text-center bg-white px-3 py-1 rounded-full border border-[#e2e8f0] inline-block shadow-sm">
+                        {isCameraOn ? 'Camera: live device connected' : 'Camera: waiting for permission'}
+                      </p>
+                    </div>
+                  ) : preview ? (
                     <div className="w-full">
                       {activeTab === 'video' ? (
                         <div className="relative w-full bg-black rounded-lg overflow-hidden flex items-center justify-center min-h-[300px]">
@@ -441,7 +553,7 @@ export function DetectionPage() {
                 </div>
 
                 {/* Actions / Detect / Reset buttons */}
-                {preview && hasValidFile && (
+                {(preview || isCameraTab) && (hasValidFile || isCameraTab) && (
                   <div className="flex gap-[10px] mt-4">
                     {activeTab === 'image' ? (
                       <button
@@ -459,7 +571,7 @@ export function DetectionPage() {
                           <><ShieldCheck size={16} /> Start Detection</>
                         )}
                       </button>
-                    ) : (
+                    ) : activeTab === 'video' ? (
                       <button
                         onClick={(e) => { 
                           e.stopPropagation(); 
@@ -474,6 +586,30 @@ export function DetectionPage() {
                       >
                         {isLiveDetecting ? '⏸ Pause Detection' : '▶ Play Live Detection'}
                       </button>
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (isCameraOn) stopCamera()
+                          else void startCamera()
+                        }}
+                        disabled={isCameraStarting}
+                        className={
+                          isCameraOn
+                            ? 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#ef4444] hover:bg-[#dc2626] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-pointer shadow-sm transition-all'
+                            : isCameraStarting
+                              ? 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#93c5fd] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-not-allowed shadow-sm transition-all'
+                              : 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-pointer shadow-sm transition-all'
+                        }
+                      >
+                        {isCameraStarting ? (
+                          <><Loader2 size={16} className="animate-spin" /> Waiting for permission...</>
+                        ) : isCameraOn ? (
+                          <><X size={16} /> Stop Camera</>
+                        ) : (
+                          <><Camera size={16} /> Open Camera & Detect</>
+                        )}
+                      </button>
                     )}
                     
                     <button
@@ -485,7 +621,7 @@ export function DetectionPage() {
                   </div>
                 )}
                 
-                {activeTab === 'video' && isLiveDetecting && (
+                {(activeTab === 'video' || activeTab === 'camera') && isLiveDetecting && (
                   <p className="text-center text-[12px] text-[#22c55e] font-semibold mt-3 animate-pulse">
                     Live Detection Active • {liveFrameCount} frames analyzed
                   </p>

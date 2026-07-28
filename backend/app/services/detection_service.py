@@ -1,6 +1,7 @@
 import uuid
 import cv2
 import aiofiles
+import numpy as np
 from pathlib import Path
 from typing import Optional, List, Tuple
 from datetime import datetime
@@ -73,6 +74,41 @@ class DetectionService:
             self._create_alerts(detection)
         
         return detection
+
+    async def process_frame(
+        self,
+        file: UploadFile,
+        zone_id: Optional[int] = None
+    ) -> dict:
+        content = await file.read()
+        image_array = np.frombuffer(content, dtype=np.uint8)
+        image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+        if image is None:
+            raise ValueError("ไม่สามารถอ่านเฟรมจากกล้องได้")
+
+        required_ppe: list[str] | None = None
+        if zone_id is not None:
+            zone = self.db.query(Zone).filter(Zone.id == zone_id).first()
+            if zone and isinstance(zone.required_ppe, list) and len(zone.required_ppe) > 0:
+                required_ppe = zone.required_ppe
+
+        detection_result = self.detector.detect(image, required_ppe=required_ppe)
+
+        return {
+            "id": 0,
+            "zone_id": zone_id,
+            "original_image_path": "live-camera-frame",
+            "result_image_path": None,
+            "detected_objects": detection_result.get("detected_objects", []),
+            "persons": detection_result.get("persons", []),
+            "violations": detection_result.get("violations", []),
+            "person_count": detection_result.get("person_count", 0),
+            "violation_count": detection_result.get("violation_count", 0),
+            "has_violation": detection_result.get("has_violation", False),
+            "processing_time_ms": detection_result.get("processing_time_ms", 0),
+            "summary": detection_result.get("summary", {}),
+            "created_at": datetime.now(),
+        }
 
     async def process_video(
         self,

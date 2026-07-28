@@ -41,6 +41,35 @@ async def detect_from_image(
             detail=f"เกิดข้อผิดพลาด: {str(e)}"
         )
 
+
+@router.post("/frame", response_model=DetectionResponse)
+async def detect_from_frame(
+    file: UploadFile = File(...),
+    zone_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """ตรวจจับ PPE จากเฟรมกล้องแบบ realtime โดยไม่บันทึกลงประวัติทุกเฟรม"""
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="เฟรมต้องเป็นรูปภาพเท่านั้น"
+        )
+
+    service = DetectionService(db)
+
+    try:
+        return await service.process_frame(
+            file=file,
+            zone_id=zone_id
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"เกิดข้อผิดพลาด: {str(e)}"
+        )
+
+
 @router.post("/video", response_model=DetectionResponse)
 async def detect_from_video(
     file: UploadFile = File(...),
