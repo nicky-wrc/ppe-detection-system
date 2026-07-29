@@ -13,9 +13,88 @@ interface CameraSocketMessage {
   data?: Partial<EdgeCamera> & { camera_id?: number }
 }
 
+type PreviewStatus = 'offline' | 'waiting' | 'live' | 'stale'
+
+function CameraPreview({ camera }: { camera: EdgeCamera }) {
+  const [preview, setPreview] = useState<{ url: string | null; status: PreviewStatus }>({
+    url: null,
+    status: camera.is_active ? 'waiting' : 'offline',
+  })
+
+  useEffect(() => {
+    let active = true
+    let timer: number | undefined
+    let objectUrl: string | null = null
+
+    if (!camera.is_active) {
+      setPreview({ url: null, status: 'offline' })
+      return () => undefined
+    }
+
+    setPreview({ url: null, status: 'waiting' })
+    const poll = async () => {
+      try {
+        const blob = await camerasService.getPreview(camera.id)
+        if (!active) return
+        if (!blob) {
+          setPreview((current) => ({
+            url: current.url,
+            status: current.url ? 'stale' : 'waiting',
+          }))
+          return
+        }
+        const nextUrl = URL.createObjectURL(blob)
+        const previousUrl = objectUrl
+        objectUrl = nextUrl
+        setPreview({ url: nextUrl, status: 'live' })
+        if (previousUrl) URL.revokeObjectURL(previousUrl)
+      } catch {
+        if (active) {
+          setPreview((current) => ({
+            url: current.url,
+            status: current.url ? 'stale' : 'waiting',
+          }))
+        }
+      } finally {
+        if (active) timer = window.setTimeout(() => void poll(), 750)
+      }
+    }
+    void poll()
+
+    return () => {
+      active = false
+      if (timer !== undefined) window.clearTimeout(timer)
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [camera.id, camera.is_active])
+
+  return (
+    <div className="relative mt-4 aspect-video overflow-hidden rounded-xl bg-[#0f172a] border border-[#1e293b]">
+      {preview.url ? (
+        <img src={preview.url} alt={`Live preview from ${camera.name}`} className="h-full w-full object-contain" />
+      ) : (
+        <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-[#cbd5e1]">
+          {preview.status === 'waiting' ? <Loader2 size={24} className="animate-spin" /> : <Camera size={26} />}
+          <p className="m-0 text-[12px] font-semibold">
+            {preview.status === 'waiting' ? 'Waiting for the first analyzed frame...' : 'Press Start to open this camera'}
+          </p>
+        </div>
+      )}
+      <div className="absolute left-2.5 top-2.5 flex items-center gap-1.5 rounded-full bg-black/65 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur-sm">
+        <span className={`h-2 w-2 rounded-full ${preview.status === 'live' ? 'bg-emerald-400 animate-pulse' : preview.status === 'stale' ? 'bg-amber-400' : 'bg-slate-400'}`} />
+        {preview.status === 'live' ? 'LIVE' : preview.status === 'stale' ? 'RECONNECTING' : preview.status.toUpperCase()}
+      </div>
+      <div className="absolute bottom-2.5 right-2.5 rounded-md bg-black/65 px-2 py-1 text-[9px] font-medium text-white backdrop-blur-sm">
+        Privacy-filtered preview · memory only
+      </div>
+    </div>
+  )
+}
+
 export function CameraPage() {
   const user = useAuthStore((state) => state.user)
   const isAdmin = user?.role === 'admin'
+  const canViewPreview = user?.role === 'admin' || user?.role === 'safety_officer'
   const [cameras, setCameras] = useState<EdgeCamera[]>([])
   const [zones, setZones] = useState<Zone[]>([])
   const [loading, setLoading] = useState(true)
@@ -89,10 +168,12 @@ export function CameraPage() {
         if (!result.ok) throw new Error(result.error || 'Camera test failed')
         toast.success(`เชื่อมต่อสำเร็จ ${result.width}×${result.height}`)
       } else if (action === 'start') {
-        await camerasService.start(camera.id)
+        const updated = await camerasService.start(camera.id)
+        setCameras((current) => current.map((item) => item.id === camera.id ? updated : item))
         toast.success(`เริ่มวิเคราะห์ ${camera.name}`)
       } else if (action === 'stop') {
-        await camerasService.stop(camera.id)
+        const updated = await camerasService.stop(camera.id)
+        setCameras((current) => current.map((item) => item.id === camera.id ? updated : item))
         toast.success(`หยุด ${camera.name}`)
       } else {
         await camerasService.remove(camera.id)
@@ -182,7 +263,7 @@ export function CameraPage() {
               <article key={camera.id} className="bg-white border border-[#e2e8f0] rounded-2xl p-5 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${camera.is_online ? 'bg-[#dcfce7] text-[#16a34a]' : 'bg-[#f1f5f9] text-[#64748b]'}`}>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${camera.is_online ? 'bg-[#dcfce7] text-[#16a34a]' : camera.is_active ? 'bg-[#fef3c7] text-[#d97706]' : 'bg-[#f1f5f9] text-[#64748b]'}`}>
                       <Camera size={19} />
                     </div>
                     <div>
@@ -190,10 +271,12 @@ export function CameraPage() {
                       <p className="text-[12px] text-[#64748b] mt-1 mb-0">USB device {camera.device_index ?? 0} {camera.location ? `• ${camera.location}` : ''}</p>
                     </div>
                   </div>
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${camera.is_online ? 'bg-[#dcfce7] text-[#15803d]' : 'bg-[#f1f5f9] text-[#64748b]'}`}>
-                    <CircleDot size={11} /> {camera.is_online ? 'ONLINE' : 'OFFLINE'}
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${camera.is_online ? 'bg-[#dcfce7] text-[#15803d]' : camera.is_active ? 'bg-[#fef3c7] text-[#b45309]' : 'bg-[#f1f5f9] text-[#64748b]'}`}>
+                    <CircleDot size={11} /> {camera.is_online ? 'ONLINE' : camera.is_active ? 'STARTING' : 'OFFLINE'}
                   </span>
                 </div>
+
+                {canViewPreview && <CameraPreview camera={camera} />}
 
                 <div className="grid grid-cols-3 gap-2 mt-5">
                   <div className="bg-[#f8fafc] rounded-xl p-3"><p className="text-[10px] uppercase text-[#94a3b8] font-bold m-0">FPS</p><p className="text-[18px] font-bold text-[#0f172a] mt-1 mb-0">{camera.measured_fps.toFixed(1)}</p></div>
@@ -205,8 +288,8 @@ export function CameraPage() {
 
                 {isAdmin && (
                   <div className="flex items-center gap-2 mt-4 pt-4 border-t border-[#f1f5f9]">
-                    <button onClick={() => void runAction(camera, 'test')} disabled={busyId === camera.id || camera.is_online} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#dbe3ee] bg-white text-[#475569] text-[12px] font-semibold cursor-pointer disabled:opacity-50"><Activity size={14} /> Test</button>
-                    {camera.is_online ? (
+                    <button onClick={() => void runAction(camera, 'test')} disabled={busyId === camera.id || camera.is_active} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#dbe3ee] bg-white text-[#475569] text-[12px] font-semibold cursor-pointer disabled:opacity-50"><Activity size={14} /> Test</button>
+                    {camera.is_active ? (
                       <button onClick={() => void runAction(camera, 'stop')} disabled={busyId === camera.id} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border-none bg-[#f59e0b] text-white text-[12px] font-semibold cursor-pointer"><Square size={13} /> Stop</button>
                     ) : (
                       <button onClick={() => void runAction(camera, 'start')} disabled={busyId === camera.id} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border-none bg-[#16a34a] text-white text-[12px] font-semibold cursor-pointer"><Play size={13} /> Start</button>

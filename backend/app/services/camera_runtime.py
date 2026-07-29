@@ -49,16 +49,22 @@ def test_camera_source(camera: Camera) -> dict[str, Any]:
 
 
 class CameraRuntimeManager:
+    PREVIEW_INTERVAL_SECONDS = 0.5
+    PREVIEW_MAX_WIDTH = 960
+    PREVIEW_JPEG_QUALITY = 75
+
     def __init__(self):
         self.tasks: dict[int, asyncio.Task] = {}
         self._inference_lock = asyncio.Lock()
         self.detector = None
         self._last_events: dict[tuple[int, int, str], float] = {}
+        self._preview_frames: dict[int, tuple[bytes, float]] = {}
 
     async def start(self, camera_id: int) -> None:
         existing = self.tasks.get(camera_id)
         if existing and not existing.done():
             return
+        self._preview_frames.pop(camera_id, None)
         self.tasks[camera_id] = asyncio.create_task(self._run(camera_id), name=f"ppe-camera-{camera_id}")
 
     async def stop(self, camera_id: int) -> None:
@@ -69,6 +75,7 @@ class CameraRuntimeManager:
                 await task
             except asyncio.CancelledError:
                 pass
+        self._preview_frames.pop(camera_id, None)
         self._set_offline(camera_id)
 
     async def stop_all(self) -> None:
@@ -79,7 +86,29 @@ class CameraRuntimeManager:
         task = self.tasks.get(camera_id)
         return bool(task and not task.done())
 
+    def get_preview(self, camera_id: int) -> tuple[bytes, float] | None:
+        """Return the latest privacy-filtered JPEG without persisting it."""
+        return self._preview_frames.get(camera_id)
+
+    @classmethod
+    def _encode_preview(cls, frame: np.ndarray) -> bytes | None:
+        height, width = frame.shape[:2]
+        if width > cls.PREVIEW_MAX_WIDTH:
+            scale = cls.PREVIEW_MAX_WIDTH / width
+            frame = cv2.resize(
+                frame,
+                (cls.PREVIEW_MAX_WIDTH, max(1, round(height * scale))),
+                interpolation=cv2.INTER_AREA,
+            )
+        ok, encoded = cv2.imencode(
+            ".jpg",
+            frame,
+            [cv2.IMWRITE_JPEG_QUALITY, cls.PREVIEW_JPEG_QUALITY],
+        )
+        return encoded.tobytes() if ok else None
+
     def _set_offline(self, camera_id: int, error: str | None = None) -> None:
+        self._preview_frames.pop(camera_id, None)
         db = SessionLocal()
         try:
             camera = db.query(Camera).filter(Camera.id == camera_id).first()
@@ -319,6 +348,7 @@ class CameraRuntimeManager:
             analyzed = 0
             started = time.perf_counter()
             interval = 1 / max(0.5, settings.CAMERA_ANALYSIS_FPS)
+            preview_generated_at = float("-inf")
 
             while True:
                 camera = db.query(Camera).filter(Camera.id == camera_id).first()
@@ -329,6 +359,7 @@ class CameraRuntimeManager:
                         cap.release()
                     cap = cv2.VideoCapture(_source_for_camera(camera))
                     if not cap.isOpened():
+                        self._preview_frames.pop(camera_id, None)
                         camera.is_online = False
                         camera.last_error = "Could not open camera source"
                         db.commit()
@@ -341,6 +372,7 @@ class CameraRuntimeManager:
                 loop_started = time.perf_counter()
                 ok, frame = await asyncio.to_thread(cap.read)
                 if not ok or frame is None:
+                    self._preview_frames.pop(camera_id, None)
                     cap.release()
                     cap = None
                     camera.is_online = False
@@ -371,8 +403,12 @@ class CameraRuntimeManager:
                 for event in confirmed:
                     self._last_events[(camera.id, event.track_id, event.violation_type)] = now_monotonic
 
+                privacy_frame = None
                 if save_evidence:
-                    privacy_frame = blur_person_heads(self.detector.draw_detections(frame, result), result.get("persons", []))
+                    privacy_frame = blur_person_heads(
+                        self.detector.draw_detections(frame, result),
+                        result.get("persons", []),
+                    )
                     for event_id, frames in recorder.push(privacy_frame):
                         clip_path = await asyncio.to_thread(recorder.write_clip, event_id, frames)
                         if clip_path:
@@ -380,6 +416,18 @@ class CameraRuntimeManager:
                             if event_row:
                                 event_row.evidence_clip_path = clip_path
                                 db.commit()
+
+                preview_now = time.monotonic()
+                if preview_now - preview_generated_at >= self.PREVIEW_INTERVAL_SECONDS:
+                    if privacy_frame is None:
+                        privacy_frame = blur_person_heads(
+                            self.detector.draw_detections(frame, result),
+                            result.get("persons", []),
+                        )
+                    encoded_preview = self._encode_preview(privacy_frame)
+                    if encoded_preview is not None:
+                        self._preview_frames[camera_id] = (encoded_preview, time.time())
+                        preview_generated_at = preview_now
 
                 if confirmed:
                     await self._persist_events(db, camera, frame, result, confirmed, recorder, save_evidence)
@@ -414,6 +462,7 @@ class CameraRuntimeManager:
                 pass
             self._set_offline(camera_id, str(exc))
         finally:
+            self._preview_frames.pop(camera_id, None)
             if cap is not None:
                 cap.release()
             try:

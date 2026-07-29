@@ -1,11 +1,11 @@
 import asyncio
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_roles
 from app.models import Camera, User, Zone
 from app.schemas.camera import CameraCreate, CameraResponse, CameraTestResponse, CameraUpdate
 from app.services.camera_runtime import camera_runtime, test_camera_source
@@ -66,6 +66,32 @@ async def get_camera(
     current_user: User = Depends(get_current_user),
 ):
     return _response(_get_camera_or_404(db, camera_id, current_user))
+
+
+@router.get("/{camera_id}/preview", response_class=Response)
+async def get_camera_preview(
+    camera_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("admin", "safety_officer")),
+):
+    """Return the latest in-memory, privacy-filtered camera frame."""
+    _get_camera_or_404(db, camera_id, current_user)
+    preview = camera_runtime.get_preview(camera_id)
+    if preview is None:
+        return Response(
+            status_code=status.HTTP_204_NO_CONTENT,
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+        )
+    content, captured_at = preview
+    return Response(
+        content=content,
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+            "X-Preview-Captured-At": str(captured_at),
+        },
+    )
 
 
 @router.put("/{camera_id}", response_model=CameraResponse)

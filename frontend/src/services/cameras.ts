@@ -1,5 +1,4 @@
-import api from './api'
-import { WS_ORIGIN } from './api'
+import api, { WS_ORIGIN } from './api'
 import type { CameraTestResult, EdgeCamera } from '../types'
 
 export interface CameraCreatePayload {
@@ -36,6 +35,15 @@ export const camerasService = {
   async stop(id: number): Promise<EdgeCamera> {
     const response = await api.post(`/cameras/${id}/stop`)
     return response.data
+  },
+
+  async getPreview(id: number): Promise<Blob | null> {
+    const response = await api.get(`/cameras/${id}/preview`, {
+      responseType: 'blob',
+      timeout: 5000,
+    })
+    const blob = response.data as Blob
+    return response.status === 204 || blob.size === 0 ? null : blob
   },
 
   async remove(id: number): Promise<void> {

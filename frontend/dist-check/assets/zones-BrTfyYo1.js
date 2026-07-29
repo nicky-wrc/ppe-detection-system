@@ -1,0 +1,1 @@
+import{c as e}from"./index-Cqr-dsRt.js";const t={async list(){return(await e.get(`/zones`)).data},async update(t,n){return(await e.put(`/zones/${t}`,n)).data}};export{t};

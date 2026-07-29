@@ -31,3 +31,18 @@ Run every scenario with at least three repetitions per camera and keep the scena
 - Keep adjacent frames from one clip in a single dataset split.
 - Compare unchanged SH17, fine-tuned frame inference, fine-tuned temporal inference, and TensorRT FP16.
 - Do not lower acceptance thresholds after viewing the locked test results. Record a failed gate and remediation instead.
+
+## Automated event scoring
+
+Prepare the locked ground-truth and reviewed system-event CSV files using the schema in `backend/mlops/README.md`. Then run from `backend/`:
+
+```powershell
+python -m app.ml.evaluate_events `
+  --ground-truth D:\approved-pilot\locked-events.csv `
+  --predictions D:\approved-pilot\system-events.csv `
+  --camera-hours 32 `
+  --output experiments\factory-yolo8s-v1\event_metrics.json `
+  --require-pass
+```
+
+The command always writes the report. With `--require-pass`, it exits with code `2` when at least one locked event target fails. This report covers event precision/recall, false alerts per camera-hour, and alert latency only. FPS, reconnect time, eight-hour stability, GPU resource use, and usability still require the controlled pilot records described above.
