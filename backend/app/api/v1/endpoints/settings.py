@@ -15,7 +15,7 @@ def _get_or_create(db: Session, user_id: int) -> UserSettings:
     s = UserSettings(
         user_id=user_id,
         active_ppe_rules={"helmet": True, "safety-vest": True},
-        confidence_threshold=50,
+        confidence_threshold=25,
         ppe_detection_sensitivity=60,
         alert_sound=True,
         save_evidence=True,

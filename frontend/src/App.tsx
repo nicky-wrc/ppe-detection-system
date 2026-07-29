@@ -1,15 +1,17 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useAuthStore } from './stores/authStore'
 import { authService } from './services/auth'
 import { LoginPage } from './pages/LoginPage'
-import { DashboardPage } from './pages/DashboardPage'
-import { DetectionPage } from './pages/DetectionPage'
-import { CameraPage } from './pages/CameraPage'
-import { HistoryPage } from './pages/HistoryPage'
-import { SettingsPage } from './pages/SettingsPage'
-import { AlertsPage } from './pages/AlertsPage'
+
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })))
+const DetectionPage = lazy(() => import('./pages/DetectionPage').then((module) => ({ default: module.DetectionPage })))
+const CameraPage = lazy(() => import('./pages/CameraPage').then((module) => ({ default: module.CameraPage })))
+const HistoryPage = lazy(() => import('./pages/HistoryPage').then((module) => ({ default: module.HistoryPage })))
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then((module) => ({ default: module.SettingsPage })))
+const AlertsPage = lazy(() => import('./pages/AlertsPage').then((module) => ({ default: module.AlertsPage })))
+const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage').then((module) => ({ default: module.AdminUsersPage })))
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user, setUser, logout } = useAuthStore()
@@ -49,15 +51,18 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
-        <Route path="/detection" element={<PrivateRoute><DetectionPage /></PrivateRoute>} />
-        <Route path="/camera" element={<PrivateRoute><CameraPage /></PrivateRoute>} />
-        <Route path="/reports" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
-        <Route path="/alerts" element={<PrivateRoute><AlertsPage /></PrivateRoute>} />
-        <Route path="/settings" element={<PrivateRoute><SettingsPage /></PrivateRoute>} />
-      </Routes>
+      <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-200">Loading...</div>}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
+          <Route path="/detection" element={<PrivateRoute><DetectionPage /></PrivateRoute>} />
+          <Route path="/camera" element={<PrivateRoute><CameraPage /></PrivateRoute>} />
+          <Route path="/reports" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
+          <Route path="/alerts" element={<PrivateRoute><AlertsPage /></PrivateRoute>} />
+          <Route path="/settings" element={<PrivateRoute><SettingsPage /></PrivateRoute>} />
+          <Route path="/admin/users" element={<PrivateRoute><AdminUsersPage /></PrivateRoute>} />
+        </Routes>
+      </Suspense>
       <Toaster
         position="top-center"
         toastOptions={{

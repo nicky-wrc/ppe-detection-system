@@ -1,0 +1,11 @@
+# Copy this file outside source control after written data approval is granted.
+# Split by camera and recording day; do not randomly split adjacent video frames.
+path: D:/approved-ppe-dataset
+train: splits/train.txt
+val: splits/val.txt
+test: splits/test.txt
+
+names:
+  0: person
+  1: helmet
+  2: safety-vest

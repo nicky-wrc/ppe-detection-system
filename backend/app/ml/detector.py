@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 from ultralytics import YOLO
 from PIL import Image, ImageDraw, ImageFont
+from app.core.config import settings
 
 
 # SH17 class mapping (17 classes)
@@ -50,16 +51,28 @@ class PPEDetector:
 
     def _load_model(self):
         model_dir = Path(__file__).resolve().parent.parent.parent
-        candidates = ["yolo8m.pt", "yolo8s.pt", "yolo8n.pt", "yolo11n.pt"]
-        for name in candidates:
-            p = model_dir / name
+        configured = Path(settings.MODEL_PATH)
+        if not configured.is_absolute():
+            configured = model_dir / configured
+        candidates = [configured, model_dir / "yolo8s.pt", model_dir / "yolo8m.pt"]
+        seen: set[Path] = set()
+        for p in candidates:
+            p = p.resolve()
+            if p in seen:
+                continue
+            seen.add(p)
             if p.exists():
                 try:
-                    self.ppe_model = YOLO(str(p))
-                    print(f"[PPE] SH17 model loaded: {name}")
+                    model = YOLO(str(p))
+                    class_names = set(model.names.values())
+                    if not {"person", "helmet", "safety-vest"}.issubset(class_names):
+                        print(f"[PPE] Skipping incompatible model {p.name}: required SH17 classes are missing")
+                        continue
+                    self.ppe_model = model
+                    print(f"[PPE] SH17 model loaded: {p.name} ({settings.MODEL_VERSION})")
                     return
                 except Exception as e:
-                    print(f"[PPE] Failed to load {name}: {e}")
+                    print(f"[PPE] Failed to load {p.name}: {e}")
         print("[PPE] ERROR: No SH17 model found! Place yolo8m.pt or yolo8s.pt in backend/")
 
     def _load_font(self):
@@ -84,13 +97,21 @@ class PPEDetector:
     #  Core detection: SH17 model detects ALL classes in one pass
     # ------------------------------------------------------------------ #
 
-    def detect(self, image: np.ndarray, required_ppe: List[str] | None = None) -> Dict[str, Any]:
+    def detect(
+        self,
+        image: np.ndarray,
+        required_ppe: List[str] | None = None,
+        confidence_threshold: float | None = None,
+        person_confidence: float | None = None,
+    ) -> Dict[str, Any]:
         start = time.time()
         if self.ppe_model is None:
             return self._empty_result()
 
         required = required_ppe or DEFAULT_REQUIRED_PPE
-        results = self.ppe_model(image, conf=self.CONF_THRESHOLD, iou=self.IOU_THRESHOLD, verbose=False)
+        detection_confidence = confidence_threshold if confidence_threshold is not None else self.CONF_THRESHOLD
+        minimum_person_confidence = person_confidence if person_confidence is not None else self.PERSON_CONF
+        results = self.ppe_model(image, conf=detection_confidence, iou=self.IOU_THRESHOLD, verbose=False)
 
         raw_persons = []
         ppe_objects = []
@@ -102,9 +123,9 @@ class PPEDetector:
                 cls_id = int(box.cls[0])
                 conf = float(box.conf[0])
                 bbox = box.xyxy[0].tolist()
-                cls_name = SH17_CLASSES.get(cls_id, f"class_{cls_id}")
+                cls_name = self.ppe_model.names.get(cls_id, SH17_CLASSES.get(cls_id, f"class_{cls_id}"))
 
-                if cls_name == "person" and conf >= self.PERSON_CONF:
+                if cls_name == "person" and conf >= minimum_person_confidence:
                     raw_persons.append({"bbox": bbox, "confidence": conf})
                 elif cls_name in PPE_ITEMS:
                     ppe_objects.append({"class": cls_name, "bbox": bbox, "confidence": conf})
@@ -323,11 +344,23 @@ class PPEDetector:
     #  Image processing
     # ------------------------------------------------------------------ #
 
-    def process_image(self, image_path: str, output_path: str, required_ppe: List[str] | None = None) -> Dict[str, Any]:
+    def process_image(
+        self,
+        image_path: str,
+        output_path: str,
+        required_ppe: List[str] | None = None,
+        confidence_threshold: float | None = None,
+        person_confidence: float | None = None,
+    ) -> Dict[str, Any]:
         image = cv2.imread(image_path)
         if image is None:
             raise ValueError(f"ไม่สามารถโหลดภาพ: {image_path}")
-        det = self.detect(image, required_ppe=required_ppe)
+        det = self.detect(
+            image,
+            required_ppe=required_ppe,
+            confidence_threshold=confidence_threshold,
+            person_confidence=person_confidence,
+        )
         cv2.imwrite(output_path, self.draw_detections(image, det))
         return det
 
@@ -335,7 +368,13 @@ class PPEDetector:
     #  Video processing
     # ------------------------------------------------------------------ #
 
-    def _analyze_frame_from_results(self, frame: np.ndarray, yolo_result, required: List[str]) -> Dict[str, Any]:
+    def _analyze_frame_from_results(
+        self,
+        frame: np.ndarray,
+        yolo_result,
+        required: List[str],
+        person_confidence: float | None = None,
+    ) -> Dict[str, Any]:
         """Build detection dict from SH17 model result."""
         start = time.time()
         raw_persons = []
@@ -346,9 +385,10 @@ class PPEDetector:
                 cls_id = int(box.cls[0])
                 conf = float(box.conf[0])
                 bbox = box.xyxy[0].tolist()
-                cls_name = SH17_CLASSES.get(cls_id, f"class_{cls_id}")
+                cls_name = self.ppe_model.names.get(cls_id, SH17_CLASSES.get(cls_id, f"class_{cls_id}"))
 
-                if cls_name == "person" and conf >= self.PERSON_CONF:
+                minimum_person_confidence = person_confidence if person_confidence is not None else self.PERSON_CONF
+                if cls_name == "person" and conf >= minimum_person_confidence:
                     raw_persons.append({"bbox": bbox, "confidence": conf})
                 elif cls_name in PPE_ITEMS:
                     ppe_objects.append({"class": cls_name, "bbox": bbox, "confidence": conf})
@@ -389,16 +429,25 @@ class PPEDetector:
                         "non_compliant_persons": vc},
         }
 
-    def process_video(self, video_path: str, output_path: str, required_ppe: List[str] | None = None) -> Dict[str, Any]:
+    def process_video(
+        self,
+        video_path: str,
+        output_path: str,
+        required_ppe: List[str] | None = None,
+        confidence_threshold: float | None = None,
+        person_confidence: float | None = None,
+    ) -> Dict[str, Any]:
         print(f"[VIDEO] Start: {video_path}  size={os.path.getsize(video_path) if os.path.exists(video_path) else 0}")
 
         start = time.time()
         required = required_ppe or DEFAULT_REQUIRED_PPE
+        detection_confidence = confidence_threshold if confidence_threshold is not None else self.CONF_THRESHOLD
         all_violations: set[str] = set()
         annotated: list[np.ndarray] = []
         fps = 24
         processed = 0
-        MAX_FRAMES = 80
+        MAX_FRAMES = settings.VIDEO_MAX_ANALYZED_FRAMES
+        frame_stride = max(1, settings.VIDEO_FRAME_STRIDE)
         best_frame_det: Dict[str, Any] | None = None
         best_frame_idx = -1
         best_person_count = 0
@@ -407,9 +456,9 @@ class PPEDetector:
             results_gen = self.ppe_model.predict(
                 source=video_path,
                 stream=True,
-                vid_stride=5,
+                vid_stride=frame_stride,
                 imgsz=640,
-                conf=self.CONF_THRESHOLD,
+                conf=detection_confidence,
                 iou=self.IOU_THRESHOLD,
                 verbose=False,
             )
@@ -429,7 +478,12 @@ class PPEDetector:
                     except Exception:
                         pass
 
-                det = self._analyze_frame_from_results(frame_bgr, r, required=required)
+                det = self._analyze_frame_from_results(
+                    frame_bgr,
+                    r,
+                    required=required,
+                    person_confidence=person_confidence,
+                )
                 annotated.append(self.draw_detections(frame_bgr, det))
                 processed += 1
 
@@ -465,14 +519,19 @@ class PPEDetector:
                 if fv > 0:
                     fps = int(fv)
                 idx = 0
-                while idx < MAX_FRAMES * 5:
+                while idx < MAX_FRAMES * frame_stride:
                     ret, frame = cap.read()
                     if not ret:
                         break
                     idx += 1
-                    if idx % 5 != 1:
+                    if idx % frame_stride != 1:
                         continue
-                    det = self.detect(frame, required_ppe=required)
+                    det = self.detect(
+                        frame,
+                        required_ppe=required,
+                        confidence_threshold=detection_confidence,
+                        person_confidence=person_confidence,
+                    )
                     annotated.append(self.draw_detections(frame, det))
                     processed += 1
                     pc = det.get("person_count", 0)
@@ -506,8 +565,7 @@ class PPEDetector:
             cv2.imwrite(best_frame_path, annotated[len(annotated) // 2])
         print(f"[VIDEO] Saved best frame idx={best_frame_idx}: {best_frame_path}")
 
-        self._write_video(annotated, output_path, fps)
-        output_final = best_frame_path
+        output_video_path = self._write_video(annotated, output_path, max(1, round(fps / frame_stride)))
 
         best_persons = best_frame_det.get("persons", []) if best_frame_det else []
         best_pc = len(best_persons)
@@ -545,7 +603,8 @@ class PPEDetector:
             "violation_count": best_vc,
             "has_violation": has_v,
             "processing_time_ms": round(ms, 2),
-            "output_video_path": output_final,
+            "output_video_path": output_video_path,
+            "best_frame_path": best_frame_path,
             "frames_processed": processed,
             "summary": {"message": msg, "status": st,
                         "total_persons": best_pc,

@@ -1,42 +1,62 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15-alpine
     container_name: ppe-db
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: ppe_detection
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-ppe_detection}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ppe_detection}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: ppe-backend
+    restart: unless-stopped
+    env_file: .env
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/ppe_detection
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ppe_detection}
+      AUTO_CREATE_TABLES: "false"
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      UPLOAD_DIR: /app/uploads
+      EVIDENCE_DIR: /app/uploads/evidence
     volumes:
-      - ./backend:/app
       - uploads_data:/app/uploads
     ports:
       - "8000:8000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: ppe-frontend
+    restart: unless-stopped
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:

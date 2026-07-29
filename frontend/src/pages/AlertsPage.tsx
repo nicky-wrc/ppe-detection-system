@@ -4,7 +4,9 @@ import { Bell, AlertTriangle, CheckCircle, Clock, Eye, X, ShieldAlert } from 'lu
 import toast from 'react-hot-toast'
 import { alertsService } from '../services/alerts'
 import { detectionService } from '../services/detection'
+import { eventsService } from '../services/events'
 import type { Alert, Detection } from '../types'
+import { ProtectedDetectionImage } from '../components/ui/ProtectedDetectionImage'
 
 interface AlertGroup extends Alert {
   alert_ids: number[]
@@ -21,6 +23,11 @@ export function AlertsPage() {
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null)
   const [selectedDetection, setSelectedDetection] = useState<Detection | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
+  const [clipUrl, setClipUrl] = useState<string | null>(null)
+
+  useEffect(() => () => {
+    if (clipUrl) URL.revokeObjectURL(clipUrl)
+  }, [clipUrl])
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / perPage)), [total, perPage])
 
@@ -98,10 +105,19 @@ export function AlertsPage() {
   const handleViewDetail = async (alert: Alert) => {
     setSelectedAlert(alert)
     setSelectedDetection(null)
+    setClipUrl(null)
     setLoadingDetail(true)
     try {
       const detection = await detectionService.getDetection(alert.detection_id)
       setSelectedDetection(detection)
+      if (alert.violation_log_id) {
+        try {
+          const clip = await eventsService.getEvidenceBlob(alert.violation_log_id, 'clip')
+          setClipUrl(URL.createObjectURL(clip))
+        } catch {
+          // A clip may still be recording or evidence storage may be disabled.
+        }
+      }
     } catch (e) {
       console.error(e)
       toast.error('โหลดรายละเอียดการตรวจจับไม่สำเร็จ')
@@ -392,12 +408,17 @@ export function AlertsPage() {
                 <div className="flex justify-center">
                 <div className="w-full max-w-[760px] space-y-6">
                   <div className="rounded-2xl overflow-hidden border border-[#dbe3ee] bg-white">
-                    <img
-                      src={detectionService.getResultImageUrl(selectedDetection.id)}
+                    <ProtectedDetectionImage
+                      detectionId={selectedDetection.id}
                       alt="Detection result"
                       className="w-full h-[360px] object-contain"
                     />
                   </div>
+                  {clipUrl && (
+                    <div className="rounded-2xl overflow-hidden border border-[#dbe3ee] bg-black">
+                      <video src={clipUrl} controls className="w-full max-h-[360px]" />
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-5">
                     <div className="bg-white border border-[#e2e8f0] rounded-xl p-4">

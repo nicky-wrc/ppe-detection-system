@@ -1,0 +1,1 @@
+import{c as e}from"./index-DUYY2tQd.js";const t={async list(){return(await e.get(`/zones`)).data},async update(t,n){return(await e.put(`/zones/${t}`,n)).data}};export{t};

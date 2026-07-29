@@ -10,7 +10,7 @@ from sqlalchemy import func, cast, Date
 from datetime import timedelta, date as date_type
 from fastapi import UploadFile
 from app.core.config import settings
-from app.models import Detection, Alert, Zone
+from app.models import Detection, Alert, Zone, UserSettings
 from app.ml.detector import get_detector
 
 
@@ -22,15 +22,50 @@ class DetectionService:
         self.upload_dir.mkdir(parents=True, exist_ok=True)
 
     async def save_upload_file(self, file: UploadFile) -> str:
-        ext = Path(file.filename).suffix
+        ext = Path(file.filename or "upload.bin").suffix.lower()
         filename = f"{uuid.uuid4()}{ext}"
         filepath = self.upload_dir / filename
-        
+
+        total = 0
         async with aiofiles.open(filepath, "wb") as f:
-            content = await file.read()
-            await f.write(content)
+            while chunk := await file.read(1024 * 1024):
+                total += len(chunk)
+                if total > settings.MAX_FILE_SIZE:
+                    await f.close()
+                    filepath.unlink(missing_ok=True)
+                    raise ValueError(f"ไฟล์มีขนาดเกิน {settings.MAX_FILE_SIZE // (1024 * 1024)} MB")
+                await f.write(chunk)
         
         return str(filepath)
+
+    def _get_detection_options(
+        self,
+        user_id: Optional[int],
+        zone_id: Optional[int],
+    ) -> tuple[list[str] | None, float | None, float | None]:
+        required_ppe: list[str] | None = None
+        if zone_id is not None:
+            zone = self.db.query(Zone).filter(Zone.id == zone_id, Zone.is_active.is_(True)).first()
+            if zone and isinstance(zone.required_ppe, list) and zone.required_ppe:
+                required_ppe = [item for item in zone.required_ppe if item in {"helmet", "safety-vest"}]
+
+        confidence: float | None = None
+        person_confidence: float | None = None
+        if user_id is not None:
+            user_settings = self.db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+            if user_settings:
+                confidence = max(0.1, min(0.9, user_settings.confidence_threshold / 100))
+                person_confidence = max(0.1, min(0.9, 1 - (user_settings.ppe_detection_sensitivity / 100)))
+                if required_ppe is None and user_settings.active_ppe_rules:
+                    active = [
+                        item
+                        for item in ("helmet", "safety-vest")
+                        if user_settings.active_ppe_rules.get(item, False)
+                    ]
+                    if active:
+                        required_ppe = active
+
+        return required_ppe, confidence, person_confidence
 
     async def process_image(
         self,
@@ -43,13 +78,15 @@ class DetectionService:
         result_filename = f"result_{uuid.uuid4()}.jpg"
         result_path = str(self.upload_dir / result_filename)
         
-        required_ppe: list[str] | None = None
-        if zone_id is not None:
-            zone = self.db.query(Zone).filter(Zone.id == zone_id).first()
-            if zone and isinstance(zone.required_ppe, list) and len(zone.required_ppe) > 0:
-                required_ppe = zone.required_ppe
+        required_ppe, confidence, person_confidence = self._get_detection_options(user_id, zone_id)
 
-        detection_result = self.detector.process_image(original_path, result_path, required_ppe=required_ppe)
+        detection_result = self.detector.process_image(
+            original_path,
+            result_path,
+            required_ppe=required_ppe,
+            confidence_threshold=confidence,
+            person_confidence=person_confidence,
+        )
         
         detection = Detection(
             user_id=user_id,
@@ -78,21 +115,25 @@ class DetectionService:
     async def process_frame(
         self,
         file: UploadFile,
-        zone_id: Optional[int] = None
+        zone_id: Optional[int] = None,
+        user_id: Optional[int] = None,
     ) -> dict:
         content = await file.read()
+        if len(content) > settings.MAX_FRAME_SIZE:
+            raise ValueError(f"เฟรมมีขนาดเกิน {settings.MAX_FRAME_SIZE // (1024 * 1024)} MB")
         image_array = np.frombuffer(content, dtype=np.uint8)
         image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
         if image is None:
             raise ValueError("ไม่สามารถอ่านเฟรมจากกล้องได้")
 
-        required_ppe: list[str] | None = None
-        if zone_id is not None:
-            zone = self.db.query(Zone).filter(Zone.id == zone_id).first()
-            if zone and isinstance(zone.required_ppe, list) and len(zone.required_ppe) > 0:
-                required_ppe = zone.required_ppe
+        required_ppe, confidence, person_confidence = self._get_detection_options(user_id, zone_id)
 
-        detection_result = self.detector.detect(image, required_ppe=required_ppe)
+        detection_result = self.detector.detect(
+            image,
+            required_ppe=required_ppe,
+            confidence_threshold=confidence,
+            person_confidence=person_confidence,
+        )
 
         return {
             "id": 0,
@@ -121,22 +162,25 @@ class DetectionService:
         result_filename = f"result_{uuid.uuid4()}.avi"
         result_path = str(self.upload_dir / result_filename)
         
-        required_ppe: list[str] | None = None
-        if zone_id is not None:
-            zone = self.db.query(Zone).filter(Zone.id == zone_id).first()
-            if zone and isinstance(zone.required_ppe, list) and len(zone.required_ppe) > 0:
-                required_ppe = zone.required_ppe
+        required_ppe, confidence, person_confidence = self._get_detection_options(user_id, zone_id)
 
-        detection_result = self.detector.process_video(original_path, result_path, required_ppe=required_ppe)
+        detection_result = self.detector.process_video(
+            original_path,
+            result_path,
+            required_ppe=required_ppe,
+            confidence_threshold=confidence,
+            person_confidence=person_confidence,
+        )
         
-        # ใช้ path จริงที่ detector สร้างขึ้น (อาจเปลี่ยน extension)
-        actual_output_path = detection_result.get("output_video_path", result_path)
+        actual_video_path = detection_result.get("output_video_path", result_path)
+        best_frame_path = detection_result.get("best_frame_path")
         
         detection = Detection(
             user_id=user_id,
             zone_id=zone_id,
             original_image_path=original_path,
-            result_image_path=actual_output_path,
+            result_image_path=best_frame_path,
+            result_video_path=actual_video_path,
             detected_objects=detection_result.get("detected_objects", []),
             persons=detection_result.get("persons", []),
             violations=detection_result.get("violations", []),

@@ -4,6 +4,7 @@ import { detectionService } from '../services/detection'
 import type { Detection } from '../types'
 import toast from 'react-hot-toast'
 import { saveDetectionPdf } from '../utils/detectionPdfReport'
+import { ProtectedDetectionImage } from '../components/ui/ProtectedDetectionImage'
 import {
   AlertTriangle,
   CheckCircle,
@@ -190,8 +191,8 @@ export function HistoryPage() {
                       {/* Thumbnail */}
                       <td className="px-6 py-4 border-b border-[#f1f5f9] align-middle">
                         <div className="w-13 h-13 rounded-xl overflow-hidden border border-[#e2e8f0] bg-[#f8fafc] shrink-0" style={{ width: 52, height: 52 }}>
-                          <img
-                            src={detectionService.getResultImageUrl(detection.id)}
+                          <ProtectedDetectionImage
+                            detectionId={detection.id}
                             alt=""
                             className="w-full h-full object-cover"
                           />
@@ -340,8 +341,8 @@ export function HistoryPage() {
 
                 {/* Detection Image */}
                 <div className="rounded-2xl overflow-hidden border border-[#e2e8f0] bg-[#f8fafc]">
-                  <img
-                    src={detectionService.getResultImageUrl(selectedDetection.id)}
+                  <ProtectedDetectionImage
+                    detectionId={selectedDetection.id}
                     alt="Detection result"
                     className="w-full max-h-[380px] object-contain"
                   />

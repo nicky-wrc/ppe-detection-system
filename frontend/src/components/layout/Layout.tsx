@@ -1,7 +1,10 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
-import { Shield, User, LogOut, Camera, FileText, LayoutDashboard, Menu, X } from 'lucide-react'
-import { useState } from 'react'
+import { Bell, Shield, User, Users, LogOut, Camera, FileText, LayoutDashboard, Menu, ScanLine, Settings, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import toast from 'react-hot-toast'
+import { camerasService } from '../../services/cameras'
+import { settingsService } from '../../services/settings'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -10,10 +13,10 @@ interface LayoutProps {
 const navItems = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/detection', icon: Camera, label: 'Detection' },
-  //  { path: '/camera', icon: ScanLine, label: 'Camera' },
+  { path: '/camera', icon: ScanLine, label: 'Cameras' },
   { path: '/reports', icon: FileText, label: 'Reports' },
-  //{ path: '/alerts', icon: Bell, label: 'Alerts' },
-  // { path: '/settings', icon: Settings, label: 'Settings' },
+  { path: '/alerts', icon: Bell, label: 'Alerts' },
+  { path: '/settings', icon: Settings, label: 'Settings' },
 ]
 
 export function Layout({ children }: LayoutProps) {
@@ -22,6 +25,45 @@ export function Layout({ children }: LayoutProps) {
   const { user, logout } = useAuthStore()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
+  const [alertSound, setAlertSound] = useState(false)
+  const visibleNavItems = user?.role === 'admin'
+    ? [...navItems, { path: '/admin/users', icon: Users, label: 'Users' }]
+    : navItems
+
+  useEffect(() => {
+    if (!user) return
+    void settingsService.getMe().then((settings) => setAlertSound(settings.alert_sound)).catch(() => undefined)
+  }, [user])
+
+  useEffect(() => {
+    if (!user) return
+    const socket = camerasService.connect('alerts', (raw) => {
+      const message = raw as { type?: string; data?: { camera_name?: string; violation_type?: string } }
+      if (message.type === 'alert') {
+        if (alertSound) {
+          try {
+            const AudioContextClass = window.AudioContext
+            const context = new AudioContextClass()
+            const oscillator = context.createOscillator()
+            const gain = context.createGain()
+            oscillator.frequency.value = 880
+            gain.gain.value = 0.08
+            oscillator.connect(gain)
+            gain.connect(context.destination)
+            oscillator.start()
+            oscillator.stop(context.currentTime + 0.18)
+            oscillator.onended = () => void context.close()
+          } catch {
+            // Visual notification remains available when audio is blocked.
+          }
+        }
+        toast.error(`PPE violation: ${message.data?.violation_type || 'unknown'} • ${message.data?.camera_name || 'camera'}`, {
+          duration: 6000,
+        })
+      }
+    })
+    return () => socket?.close()
+  }, [alertSound, user])
 
   const handleLogout = () => {
     logout()
@@ -73,7 +115,7 @@ export function Layout({ children }: LayoutProps) {
           justifyContent: 'center',
           flex: 1,
         }}>
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const isActive =
               location.pathname === item.path ||
               (item.path !== '/' && location.pathname.startsWith(item.path))
@@ -210,7 +252,7 @@ export function Layout({ children }: LayoutProps) {
           overflowY: 'auto',
         }}>
           <nav style={{ display: 'flex', flexDirection: 'column', padding: '12px', gap: '4px' }}>
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const isActive =
                 location.pathname === item.path ||
                 (item.path !== '/' && location.pathname.startsWith(item.path))

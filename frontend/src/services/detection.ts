@@ -1,4 +1,5 @@
 import api from './api'
+import { API_ORIGIN } from './api'
 import type { Detection, DetectionStats } from '../types'
 
 export interface DailyData {
@@ -83,7 +84,7 @@ export const detectionService = {
   },
 
   getResultImageUrl(id: number): string {
-    return `${window.location.protocol}//${window.location.hostname}:8000/api/v1/detection/${id}/image/result`
+    return `${API_ORIGIN}/api/v1/detection/${id}/image/result`
   },
 
   /**
@@ -106,7 +107,7 @@ export const detectionService = {
       })
       const raw = response.data as Blob
       const headerCt = response.headers['content-type'] as string | undefined
-      let blob = normalizeType(raw, headerCt)
+      const blob = normalizeType(raw, headerCt)
       if (blob.size < 2048 && (blob.type || '').includes('json')) {
         const msg = await raw.text()
         throw new Error(msg || 'Unexpected JSON body')
@@ -114,7 +115,12 @@ export const detectionService = {
       return blob
     } catch {
       const url = this.getResultImageUrl(detectionId)
-      const res = await fetch(url, { method: 'GET', cache: 'no-store' })
+      const token = localStorage.getItem('token')
+      const res = await fetch(url, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
       if (!res.ok) {
         throw new Error(`Failed to load result media: ${res.status}`)
       }
@@ -124,6 +130,6 @@ export const detectionService = {
   },
 
   getResultVideoUrl(id: number): string {
-    return `${window.location.protocol}//${window.location.hostname}:8000/api/v1/detection/${id}/video/result`
+    return `${API_ORIGIN}/api/v1/detection/${id}/video/result`
   },
 }

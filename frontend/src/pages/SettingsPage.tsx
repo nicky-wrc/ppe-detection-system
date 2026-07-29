@@ -39,11 +39,6 @@ export function SettingsPage() {
   const PPE_RULES = useMemo(() => ([
     { key: 'helmet', label: 'Hard Hat / Helmet' },
     { key: 'safety-vest', label: 'High-Vis Vest' },
-    { key: 'glasses', label: 'Safety Eyewear' },
-    { key: 'gloves', label: 'Safety Gloves' },
-    { key: 'shoes', label: 'Safety Shoes' },
-    { key: 'face-mask', label: 'Face Mask' },
-    { key: 'ear-mufs', label: 'Ear Protection' },
   ]), [])
 
   const loadAll = async () => {
@@ -394,11 +389,11 @@ export function SettingsPage() {
                   </div>
                   <div className="bg-[#f8fafc] border border-[#e2e8f0] rounded-2xl p-[24px]">
                     <p className="text-[12px] font-bold text-[#64748b] uppercase tracking-[0.05em] m-0 mb-3">Software Version</p>
-                    <p className="text-[16px] text-[#0f172a] font-bold m-0">v2.0.0 (Latest)</p>
+                    <p className="text-[16px] text-[#0f172a] font-bold m-0">v2.0.0 pilot</p>
                   </div>
                   <div className="bg-[#f8fafc] border border-[#e2e8f0] rounded-2xl p-[24px]">
                     <p className="text-[12px] font-bold text-[#64748b] uppercase tracking-[0.05em] m-0 mb-3">AI Model</p>
-                    <p className="text-[16px] text-[#2563eb] font-bold m-0 flex items-center gap-[6px]">YOLO (SH17) <span className="px-[8px] py-[2px] bg-[#dbeafe] text-[#1d4ed8] text-[11px] font-bold rounded-full border border-[#bfdbfe]">Active</span></p>
+                    <p className="text-[16px] text-[#2563eb] font-bold m-0 flex items-center gap-[6px]">SH17 baseline <span className="px-[8px] py-[2px] bg-[#dbeafe] text-[#1d4ed8] text-[11px] font-bold rounded-full border border-[#bfdbfe]">Active</span></p>
                   </div>
                 </div>
               </div>

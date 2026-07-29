@@ -345,6 +345,7 @@ export function DetectionPage() {
 
   const handleDetect = async () => {
     if (!selectedFile) return
+    stopLiveDetection()
     setIsLoading(true)
     try {
       const detection = activeTab === 'video'
@@ -573,18 +574,15 @@ export function DetectionPage() {
                       </button>
                     ) : activeTab === 'video' ? (
                       <button
-                        onClick={(e) => { 
-                          e.stopPropagation(); 
-                          if (videoRef.current?.paused) videoRef.current?.play()
-                          else videoRef.current?.pause()
-                        }}
+                        onClick={(e) => { e.stopPropagation(); void handleDetect() }}
+                        disabled={isLoading}
                         className={
-                          isLiveDetecting
-                            ? 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#ef4444] hover:bg-[#dc2626] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-pointer shadow-sm transition-all'
+                          isLoading
+                            ? 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#93c5fd] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-not-allowed shadow-sm transition-all'
                             : 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-pointer shadow-sm transition-all'
                         }
                       >
-                        {isLiveDetecting ? '⏸ Pause Detection' : '▶ Play Live Detection'}
+                        {isLoading ? <><Loader2 size={16} className="animate-spin" /> Processing video...</> : 'Process & save video'}
                       </button>
                     ) : (
                       <button

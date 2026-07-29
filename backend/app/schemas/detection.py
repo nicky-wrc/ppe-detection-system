@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List, Any, Dict
 from datetime import datetime
 
@@ -18,8 +18,8 @@ class PersonPPEStatus(BaseModel):
     id: int
     bbox: List[float]
     confidence: float
-    wearing: List[str] = []          # อุปกรณ์ที่ใส่
-    not_wearing: List[str] = []      # อุปกรณ์ที่ไม่ใส่
+    wearing: List[str] = Field(default_factory=list)          # อุปกรณ์ที่ใส่
+    not_wearing: List[str] = Field(default_factory=list)      # อุปกรณ์ที่ไม่ใส่
     is_compliant: bool = True        # ปฏิบัติตามกฎหรือไม่
 
 
@@ -30,7 +30,7 @@ class DetectionSummary(BaseModel):
     total_persons: int = 0
     compliant_persons: int = 0
     non_compliant_persons: int = 0
-    violation_breakdown: Dict[str, int] = {}
+    violation_breakdown: Dict[str, int] = Field(default_factory=dict)
 
 
 class DetectionResponse(BaseModel):
@@ -38,9 +38,10 @@ class DetectionResponse(BaseModel):
     zone_id: Optional[int] = None
     original_image_path: str
     result_image_path: Optional[str] = None
-    detected_objects: List[Any] = []
-    persons: List[Any] = []          # รายการคนพร้อมสถานะ PPE
-    violations: List[str] = []
+    result_video_path: Optional[str] = None
+    detected_objects: List[Any] = Field(default_factory=list)
+    persons: List[Any] = Field(default_factory=list)          # รายการคนพร้อมสถานะ PPE
+    violations: List[str] = Field(default_factory=list)
     person_count: int = 0
     violation_count: int = 0
     has_violation: bool = False
@@ -48,8 +49,7 @@ class DetectionResponse(BaseModel):
     summary: Optional[Dict[str, Any]] = None  # สรุปผลการตรวจจับ
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DetectionStats(BaseModel):

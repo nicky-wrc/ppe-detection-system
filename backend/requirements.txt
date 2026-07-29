@@ -18,8 +18,8 @@ pydantic==2.6.1
 pydantic-settings==2.1.0
 email-validator==2.3.0
 
-# AI/ML  (ultralytics >=8.3 supports YOLO11)
-ultralytics>=8.3.0
+# AI/ML (pin the reviewed runtime for reproducible builds)
+ultralytics==8.4.23
 opencv-python>=4.9.0
 numpy>=1.26.0
 pillow>=10.2.0

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Layout } from '../components/layout/Layout'
 import { detectionService } from '../services/detection'
 import { alertsService } from '../services/alerts'
-import { zonesService } from '../services/zones'
+import { camerasService } from '../services/cameras'
+import { ProtectedDetectionImage } from '../components/ui/ProtectedDetectionImage'
 import type { Alert, DetectionStats, Detection } from '../types'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
@@ -172,7 +173,7 @@ export function DashboardPage() {
   const [stats, setStats] = useState<DetectionStats | null>(null)
   const [violations, setViolations] = useState<ViolationRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeZones, setActiveZones] = useState(0)
+  const [activeCameras, setActiveCameras] = useState(0)
   const [activeFilter, setActiveFilter] = useState<string>('Today')
   const [customStartDate, setCustomStartDate] = useState<string>('')
   const [customEndDate, setCustomEndDate] = useState<string>('')
@@ -209,13 +210,13 @@ export function DashboardPage() {
 
   const loadData = async () => {
     try {
-      const [statsData, alertsData, zonesData] = await Promise.all([
+      const [statsData, alertsData, camerasData] = await Promise.all([
         detectionService.getStats(),
         alertsService.list(1, 20).catch(() => ({ items: [] as Alert[], total: 0, page: 1, per_page: 20 })),
-        zonesService.list().catch(() => []),
+        camerasService.list().catch(() => []),
       ])
       setStats(statsData)
-      setActiveZones((zonesData || []).filter((z) => z.is_active).length)
+      setActiveCameras((camerasData || []).filter((camera) => camera.is_online).length)
 
       const items = alertsData?.items || []
       
@@ -587,7 +588,7 @@ export function DashboardPage() {
               <Camera size={18} className="text-[#94a3b8]" strokeWidth={2} />
             </div>
             <div className="mt-2 flex flex-col gap-[2px]">
-              <p className="text-[34px] font-extrabold text-[#0f172a] m-0 leading-[1] tracking-tight">{activeZones}</p>
+              <p className="text-[34px] font-extrabold text-[#0f172a] m-0 leading-[1] tracking-tight">{activeCameras}</p>
               <p className="text-[12px] text-[#94a3b8] font-medium m-0 mt-[2px]">Stable</p>
             </div>
           </div>
@@ -718,8 +719,8 @@ export function DashboardPage() {
                     <tr key={row.id} className="transition-colors duration-150">
                       <td className="text-[13px] text-[#334155] border-b border-[#f1f5f9]" style={{ padding: '16px 24px' }}>
                         <div className="w-14 h-14 rounded-lg bg-[#f1f5f9] overflow-hidden border border-[#e5eaf0]">
-                          <img
-                            src={detectionService.getResultImageUrl(row.detectionId)}
+                          <ProtectedDetectionImage
+                            detectionId={row.detectionId}
                             alt={row.refId}
                             className="w-full h-full object-cover"
                           />
@@ -833,8 +834,8 @@ export function DashboardPage() {
                 <div className="flex justify-center">
                   <div className="w-full max-w-[740px] space-y-7">
                     <div className="rounded-2xl overflow-hidden border border-[#d6e0ec] bg-white shadow-[0_6px_18px_rgba(15,23,42,0.08)]">
-                      <img
-                        src={detectionService.getResultImageUrl(selectedViolation.detectionId)}
+                      <ProtectedDetectionImage
+                        detectionId={selectedViolation.detectionId}
                         alt={selectedViolation.refId}
                         className="w-full h-[400px] object-contain bg-[#f8fafc]"
                       />

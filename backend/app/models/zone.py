@@ -13,13 +13,13 @@ class Zone(Base):
     description = Column(Text, nullable=True)
     
     # Polygon coordinates for zone boundary [[x1,y1], [x2,y2], ...]
-    polygon_points = Column(JSON, default=[])
+    polygon_points = Column(JSON, default=list)
     
     # Required PPE in this zone
-    required_ppe = Column(JSON, default=[])  # ["hardhat", "vest", "mask"]
+    required_ppe = Column(JSON, default=list)  # ["helmet", "safety-vest"]
     
     # Rules configuration
-    rules_config = Column(JSON, default={})
+    rules_config = Column(JSON, default=dict)
     
     # Zone status
     is_active = Column(Boolean, default=True)
