@@ -1,658 +1,715 @@
-"""
-PPE Detection System - SH17 Pre-trained Model
-ใช้โมเดล YOLOv8 ที่เทรนบน SH17 dataset ตรวจจับ PPE โดยตรง
-ไม่ต้องเดาจากสีอีกต่อไป - โมเดลรู้จัก Helmet, Safety-vest, Person ฯลฯ
-"""
+"""Hybrid PPE detection using a SH17 PPE model and a COCO person model."""
 
-import cv2
-import numpy as np
+from __future__ import annotations
+
+import logging
 import os
 import time
 from pathlib import Path
-from typing import List, Dict, Any
-from ultralytics import YOLO
+from typing import Any
+
+import cv2
+import numpy as np
+import torch
 from PIL import Image, ImageDraw, ImageFont
+from ultralytics import YOLO
+
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
 
-# SH17 class mapping (17 classes)
 SH17_CLASSES = {
-    0: "person", 1: "ear", 2: "ear-mufs", 3: "face", 4: "face-guard",
-    5: "face-mask", 6: "foot", 7: "tool", 8: "glasses", 9: "gloves",
-    10: "helmet", 11: "hands", 12: "head", 13: "medical-suit",
-    14: "shoes", 15: "safety-suit", 16: "safety-vest",
+    0: "person",
+    1: "ear",
+    2: "ear-mufs",
+    3: "face",
+    4: "face-guard",
+    5: "face-mask",
+    6: "foot",
+    7: "tool",
+    8: "glasses",
+    9: "gloves",
+    10: "helmet",
+    11: "hands",
+    12: "head",
+    13: "medical-suit",
+    14: "shoes",
+    15: "safety-suit",
+    16: "safety-vest",
 }
 
 SH17_THAI = {
-    "person": "คน", "helmet": "หมวกนิรภัย", "safety-vest": "เสื้อสะท้อนแสง",
-    "glasses": "แว่นตานิรภัย", "gloves": "ถุงมือ", "shoes": "รองเท้านิรภัย",
-    "face-mask": "หน้ากาก", "face-guard": "กระบังหน้า", "ear-mufs": "ที่ครอบหู",
-    "head": "ศีรษะ", "face": "ใบหน้า", "hands": "มือ", "foot": "เท้า",
-    "ear": "หู", "tool": "เครื่องมือ", "medical-suit": "ชุดการแพทย์",
-    "safety-suit": "ชุดนิรภัย",
+    "person": "คน",
+    "helmet": "หมวกนิรภัย",
+    "safety-vest": "เสื้อสะท้อนแสง",
+    "glasses": "แว่นตานิรภัย",
+    "gloves": "ถุงมือ",
+    "shoes": "รองเท้านิรภัย",
+    "face-mask": "หน้ากาก",
+    "face-guard": "กระบังหน้า",
+    "ear-mufs": "ที่ครอบหู",
 }
 
 PPE_ITEMS = {"helmet", "safety-vest"}
 DEFAULT_REQUIRED_PPE = ["helmet", "safety-vest"]
 
 
-class PPEDetector:
+def ppe_sensitivity_to_confidence(sensitivity: float) -> float:
+    """Map the UI's 0-100 sensitivity to an actual PPE confidence floor.
 
-    CONF_THRESHOLD = 0.25
-    PERSON_CONF = 0.40
+    A larger sensitivity must accept lower-confidence PPE candidates. The old
+    implementation incorrectly applied this value to person detections.
+    """
+
+    value = max(0.0, min(100.0, float(sensitivity)))
+    return round(max(0.10, min(0.50, 0.45 - value * 0.0035)), 3)
+
+
+def bbox_iou(first: list[float], second: list[float]) -> float:
+    x1 = max(first[0], second[0])
+    y1 = max(first[1], second[1])
+    x2 = min(first[2], second[2])
+    y2 = min(first[3], second[3])
+    intersection = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+    first_area = max(0.0, first[2] - first[0]) * max(0.0, first[3] - first[1])
+    second_area = max(0.0, second[2] - second[0]) * max(0.0, second[3] - second[1])
+    union = first_area + second_area - intersection
+    return intersection / union if union > 0 else 0.0
+
+
+def non_max_suppression(
+    objects: list[dict[str, Any]],
+    iou_threshold: float = 0.55,
+    class_aware: bool = False,
+) -> list[dict[str, Any]]:
+    """Deduplicate detections from full-frame, person-assist, and crop passes."""
+
+    kept: list[dict[str, Any]] = []
+    for candidate in sorted(objects, key=lambda item: item["confidence"], reverse=True):
+        duplicate = False
+        for existing in kept:
+            if class_aware and candidate.get("class") != existing.get("class"):
+                continue
+            if bbox_iou(candidate["bbox"], existing["bbox"]) >= iou_threshold:
+                duplicate = True
+                break
+        if not duplicate:
+            kept.append(candidate)
+    return kept
+
+
+class PPEDetector:
+    """Detect people with YOLO11 and required PPE with a SH17 YOLOv8 model."""
+
+    CONF_THRESHOLD = 0.20
+    PERSON_CONF = 0.30
     IOU_THRESHOLD = 0.45
 
-    def __init__(self):
-        self.ppe_model = None
-        self.font = None
-        self.font_small = None
-        self._load_model()
+    def __init__(self) -> None:
+        self.ppe_model: YOLO | None = None
+        self.person_model: YOLO | None = None
+        self.ppe_model_path: Path | None = None
+        self.person_model_path: Path | None = None
+        self.font: ImageFont.FreeTypeFont | ImageFont.ImageFont | None = None
+        self.font_small: ImageFont.FreeTypeFont | ImageFont.ImageFont | None = None
+        self.device = self._resolve_device(settings.INFERENCE_DEVICE)
+        self.crop_refinement_enabled = bool(settings.PPE_CROP_REFINEMENT and self.device != "cpu")
+        self._load_models()
         self._load_font()
 
-    def _load_model(self):
+    @staticmethod
+    def _resolve_device(configured: str) -> str:
+        requested = configured.strip().lower()
+        if requested == "auto":
+            return "0" if torch.cuda.is_available() else "cpu"
+        if requested not in {"cpu", "mps"} and not torch.cuda.is_available():
+            logger.warning("CUDA device %s was requested but is unavailable; using CPU", configured)
+            return "cpu"
+        return configured
+
+    @property
+    def engine_metadata(self) -> dict[str, Any]:
+        return {
+            "ppe_model": self.ppe_model_path.name if self.ppe_model_path else None,
+            "person_model": self.person_model_path.name if self.person_model_path else None,
+            "device": "cuda:0" if self.device == "0" else self.device,
+            "crop_refinement": self.crop_refinement_enabled,
+            "low_light_enhancement": bool(settings.LOW_LIGHT_ENHANCEMENT),
+        }
+
+    @staticmethod
+    def _model_names(model: YOLO) -> dict[int, str]:
+        names = model.names
+        if isinstance(names, dict):
+            return {int(key): str(value) for key, value in names.items()}
+        return {index: str(value) for index, value in enumerate(names)}
+
+    @staticmethod
+    def _resolve_model_path(model_dir: Path, configured: str) -> Path:
+        path = Path(configured)
+        return path if path.is_absolute() else model_dir / path
+
+    def _load_models(self) -> None:
         model_dir = Path(__file__).resolve().parent.parent.parent
-        configured = Path(settings.MODEL_PATH)
-        if not configured.is_absolute():
-            configured = model_dir / configured
-        candidates = [configured, model_dir / "yolo8s.pt", model_dir / "yolo8m.pt"]
+        configured_ppe = self._resolve_model_path(model_dir, settings.MODEL_PATH)
+        candidates = [configured_ppe, model_dir / "yolo8m.pt", model_dir / "yolo8s.pt"]
         seen: set[Path] = set()
-        for p in candidates:
-            p = p.resolve()
-            if p in seen:
+
+        for candidate in candidates:
+            path = candidate.resolve()
+            if path in seen:
                 continue
-            seen.add(p)
-            if p.exists():
-                try:
-                    model = YOLO(str(p))
-                    class_names = set(model.names.values())
-                    if not {"person", "helmet", "safety-vest"}.issubset(class_names):
-                        print(f"[PPE] Skipping incompatible model {p.name}: required SH17 classes are missing")
-                        continue
-                    self.ppe_model = model
-                    print(f"[PPE] SH17 model loaded: {p.name} ({settings.MODEL_VERSION})")
-                    return
-                except Exception as e:
-                    print(f"[PPE] Failed to load {p.name}: {e}")
-        print("[PPE] ERROR: No SH17 model found! Place yolo8m.pt or yolo8s.pt in backend/")
+            seen.add(path)
+            if not path.exists():
+                continue
+            try:
+                model = YOLO(str(path))
+                available = set(self._model_names(model).values())
+                if not {"person", "helmet", "safety-vest"}.issubset(available):
+                    logger.warning("Skipping incompatible PPE model %s: SH17 PPE classes are missing", path.name)
+                    continue
+                self.ppe_model = model
+                self.ppe_model_path = path
+                logger.info("Loaded PPE model %s on %s", path.name, self.device)
+                break
+            except (OSError, RuntimeError, ValueError):
+                logger.exception("Failed to load PPE model %s", path)
 
-    def _load_font(self):
-        try:
-            for fp in [
-                "C:/Windows/Fonts/tahoma.ttf",
-                "C:/Windows/Fonts/THSarabunNew.ttf",
-                "C:/Windows/Fonts/cordia.ttf",
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            ]:
-                if Path(fp).exists():
-                    self.font = ImageFont.truetype(fp, 24)
-                    self.font_small = ImageFont.truetype(fp, 18)
-                    return
-            self.font = ImageFont.load_default()
-            self.font_small = ImageFont.load_default()
-        except Exception:
-            self.font = ImageFont.load_default()
-            self.font_small = ImageFont.load_default()
+        person_path = self._resolve_model_path(model_dir, settings.PERSON_MODEL_PATH).resolve()
+        if person_path.exists():
+            try:
+                model = YOLO(str(person_path))
+                if "person" not in set(self._model_names(model).values()):
+                    logger.warning("Skipping person-assist model %s: person class is missing", person_path.name)
+                else:
+                    self.person_model = model
+                    self.person_model_path = person_path
+                    logger.info("Loaded person-assist model %s on %s", person_path.name, self.device)
+            except (OSError, RuntimeError, ValueError):
+                logger.exception("Failed to load person-assist model %s", person_path)
+        else:
+            logger.warning("Person-assist model does not exist: %s", person_path)
 
-    # ------------------------------------------------------------------ #
-    #  Core detection: SH17 model detects ALL classes in one pass
-    # ------------------------------------------------------------------ #
+        if self.ppe_model is None:
+            logger.error("No compatible SH17 PPE model was found under %s", model_dir)
+        if settings.PPE_CROP_REFINEMENT and not self.crop_refinement_enabled:
+            logger.warning("PPE crop refinement is disabled on CPU to protect camera latency")
+
+    def _load_font(self) -> None:
+        for font_path in [
+            "C:/Windows/Fonts/tahoma.ttf",
+            "C:/Windows/Fonts/THSarabunNew.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]:
+            try:
+                if Path(font_path).exists():
+                    self.font = ImageFont.truetype(font_path, 24)
+                    self.font_small = ImageFont.truetype(font_path, 18)
+                    return
+            except OSError:
+                logger.debug("Could not load font %s", font_path, exc_info=True)
+        self.font = ImageFont.load_default()
+        self.font_small = ImageFont.load_default()
+
+    @staticmethod
+    def enhance_low_light(image: np.ndarray, threshold: float) -> tuple[np.ndarray, float, bool]:
+        """Apply CLAHE to luminance only when the frame is genuinely dark."""
+
+        if image.size == 0:
+            return image, 0.0, False
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        luminance, channel_a, channel_b = cv2.split(lab)
+        mean_luma = float(np.mean(luminance))
+        if mean_luma >= threshold:
+            return image, mean_luma, False
+        clahe = cv2.createCLAHE(clipLimit=2.2, tileGridSize=(8, 8))
+        enhanced_luma = clahe.apply(luminance)
+        enhanced = cv2.cvtColor(cv2.merge((enhanced_luma, channel_a, channel_b)), cv2.COLOR_LAB2BGR)
+        return enhanced, mean_luma, True
+
+    def _predict(
+        self,
+        model: YOLO,
+        source: np.ndarray | list[np.ndarray],
+        confidence: float,
+        classes: list[int] | None = None,
+    ) -> list[Any]:
+        return model.predict(
+            source=source,
+            conf=max(0.05, min(0.95, confidence)),
+            iou=self.IOU_THRESHOLD,
+            imgsz=max(320, min(1280, settings.INFERENCE_IMAGE_SIZE)),
+            device=self.device,
+            classes=classes,
+            max_det=300,
+            verbose=False,
+        )
+
+    def _parse_ppe_result(
+        self,
+        result: Any,
+        ppe_confidence: float,
+        person_confidence: float,
+        offset: tuple[int, int] = (0, 0),
+        include_person: bool = True,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        persons: list[dict[str, Any]] = []
+        ppe: list[dict[str, Any]] = []
+        if result.boxes is None or self.ppe_model is None:
+            return persons, ppe
+        names = self._model_names(self.ppe_model)
+        offset_x, offset_y = offset
+        for box in result.boxes:
+            class_id = int(box.cls[0])
+            confidence = float(box.conf[0])
+            class_name = names.get(class_id, SH17_CLASSES.get(class_id, f"class_{class_id}"))
+            x1, y1, x2, y2 = [float(value) for value in box.xyxy[0].tolist()]
+            bbox = [x1 + offset_x, y1 + offset_y, x2 + offset_x, y2 + offset_y]
+            if include_person and class_name == "person" and confidence >= person_confidence:
+                persons.append({"bbox": bbox, "confidence": confidence, "source": "yolov8-sh17"})
+            elif class_name in PPE_ITEMS and confidence >= ppe_confidence:
+                ppe.append({"class": class_name, "bbox": bbox, "confidence": confidence, "source": "yolov8-sh17"})
+        return persons, ppe
+
+    def _person_assist(self, frame: np.ndarray, confidence: float) -> list[dict[str, Any]]:
+        if self.person_model is None:
+            return []
+        names = self._model_names(self.person_model)
+        person_ids = [class_id for class_id, name in names.items() if name == "person"]
+        results = self._predict(self.person_model, frame, confidence, classes=person_ids)
+        persons: list[dict[str, Any]] = []
+        for result in results:
+            if result.boxes is None:
+                continue
+            for box in result.boxes:
+                score = float(box.conf[0])
+                if score < confidence:
+                    continue
+                persons.append({
+                    "bbox": [float(value) for value in box.xyxy[0].tolist()],
+                    "confidence": score,
+                    "source": "yolo11-person",
+                })
+        return persons
+
+    def _refine_ppe_in_person_crops(
+        self,
+        frame: np.ndarray,
+        persons: list[dict[str, Any]],
+        ppe_confidence: float,
+    ) -> list[dict[str, Any]]:
+        if not self.crop_refinement_enabled or self.ppe_model is None or not persons:
+            return []
+        height, width = frame.shape[:2]
+        crops: list[np.ndarray] = []
+        offsets: list[tuple[int, int]] = []
+        ranked = sorted(persons, key=lambda item: item["confidence"], reverse=True)
+        for person in ranked[: max(1, settings.PPE_CROP_MAX_PERSONS)]:
+            x1, y1, x2, y2 = person["bbox"]
+            person_width = x2 - x1
+            person_height = y2 - y1
+            crop_x1 = max(0, int(x1 - person_width * 0.12))
+            crop_y1 = max(0, int(y1 - person_height * 0.18))
+            crop_x2 = min(width, int(x2 + person_width * 0.12))
+            crop_y2 = min(height, int(y2 + person_height * 0.05))
+            if crop_x2 - crop_x1 < 48 or crop_y2 - crop_y1 < 80:
+                continue
+            crops.append(frame[crop_y1:crop_y2, crop_x1:crop_x2])
+            offsets.append((crop_x1, crop_y1))
+        if not crops:
+            return []
+
+        refined: list[dict[str, Any]] = []
+        for result, offset in zip(self._predict(self.ppe_model, crops, ppe_confidence), offsets):
+            _, ppe = self._parse_ppe_result(
+                result,
+                ppe_confidence=ppe_confidence,
+                person_confidence=1.0,
+                offset=offset,
+                include_person=False,
+            )
+            for item in ppe:
+                item["source"] = "yolov8-person-crop"
+            refined.extend(ppe)
+        return refined
+
+    @staticmethod
+    def _ppe_person_score(ppe: dict[str, Any], person: dict[str, Any]) -> float | None:
+        px1, py1, px2, py2 = person["bbox"]
+        ex1, ey1, ex2, ey2 = ppe["bbox"]
+        person_width = max(1.0, px2 - px1)
+        person_height = max(1.0, py2 - py1)
+        center_x = (ex1 + ex2) / 2
+        center_y = (ey1 + ey2) / 2
+
+        if ppe["class"] == "helmet":
+            region = [
+                px1 - person_width * 0.25,
+                py1 - person_height * 0.20,
+                px2 + person_width * 0.25,
+                py1 + person_height * 0.38,
+            ]
+            anchor_x, anchor_y = (px1 + px2) / 2, py1 + person_height * 0.08
+        else:
+            region = [
+                px1 - person_width * 0.18,
+                py1 + person_height * 0.10,
+                px2 + person_width * 0.18,
+                py1 + person_height * 0.72,
+            ]
+            anchor_x, anchor_y = (px1 + px2) / 2, py1 + person_height * 0.40
+
+        center_inside = region[0] <= center_x <= region[2] and region[1] <= center_y <= region[3]
+        intersection_x1 = max(ex1, region[0])
+        intersection_y1 = max(ey1, region[1])
+        intersection_x2 = min(ex2, region[2])
+        intersection_y2 = min(ey2, region[3])
+        intersection = max(0.0, intersection_x2 - intersection_x1) * max(0.0, intersection_y2 - intersection_y1)
+        ppe_area = max(1.0, (ex2 - ex1) * (ey2 - ey1))
+        coverage = intersection / ppe_area
+        if not center_inside and coverage < 0.45:
+            return None
+
+        distance = ((center_x - anchor_x) ** 2 + (center_y - anchor_y) ** 2) ** 0.5
+        diagonal = (person_width**2 + person_height**2) ** 0.5
+        proximity = max(0.0, 1.0 - distance / max(1.0, diagonal * 0.65))
+        return proximity * 0.55 + min(1.0, coverage) * 0.25 + ppe["confidence"] * 0.20
+
+    def _associate_ppe(
+        self,
+        raw_persons: list[dict[str, Any]],
+        ppe_objects: list[dict[str, Any]],
+        img_h: int,
+        required: list[str],
+    ) -> list[dict[str, Any]]:
+        persons: list[dict[str, Any]] = []
+        for raw_person in non_max_suppression(raw_persons, iou_threshold=0.55):
+            x1, y1, x2, y2 = raw_person["bbox"]
+            if x2 <= x1 or y2 <= y1 or (img_h > 0 and (y2 - y1) / img_h < 0.06):
+                continue
+            persons.append({
+                "bbox": raw_person["bbox"],
+                "confidence": raw_person["confidence"],
+                "source": raw_person.get("source"),
+                "found_ppe": {},
+            })
+
+        for ppe in ppe_objects:
+            best_index = -1
+            best_score = -1.0
+            for index, person in enumerate(persons):
+                score = self._ppe_person_score(ppe, person)
+                if score is not None and score > best_score:
+                    best_index = index
+                    best_score = score
+            if best_index >= 0:
+                existing = persons[best_index]["found_ppe"].get(ppe["class"])
+                if existing is None or ppe["confidence"] > existing:
+                    persons[best_index]["found_ppe"][ppe["class"]] = ppe["confidence"]
+
+        result: list[dict[str, Any]] = []
+        for person in persons:
+            wearing = [item for item in required if item in person["found_ppe"]]
+            not_wearing = [item for item in required if item not in person["found_ppe"]]
+            result.append({
+                "id": len(result) + 1,
+                "bbox": person["bbox"],
+                "confidence": person["confidence"],
+                "wearing": wearing,
+                "wearing_confidences": {
+                    item: round(person["found_ppe"][item], 4) for item in wearing
+                },
+                "not_wearing": not_wearing,
+                "is_compliant": not not_wearing,
+            })
+        return result
+
+    def _build_result(
+        self,
+        persons: list[dict[str, Any]],
+        processing_time_ms: float,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        violation_count = sum(not person["is_compliant"] for person in persons)
+        violations: list[str] = []
+        for person in persons:
+            for item in person["not_wearing"]:
+                label = f"ไม่สวม{SH17_THAI.get(item, item)}"
+                if label not in violations:
+                    violations.append(label)
+
+        person_count = len(persons)
+        if person_count == 0:
+            status, message = "no_person", "ไม่พบคนในภาพ"
+        elif violation_count == 0:
+            status, message = "compliant", f"พบ {person_count} คน — สวม PPE ครบทุกคน"
+        else:
+            status = "violation"
+            message = "ตรวจพบ: " + " และ ".join(violations)
+
+        runtime = {**self.engine_metadata, **(metadata or {})}
+        return {
+            "detected_objects": [
+                {
+                    "class_id": 0,
+                    "class_name": "person",
+                    "class_name_thai": "คน",
+                    "confidence": person["confidence"],
+                    "bbox": person["bbox"],
+                    "is_violation": not person["is_compliant"],
+                    "is_person": True,
+                }
+                for person in persons
+            ],
+            "persons": persons,
+            "violations": violations,
+            "person_count": person_count,
+            "violation_count": violation_count,
+            "has_violation": violation_count > 0,
+            "processing_time_ms": round(processing_time_ms, 2),
+            "runtime": runtime,
+            "summary": {
+                "message": message,
+                "status": status,
+                "total_persons": person_count,
+                "compliant_persons": person_count - violation_count,
+                "non_compliant_persons": violation_count,
+            },
+        }
 
     def detect(
         self,
         image: np.ndarray,
-        required_ppe: List[str] | None = None,
+        required_ppe: list[str] | None = None,
         confidence_threshold: float | None = None,
         person_confidence: float | None = None,
-    ) -> Dict[str, Any]:
-        start = time.time()
+    ) -> dict[str, Any]:
+        started = time.perf_counter()
         if self.ppe_model is None:
             return self._empty_result()
 
         required = required_ppe or DEFAULT_REQUIRED_PPE
-        detection_confidence = confidence_threshold if confidence_threshold is not None else self.CONF_THRESHOLD
-        minimum_person_confidence = person_confidence if person_confidence is not None else self.PERSON_CONF
-        results = self.ppe_model(image, conf=detection_confidence, iou=self.IOU_THRESHOLD, verbose=False)
-
-        raw_persons = []
-        ppe_objects = []
-
-        for r in results:
-            if r.boxes is None:
-                continue
-            for box in r.boxes:
-                cls_id = int(box.cls[0])
-                conf = float(box.conf[0])
-                bbox = box.xyxy[0].tolist()
-                cls_name = self.ppe_model.names.get(cls_id, SH17_CLASSES.get(cls_id, f"class_{cls_id}"))
-
-                if cls_name == "person" and conf >= minimum_person_confidence:
-                    raw_persons.append({"bbox": bbox, "confidence": conf})
-                elif cls_name in PPE_ITEMS:
-                    ppe_objects.append({"class": cls_name, "bbox": bbox, "confidence": conf})
-
-        persons = self._associate_ppe(raw_persons, ppe_objects, image.shape[0], required=required)
-
-        violation_count = sum(1 for p in persons if not p["is_compliant"])
-        violations = []
-        for p in persons:
-            for item in p["not_wearing"]:
-                tag = f"ไม่สวม{SH17_THAI.get(item, item)}"
-                if tag not in violations:
-                    violations.append(tag)
-
-        ms = (time.time() - start) * 1000
-        n = len(persons)
-        ok = n - violation_count
-
-        if n == 0:
-            status, msg = "no_person", "ไม่พบคนในภาพ"
-        elif violation_count == 0:
-            status, msg = "compliant", f"พบ {n} คน - สวม PPE ครบถ้วนทุกคน"
-        else:
-            status = "violation"
-            msg = (
-                "ตรวจพบ: " + " และ ".join(violations)
-                if violations
-                else f"พบ {n} คน - มี {violation_count} คนฝ่าฝืน"
+        ppe_confidence = max(
+            0.05,
+            min(0.95, confidence_threshold if confidence_threshold is not None else settings.CONFIDENCE_THRESHOLD),
+        )
+        minimum_person_confidence = max(
+            0.05,
+            min(0.95, person_confidence if person_confidence is not None else settings.PERSON_CONFIDENCE_THRESHOLD),
+        )
+        if settings.LOW_LIGHT_ENHANCEMENT:
+            inference_frame, mean_luma, enhanced = self.enhance_low_light(
+                image,
+                settings.LOW_LIGHT_LUMA_THRESHOLD,
             )
+        else:
+            inference_frame, mean_luma, enhanced = image, -1.0, False
 
-        return {
-            "detected_objects": [
-                {"class_id": 0, "class_name": "person", "class_name_thai": "คน",
-                 "confidence": p["confidence"], "bbox": p["bbox"],
-                 "is_violation": not p["is_compliant"], "is_person": True}
-                for p in persons
-            ],
-            "persons": persons,
-            "violations": violations,
-            "person_count": n,
-            "violation_count": violation_count,
-            "has_violation": violation_count > 0,
-            "processing_time_ms": round(ms, 2),
-            "summary": {"message": msg, "status": status,
-                        "total_persons": n, "compliant_persons": ok,
-                        "non_compliant_persons": violation_count},
+        full_frame_results = self._predict(
+            self.ppe_model,
+            inference_frame,
+            min(ppe_confidence, minimum_person_confidence),
+        )
+        raw_persons: list[dict[str, Any]] = []
+        ppe_objects: list[dict[str, Any]] = []
+        for result in full_frame_results:
+            persons, ppe = self._parse_ppe_result(
+                result,
+                ppe_confidence=ppe_confidence,
+                person_confidence=minimum_person_confidence,
+            )
+            raw_persons.extend(persons)
+            ppe_objects.extend(ppe)
+
+        raw_persons.extend(self._person_assist(inference_frame, minimum_person_confidence))
+        raw_persons = non_max_suppression(raw_persons, iou_threshold=0.55)
+        ppe_objects.extend(
+            self._refine_ppe_in_person_crops(inference_frame, raw_persons, ppe_confidence)
+        )
+        ppe_objects = non_max_suppression(ppe_objects, iou_threshold=0.50, class_aware=True)
+        persons = self._associate_ppe(raw_persons, ppe_objects, image.shape[0], required)
+
+        return self._build_result(
+            persons,
+            (time.perf_counter() - started) * 1000,
+            {
+                "mean_luma": round(mean_luma, 2) if mean_luma >= 0 else None,
+                "low_light_enhanced": enhanced,
+                "ppe_candidates": len(ppe_objects),
+            },
+        )
+
+    def _empty_result(self) -> dict[str, Any]:
+        result = self._build_result([], 0)
+        result["summary"] = {
+            "message": "ไม่สามารถประมวลผลได้ — ไม่พบโมเดล PPE ที่เข้ากันได้",
+            "status": "error",
         }
-
-    def _associate_ppe(self, raw_persons: list, ppe_objects: list, img_h: int, required: List[str]) -> list:
-        """Associate each PPE item with the nearest/best-matching person."""
-        persons = []
-        for rp in raw_persons:
-            px1, py1, px2, py2 = rp["bbox"]
-            ph = py2 - py1
-            pw = px2 - px1
-            if img_h > 0 and ph / img_h < 0.06:
-                continue
-            persons.append({
-                "bbox": rp["bbox"], "confidence": rp["confidence"],
-                "found_ppe": set(),
-            })
-
-        if not persons:
-            return []
-
-        for ppe in ppe_objects:
-            ppe_cls = ppe["class"]
-            eb = ppe["bbox"]
-            ppe_cx = (eb[0] + eb[2]) / 2
-            ppe_cy = (eb[1] + eb[3]) / 2
-
-            best_idx = -1
-            best_score = 0
-
-            for i, p in enumerate(persons):
-                px1, py1, px2, py2 = p["bbox"]
-                pw = px2 - px1
-                ph = py2 - py1
-
-                # Expand person bbox by 15% for helmet (top) and 10% for vest (sides)
-                margin_x = pw * 0.10
-                margin_top = ph * 0.15
-                margin_bot = ph * 0.05
-                ex1 = px1 - margin_x
-                ey1 = py1 - margin_top
-                ex2 = px2 + margin_x
-                ey2 = py2 + margin_bot
-
-                # Check if PPE center is inside expanded person bbox
-                if not (ex1 <= ppe_cx <= ex2 and ey1 <= ppe_cy <= ey2):
-                    continue
-
-                # Score: prefer person whose center is closest to PPE center
-                pcx = (px1 + px2) / 2
-                pcy = (py1 + py2) / 2
-                dist = ((ppe_cx - pcx) ** 2 + (ppe_cy - pcy) ** 2) ** 0.5
-                max_dist = (pw ** 2 + ph ** 2) ** 0.5
-                score = 1.0 - (dist / max_dist) if max_dist > 0 else 0
-                if score > best_score:
-                    best_score = score
-                    best_idx = i
-
-            if best_idx >= 0:
-                persons[best_idx]["found_ppe"].add(ppe_cls)
-
-        result = []
-        for p in persons:
-            wearing = []
-            not_wearing = []
-            for req in required:
-                if req in p["found_ppe"]:
-                    # return class keys (frontend can localize); keep Thai mapping via SH17_THAI when needed
-                    wearing.append(req)
-                else:
-                    not_wearing.append(req)
-
-            compliant = len(not_wearing) == 0
-            result.append({
-                "id": len(result) + 1,
-                "bbox": p["bbox"],
-                "confidence": p["confidence"],
-                "wearing": wearing,
-                "not_wearing": not_wearing,
-                "is_compliant": compliant,
-            })
-
         return result
 
-    def _empty_result(self) -> Dict[str, Any]:
-        return {
-            "detected_objects": [], "persons": [], "violations": [],
-            "person_count": 0, "violation_count": 0, "has_violation": False,
-            "processing_time_ms": 0,
-            "summary": {"message": "ไม่สามารถประมวลผลได้ - ไม่พบโมเดล", "status": "error"},
-        }
-
-    # ------------------------------------------------------------------ #
-    #  Drawing
-    # ------------------------------------------------------------------ #
-
-    def draw_detections(self, image: np.ndarray, det: Dict[str, Any]) -> np.ndarray:
+    def draw_detections(self, image: np.ndarray, detection: dict[str, Any]) -> np.ndarray:
         rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        pil = Image.fromarray(rgb)
-        draw = ImageDraw.Draw(pil)
-        persons = det.get("persons", [])
-        summary = det.get("summary", {})
-        st = summary.get("status", "")
+        canvas = Image.fromarray(rgb)
+        status = detection.get("summary", {}).get("status", "")
+        compliant_color = (35, 175, 96)
+        violation_color = (250, 36, 60)
+        neutral_color = (74, 85, 104)
+        banner_color = (
+            compliant_color if status == "compliant" else violation_color if status == "violation" else neutral_color
+        )
 
-        GREEN = (34, 197, 94)
-        RED = (239, 68, 68)
-        DARK_GREEN = (22, 163, 74)
-        DARK_RED = (200, 30, 30)
-        WHITE = (255, 255, 255)
-        GRAY = (100, 116, 139)
+        overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+        ImageDraw.Draw(overlay).rectangle([(0, 0), (canvas.width, 50)], fill=(*banner_color, 220))
+        canvas = Image.alpha_composite(canvas.convert("RGBA"), overlay).convert("RGB")
+        draw = ImageDraw.Draw(canvas)
+        self._draw_text(draw, (15, 10), detection.get("summary", {}).get("message", "PPE Detection"), self.font, (255, 255, 255))
 
-        bh = 50
-        bc = DARK_GREEN if st == "compliant" else DARK_RED if st == "violation" else GRAY
-        overlay = Image.new("RGBA", pil.size, (0, 0, 0, 0))
-        ImageDraw.Draw(overlay).rectangle([(0, 0), (pil.width, bh)], fill=(*bc, 220))
-        pil = Image.alpha_composite(pil.convert("RGBA"), overlay).convert("RGB")
-        draw = ImageDraw.Draw(pil)
+        for person in detection.get("persons", []):
+            x1, y1, x2, y2 = map(int, person["bbox"])
+            color = compliant_color if person["is_compliant"] else violation_color
+            draw.rectangle([(x1, y1), (x2, y2)], outline=color, width=3)
+            confidence = int(person["confidence"] * 100)
+            status_label = "ปลอดภัย" if person["is_compliant"] else "ไม่ครบ PPE"
+            self._draw_label(draw, x1, y1 - 28, f"คน {person['id']} · {confidence}% · {status_label}", self.font_small, color)
+            label_y = y1 + 6
+            for item in person.get("wearing", []):
+                score = person.get("wearing_confidences", {}).get(item)
+                suffix = f" {score * 100:.0f}%" if score is not None else ""
+                self._draw_label(draw, x1 + 5, label_y, f"✓ {SH17_THAI.get(item, item)}{suffix}", self.font_small, compliant_color)
+                label_y += 26
+            for item in person.get("not_wearing", []):
+                self._draw_label(draw, x1 + 5, label_y, f"✕ ไม่พบ{SH17_THAI.get(item, item)}", self.font_small, violation_color)
+                label_y += 26
 
-        txt = summary.get("message", "PPE Detection")
-        self._draw_text(draw, (15, 10), txt, self.font, WHITE)
+        return cv2.cvtColor(np.asarray(canvas), cv2.COLOR_RGB2BGR)
 
-        ptxt = f"ตรวจพบ {len(persons)} คน"
-        try:
-            tb = draw.textbbox((0, 0), ptxt, font=self.font_small)
-            self._draw_text(draw, (pil.width - (tb[2] - tb[0]) - 15, 14), ptxt, self.font_small, WHITE)
-        except Exception:
-            pass
+    @staticmethod
+    def _draw_text(draw: ImageDraw.ImageDraw, xy: tuple[int, int], text: str, font: Any, fill: tuple[int, int, int]) -> None:
+        draw.text(xy, text, font=font, fill=fill)
 
-        for p in persons:
-            x1, y1, x2, y2 = map(int, p["bbox"])
-            ok = p["is_compliant"]
-            col = GREEN if ok else RED
-
-            draw.rectangle([(x1, y1), (x2, y2)], outline=col, width=3)
-            cl = min(25, (x2 - x1) // 4, (y2 - y1) // 4)
-            for cx, cy, dx, dy in [(x1, y1, 1, 1), (x2, y1, -1, 1), (x1, y2, 1, -1), (x2, y2, -1, -1)]:
-                draw.line([(cx, cy), (cx + cl * dx, cy)], fill=col, width=5)
-                draw.line([(cx, cy), (cx, cy + cl * dy)], fill=col, width=5)
-
-            conf_pct = int(p['confidence'] * 100)
-            status_label = "ปลอดภัย" if ok else "ฝ่าฝืน"
-            lbl = f"คนที่ {p['id']} ({conf_pct}%) - {status_label}"
-            self._draw_label(draw, x1, y1 - 28, lbl, self.font_small, col)
-
-            ly = y1 + 6
-            for item in p.get("wearing", []):
-                self._draw_label(draw, x1 + 5, ly, f"✓ {item}", self.font_small, DARK_GREEN)
-                ly += 26
-
-            for item in p.get("not_wearing", []):
-                self._draw_label(draw, x1 + 5, ly, f"✗ {item}", self.font_small, DARK_RED)
-                ly += 26
-
-        return cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
-
-    def _draw_text(self, draw: ImageDraw.Draw, xy, text: str, font, fill):
-        try:
-            draw.text(xy, text, font=font, fill=fill)
-        except Exception:
-            draw.text(xy, text, fill=fill)
-
-    def _draw_label(self, draw: ImageDraw.Draw, x: int, y: int, text: str, font, bg_color):
-        try:
-            tb = draw.textbbox((x, y), text, font=font)
-            draw.rectangle([(tb[0] - 4, tb[1] - 2), (tb[2] + 4, tb[3] + 2)], fill=bg_color)
-            draw.text((x, y), text, font=font, fill=(255, 255, 255))
-        except Exception:
-            draw.rectangle([(x, y), (x + 160, y + 22)], fill=bg_color)
-            draw.text((x + 3, y + 2), text, fill=(255, 255, 255))
-
-    # ------------------------------------------------------------------ #
-    #  Image processing
-    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _draw_label(draw: ImageDraw.ImageDraw, x: int, y: int, text: str, font: Any, bg_color: tuple[int, int, int]) -> None:
+        text_box = draw.textbbox((x, y), text, font=font)
+        draw.rectangle(
+            [(text_box[0] - 4, text_box[1] - 2), (text_box[2] + 4, text_box[3] + 2)],
+            fill=bg_color,
+        )
+        draw.text((x, y), text, font=font, fill=(255, 255, 255))
 
     def process_image(
         self,
         image_path: str,
         output_path: str,
-        required_ppe: List[str] | None = None,
+        required_ppe: list[str] | None = None,
         confidence_threshold: float | None = None,
         person_confidence: float | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         image = cv2.imread(image_path)
         if image is None:
-            raise ValueError(f"ไม่สามารถโหลดภาพ: {image_path}")
-        det = self.detect(
-            image,
-            required_ppe=required_ppe,
-            confidence_threshold=confidence_threshold,
-            person_confidence=person_confidence,
-        )
-        cv2.imwrite(output_path, self.draw_detections(image, det))
-        return det
-
-    # ------------------------------------------------------------------ #
-    #  Video processing
-    # ------------------------------------------------------------------ #
-
-    def _analyze_frame_from_results(
-        self,
-        frame: np.ndarray,
-        yolo_result,
-        required: List[str],
-        person_confidence: float | None = None,
-    ) -> Dict[str, Any]:
-        """Build detection dict from SH17 model result."""
-        start = time.time()
-        raw_persons = []
-        ppe_objects = []
-
-        if yolo_result.boxes is not None:
-            for box in yolo_result.boxes:
-                cls_id = int(box.cls[0])
-                conf = float(box.conf[0])
-                bbox = box.xyxy[0].tolist()
-                cls_name = self.ppe_model.names.get(cls_id, SH17_CLASSES.get(cls_id, f"class_{cls_id}"))
-
-                minimum_person_confidence = person_confidence if person_confidence is not None else self.PERSON_CONF
-                if cls_name == "person" and conf >= minimum_person_confidence:
-                    raw_persons.append({"bbox": bbox, "confidence": conf})
-                elif cls_name in PPE_ITEMS:
-                    ppe_objects.append({"class": cls_name, "bbox": bbox, "confidence": conf})
-
-        persons = self._associate_ppe(raw_persons, ppe_objects, frame.shape[0], required=required)
-
-        vc = sum(1 for p in persons if not p["is_compliant"])
-        violations = []
-        for p in persons:
-            for item in p["not_wearing"]:
-                tag = f"ไม่สวม{SH17_THAI.get(item, item)}"
-                if tag not in violations:
-                    violations.append(tag)
-
-        n = len(persons)
-        ok = n - vc
-        ms = (time.time() - start) * 1000
-
-        if n == 0:
-            st, msg = "no_person", "ไม่พบคนในภาพ"
-        elif vc == 0:
-            st, msg = "compliant", f"พบ {n} คน - สวม PPE ครบถ้วนทุกคน"
-        else:
-            st = "violation"
-            msg = (
-                "ตรวจพบ: " + " และ ".join(violations)
-                if violations
-                else f"พบ {n} คน - มี {vc} คนฝ่าฝืน"
-            )
-
-        return {
-            "persons": persons, "violations": violations,
-            "person_count": n, "violation_count": vc,
-            "has_violation": vc > 0,
-            "processing_time_ms": round(ms, 2),
-            "summary": {"message": msg, "status": st,
-                        "total_persons": n, "compliant_persons": ok,
-                        "non_compliant_persons": vc},
-        }
+            raise ValueError(f"ไม่สามารถอ่านภาพได้: {image_path}")
+        result = self.detect(image, required_ppe, confidence_threshold, person_confidence)
+        if not cv2.imwrite(output_path, self.draw_detections(image, result)):
+            raise OSError(f"ไม่สามารถบันทึกผลลัพธ์ได้: {output_path}")
+        return result
 
     def process_video(
         self,
         video_path: str,
         output_path: str,
-        required_ppe: List[str] | None = None,
+        required_ppe: list[str] | None = None,
         confidence_threshold: float | None = None,
         person_confidence: float | None = None,
-    ) -> Dict[str, Any]:
-        print(f"[VIDEO] Start: {video_path}  size={os.path.getsize(video_path) if os.path.exists(video_path) else 0}")
+    ) -> dict[str, Any]:
+        """Analyze a bounded sample and stream annotations to disk without retaining all frames."""
 
-        start = time.time()
-        required = required_ppe or DEFAULT_REQUIRED_PPE
-        detection_confidence = confidence_threshold if confidence_threshold is not None else self.CONF_THRESHOLD
-        all_violations: set[str] = set()
-        annotated: list[np.ndarray] = []
-        fps = 24
-        processed = 0
-        MAX_FRAMES = settings.VIDEO_MAX_ANALYZED_FRAMES
+        started = time.perf_counter()
+        capture = cv2.VideoCapture(video_path)
+        if not capture.isOpened():
+            capture.release()
+            raise ValueError("ไม่สามารถเปิดวิดีโอได้")
+
         frame_stride = max(1, settings.VIDEO_FRAME_STRIDE)
-        best_frame_det: Dict[str, Any] | None = None
-        best_frame_idx = -1
-        best_person_count = 0
+        max_frames = max(1, settings.VIDEO_MAX_ANALYZED_FRAMES)
+        source_fps = float(capture.get(cv2.CAP_PROP_FPS) or 24.0)
+        output_fps = max(1.0, min(15.0, source_fps / frame_stride))
+        output_base = str(Path(output_path).with_suffix(""))
+        output_video_path = f"{output_base}.mp4"
+        best_frame_path = f"{output_base}_best.jpg"
+        writer: cv2.VideoWriter | None = None
+        processed = 0
+        source_index = 0
+        best_result: dict[str, Any] | None = None
+        best_frame: np.ndarray | None = None
+        all_violations: set[str] = set()
 
         try:
-            results_gen = self.ppe_model.predict(
-                source=video_path,
-                stream=True,
-                vid_stride=frame_stride,
-                imgsz=640,
-                conf=detection_confidence,
-                iou=self.IOU_THRESHOLD,
-                verbose=False,
-            )
-
-            for r in results_gen:
-                frame_bgr = r.orig_img
-                if frame_bgr is None:
+            while processed < max_frames:
+                ok, frame = capture.read()
+                if not ok or frame is None:
+                    break
+                source_index += 1
+                if (source_index - 1) % frame_stride != 0:
                     continue
 
-                if processed == 0:
-                    try:
-                        cap_t = cv2.VideoCapture(video_path)
-                        fv = cap_t.get(cv2.CAP_PROP_FPS)
-                        if fv > 0:
-                            fps = int(fv)
-                        cap_t.release()
-                    except Exception:
-                        pass
-
-                det = self._analyze_frame_from_results(
-                    frame_bgr,
-                    r,
-                    required=required,
-                    person_confidence=person_confidence,
-                )
-                annotated.append(self.draw_detections(frame_bgr, det))
-                processed += 1
-
-                pc = det.get("person_count", 0)
-                if pc > best_person_count:
-                    best_person_count = pc
-                    best_frame_det = det
-                    best_frame_idx = processed - 1
-                elif best_frame_det is None and pc > 0:
-                    best_frame_det = det
-                    best_frame_idx = processed - 1
-
-                for v in det.get("violations", []):
-                    all_violations.add(v)
-
-                if processed % 10 == 0:
-                    print(f"[VIDEO] {processed} frames done")
-
-                if processed >= MAX_FRAMES:
-                    print(f"[VIDEO] Hit frame limit ({MAX_FRAMES})")
-                    break
-
-            if best_frame_det is None and processed > 0:
-                best_frame_det = det
-                best_frame_idx = processed - 1
-            print(f"[VIDEO] processed {processed} frames")
-
-        except Exception as e:
-            print(f"[VIDEO] stream error: {e}, trying OpenCV fallback...")
-            cap = cv2.VideoCapture(video_path)
-            if cap.isOpened():
-                fv = cap.get(cv2.CAP_PROP_FPS)
-                if fv > 0:
-                    fps = int(fv)
-                idx = 0
-                while idx < MAX_FRAMES * frame_stride:
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                    idx += 1
-                    if idx % frame_stride != 1:
-                        continue
-                    det = self.detect(
-                        frame,
-                        required_ppe=required,
-                        confidence_threshold=detection_confidence,
-                        person_confidence=person_confidence,
+                result = self.detect(frame, required_ppe, confidence_threshold, person_confidence)
+                annotated = self.draw_detections(frame, result)
+                if writer is None:
+                    height, width = annotated.shape[:2]
+                    writer = cv2.VideoWriter(
+                        output_video_path,
+                        cv2.VideoWriter_fourcc(*"mp4v"),
+                        output_fps,
+                        (width, height),
                     )
-                    annotated.append(self.draw_detections(frame, det))
-                    processed += 1
-                    pc = det.get("person_count", 0)
-                    if pc > best_person_count:
-                        best_person_count = pc
-                        best_frame_det = det
-                        best_frame_idx = processed - 1
-                    elif best_frame_det is None and pc > 0:
-                        best_frame_det = det
-                        best_frame_idx = processed - 1
-                    for v in det.get("violations", []):
-                        all_violations.add(v)
-                    if processed >= MAX_FRAMES:
-                        break
-                if best_frame_det is None and processed > 0:
-                    best_frame_det = det
-                    best_frame_idx = processed - 1
-                cap.release()
-                print(f"[VIDEO] OpenCV fallback: {processed} frames")
+                    if not writer.isOpened():
+                        writer.release()
+                        writer = None
+                if writer is not None:
+                    writer.write(annotated)
 
-        if len(annotated) == 0:
-            raise ValueError("ไม่สามารถอ่านเฟรมจากวิดีโอได้ กรุณาลองไฟล์อื่น")
+                score = result["person_count"] * 10 + result["violation_count"]
+                best_score = (
+                    best_result["person_count"] * 10 + best_result["violation_count"]
+                    if best_result is not None
+                    else -1
+                )
+                if score > best_score:
+                    best_result = result
+                    best_frame = annotated.copy()
+                all_violations.update(result.get("violations", []))
+                processed += 1
+        finally:
+            capture.release()
+            if writer is not None:
+                writer.release()
 
-        ms = (time.time() - start) * 1000
+        if processed == 0 or best_result is None or best_frame is None:
+            raise ValueError("ไม่พบเฟรมที่อ่านได้จากวิดีโอ")
+        if not cv2.imwrite(best_frame_path, best_frame):
+            raise OSError(f"ไม่สามารถบันทึก best frame ได้: {best_frame_path}")
+        if not os.path.exists(output_video_path) or os.path.getsize(output_video_path) < 1000:
+            output_video_path = best_frame_path
 
-        base = output_path.rsplit(".", 1)[0]
-        best_frame_path = base + "_best.jpg"
-        if 0 <= best_frame_idx < len(annotated):
-            cv2.imwrite(best_frame_path, annotated[best_frame_idx])
-        else:
-            cv2.imwrite(best_frame_path, annotated[len(annotated) // 2])
-        print(f"[VIDEO] Saved best frame idx={best_frame_idx}: {best_frame_path}")
-
-        output_video_path = self._write_video(annotated, output_path, max(1, round(fps / frame_stride)))
-
-        best_persons = best_frame_det.get("persons", []) if best_frame_det else []
-        best_pc = len(best_persons)
-        best_vc = sum(1 for p in best_persons if not p["is_compliant"])
-        best_ok = best_pc - best_vc
-
-        has_v = best_vc > 0
-        if best_pc == 0:
-            st, msg = "no_person", "ไม่พบคนในวิดีโอ"
-        elif not has_v:
-            st, msg = "compliant", f"พบ {best_pc} คน - สวม PPE ครบถ้วนทุกคน"
-        else:
-            st = "violation"
-            viol_sorted = sorted(all_violations) if all_violations else []
-            msg = (
-                "ตรวจพบ: " + " และ ".join(viol_sorted)
-                if viol_sorted
-                else f"พบ {best_pc} คน - มี {best_vc} คนฝ่าฝืน"
-            )
-
-        print(f"[VIDEO] Done {ms:.0f}ms | persons={best_pc} | violations={best_vc}")
-
-        best_objects = [
-            {"class_id": 0, "class_name": "person", "class_name_thai": "คน",
-             "confidence": p["confidence"], "bbox": p["bbox"],
-             "is_violation": not p["is_compliant"], "is_person": True}
-            for p in best_persons
-        ]
-
-        return {
-            "detected_objects": best_objects,
-            "persons": best_persons,
-            "violations": list(all_violations),
-            "person_count": best_pc,
-            "violation_count": best_vc,
-            "has_violation": has_v,
-            "processing_time_ms": round(ms, 2),
+        final_result = {**best_result}
+        final_result.update({
+            "violations": sorted(all_violations),
+            "has_violation": best_result["violation_count"] > 0,
+            "processing_time_ms": round((time.perf_counter() - started) * 1000, 2),
             "output_video_path": output_video_path,
             "best_frame_path": best_frame_path,
             "frames_processed": processed,
-            "summary": {"message": msg, "status": st,
-                        "total_persons": best_pc,
-                        "compliant_persons": best_ok,
-                        "non_compliant_persons": best_vc},
-        }
-
-    def _write_video(self, frames: list, output_path: str, fps: int) -> str:
-        import subprocess
-        h, w = frames[0].shape[:2]
-        out_fps = min(fps, 15)
-        base = output_path.rsplit(".", 1)[0]
-
-        for codec, ext in [("mp4v", ".mp4"), ("XVID", ".avi")]:
-            try_path = base + ext
-            fourcc = cv2.VideoWriter_fourcc(*codec)
-            writer = cv2.VideoWriter(try_path, fourcc, out_fps, (w, h))
-            if writer.isOpened():
-                for f in frames:
-                    writer.write(f)
-                writer.release()
-                sz = os.path.getsize(try_path) if os.path.exists(try_path) else 0
-                if sz > 1000:
-                    if ext == ".avi":
-                        mp4 = base + ".mp4"
-                        try:
-                            subprocess.run(
-                                ["ffmpeg", "-y", "-i", try_path, "-c:v", "libx264",
-                                 "-preset", "fast", "-crf", "23", mp4],
-                                capture_output=True, timeout=120)
-                            if os.path.exists(mp4) and os.path.getsize(mp4) > 1000:
-                                os.remove(try_path)
-                                return mp4
-                        except Exception:
-                            pass
-                    return try_path
-            writer.release()
-
-        fallback = base + ".jpg"
-        cv2.imwrite(fallback, frames[len(frames) // 2])
-        return fallback
+        })
+        logger.info(
+            "Processed video %s: %s sampled frames in %.0f ms",
+            video_path,
+            processed,
+            final_result["processing_time_ms"],
+        )
+        return final_result
 
 
-# ------------------------------------------------------------------ #
-#  Singleton
-# ------------------------------------------------------------------ #
+_detector: PPEDetector | None = None
 
-_detector = None
 
 def get_detector() -> PPEDetector:
     global _detector
@@ -660,6 +717,7 @@ def get_detector() -> PPEDetector:
         _detector = PPEDetector()
     return _detector
 
-def reset_detector():
+
+def reset_detector() -> None:
     global _detector
     _detector = None

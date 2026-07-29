@@ -32,11 +32,18 @@ class Settings(BaseSettings):
     BOOTSTRAP_TOKEN: str | None = None
     ALLOW_PUBLIC_REGISTRATION: bool = False
 
-    MODEL_PATH: str = "./yolo8s.pt"
-    MODEL_VERSION: str = "sh17-yolov8s-baseline"
+    MODEL_PATH: str = "./yolo8m.pt"
+    PERSON_MODEL_PATH: str = "./yolo11n.pt"
+    MODEL_VERSION: str = "sh17-yolov8m-yolo11n-hybrid-v1"
     MODEL_LICENSE_APPROVED: bool = False
-    CONFIDENCE_THRESHOLD: float = 0.25
-    PERSON_CONFIDENCE_THRESHOLD: float = 0.40
+    CONFIDENCE_THRESHOLD: float = 0.20
+    PERSON_CONFIDENCE_THRESHOLD: float = 0.30
+    INFERENCE_DEVICE: str = "auto"
+    INFERENCE_IMAGE_SIZE: int = 640
+    LOW_LIGHT_ENHANCEMENT: bool = True
+    LOW_LIGHT_LUMA_THRESHOLD: float = 72.0
+    PPE_CROP_REFINEMENT: bool = True
+    PPE_CROP_MAX_PERSONS: int = 8
 
     UPLOAD_DIR: str = "./uploads"
     EVIDENCE_DIR: str = "./uploads/evidence"
@@ -45,7 +52,9 @@ class Settings(BaseSettings):
     EVIDENCE_RETENTION_DAYS: int = 30
     METADATA_RETENTION_DAYS: int = 365
 
-    CAMERA_ANALYSIS_FPS: float = 5.0
+    CAMERA_ANALYSIS_FPS: float = 10.0
+    CAMERA_PREVIEW_FPS: float = 10.0
+    CAMERA_CAPTURE_BUFFER_SIZE: int = 1
     CAMERA_RECONNECT_MAX_SECONDS: int = 30
     TEMPORAL_WINDOW_SIZE: int = 5
     TEMPORAL_CONFIRM_COUNT: int = 4

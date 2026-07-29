@@ -54,6 +54,8 @@ cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+# Windows + NVIDIA GPU (tested on RTX 4070 / CUDA 12.8):
+pip install -r requirements-gpu.txt
 alembic upgrade head
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
@@ -65,6 +67,8 @@ cd frontend
 npm ci
 npm run dev
 ```
+
+`requirements-gpu.txt` pins the reviewed Windows CUDA 12.8 build. Skip that second install on CPU-only hosts; the detector falls back to CPU and automatically disables person-crop refinement to protect latency. Confirm the selected runtime with `python -c "import torch; print(torch.cuda.is_available())"` before a camera pilot.
 
 - UI: `http://localhost:5173`
 - API docs in development: `http://localhost:8000/docs`
@@ -92,13 +96,13 @@ python -m pytest -q
 
 cd ..\frontend
 npm run lint
-npx tsc --noEmit -p tsconfig.app.json
+npx tsc -b --pretty false
 npm run build
 ```
 
 ## Model training and evaluation
 
-The repository contains SH17 checkpoints, but the current version must be treated as a baseline until evaluated on an approved target dataset. Private datasets and experiment outputs are ignored by Git.
+The repository contains SH17 checkpoints. The runtime currently uses `yolo8m.pt` for PPE, `yolo11n.pt` for person assistance, person-crop refinement on CUDA, and conditional low-light enhancement. This hybrid remains a research baseline until evaluated on an approved target dataset. Private datasets and experiment outputs are ignored by Git.
 
 ```powershell
 cd backend

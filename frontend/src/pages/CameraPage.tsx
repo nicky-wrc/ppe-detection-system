@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Activity, Camera, CircleDot, Loader2, Play, Plus, RefreshCw, Square, Trash2 } from 'lucide-react'
+import {
+  Activity,
+  Camera,
+  CircleDot,
+  Loader2,
+  Play,
+  Plus,
+  RefreshCw,
+  Square,
+  Trash2,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { Layout } from '../components/layout/Layout'
@@ -22,7 +32,7 @@ function CameraPreview({ camera }: { camera: EdgeCamera }) {
   })
 
   useEffect(() => {
-    let active = true
+    let mounted = true
     let timer: number | undefined
     let objectUrl: string | null = null
 
@@ -35,7 +45,7 @@ function CameraPreview({ camera }: { camera: EdgeCamera }) {
     const poll = async () => {
       try {
         const blob = await camerasService.getPreview(camera.id)
-        if (!active) return
+        if (!mounted) return
         if (!blob) {
           setPreview((current) => ({
             url: current.url,
@@ -49,43 +59,49 @@ function CameraPreview({ camera }: { camera: EdgeCamera }) {
         setPreview({ url: nextUrl, status: 'live' })
         if (previousUrl) URL.revokeObjectURL(previousUrl)
       } catch {
-        if (active) {
+        if (mounted) {
           setPreview((current) => ({
             url: current.url,
             status: current.url ? 'stale' : 'waiting',
           }))
         }
       } finally {
-        if (active) timer = window.setTimeout(() => void poll(), 750)
+        if (mounted) timer = window.setTimeout(() => void poll(), 120)
       }
     }
     void poll()
 
     return () => {
-      active = false
+      mounted = false
       if (timer !== undefined) window.clearTimeout(timer)
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   }, [camera.id, camera.is_active])
 
+  const statusLabel = preview.status === 'live'
+    ? 'LIVE'
+    : preview.status === 'stale'
+      ? 'RECONNECTING'
+      : preview.status.toUpperCase()
+
   return (
-    <div className="relative mt-4 aspect-video overflow-hidden rounded-xl bg-[#0f172a] border border-[#1e293b]">
+    <div className="relative mt-4 aspect-video overflow-hidden rounded-[18px] border border-[#252e37] bg-[#0d161f]">
       {preview.url ? (
         <img src={preview.url} alt={`Live preview from ${camera.name}`} className="h-full w-full object-contain" />
       ) : (
         <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-[#cbd5e1]">
           {preview.status === 'waiting' ? <Loader2 size={24} className="animate-spin" /> : <Camera size={26} />}
           <p className="m-0 text-[12px] font-semibold">
-            {preview.status === 'waiting' ? 'Waiting for the first analyzed frame...' : 'Press Start to open this camera'}
+            {preview.status === 'waiting' ? 'กำลังเปิดกล้องและโหลดโมเดล AI…' : 'กด Start เพื่อเปิดกล้อง'}
           </p>
         </div>
       )}
       <div className="absolute left-2.5 top-2.5 flex items-center gap-1.5 rounded-full bg-black/65 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur-sm">
-        <span className={`h-2 w-2 rounded-full ${preview.status === 'live' ? 'bg-emerald-400 animate-pulse' : preview.status === 'stale' ? 'bg-amber-400' : 'bg-slate-400'}`} />
-        {preview.status === 'live' ? 'LIVE' : preview.status === 'stale' ? 'RECONNECTING' : preview.status.toUpperCase()}
+        <span className={`h-2 w-2 rounded-full ${preview.status === 'live' ? 'animate-pulse bg-emerald-400' : preview.status === 'stale' ? 'bg-amber-400' : 'bg-slate-400'}`} />
+        {statusLabel}
       </div>
-      <div className="absolute bottom-2.5 right-2.5 rounded-md bg-black/65 px-2 py-1 text-[9px] font-medium text-white backdrop-blur-sm">
-        Privacy-filtered preview · memory only
+      <div className="absolute bottom-2.5 right-2.5 rounded-full bg-black/65 px-2.5 py-1 text-[9px] font-medium text-white backdrop-blur-sm">
+        Privacy filtered · memory only
       </div>
     </div>
   )
@@ -102,7 +118,7 @@ export function CameraPage() {
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('Production Camera')
   const [deviceIndex, setDeviceIndex] = useState(0)
-  const [zoneId, setZoneId] = useState<number | undefined>(undefined)
+  const [zoneId, setZoneId] = useState<number | undefined>()
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -154,13 +170,16 @@ export function CameraPage() {
       await load(true)
     } catch (error) {
       console.error(error)
-      toast.error('เพิ่มกล้องไม่สำเร็จ ตรวจสอบหมายเลขอุปกรณ์และสิทธิ์ผู้ดูแล')
+      toast.error('เพิ่มกล้องไม่สำเร็จ โปรดตรวจ device index และสิทธิ์ของผู้ดูแล')
     } finally {
       setCreating(false)
     }
   }
 
   const runAction = async (camera: EdgeCamera, action: 'test' | 'start' | 'stop' | 'delete') => {
+    if (action === 'delete' && !window.confirm(
+      `นำ ${camera.name} ออกจากรายการกล้อง? ระบบจะหยุดกล้องก่อน แต่จะไม่ลบประวัติเหตุการณ์หรือหลักฐาน`,
+    )) return
     setBusyId(camera.id)
     try {
       if (action === 'test') {
@@ -177,7 +196,7 @@ export function CameraPage() {
         toast.success(`หยุด ${camera.name}`)
       } else {
         await camerasService.remove(camera.id)
-        toast.success('ปิดใช้งานกล้องแล้ว')
+        toast.success('นำกล้องออกจากรายการแล้ว')
       }
       await load(true)
     } catch (error) {
@@ -189,61 +208,57 @@ export function CameraPage() {
   }
 
   const onlineCount = cameras.filter((camera) => camera.is_online).length
+  const analyzedFrames = cameras.reduce((sum, camera) => sum + camera.frames_analyzed, 0)
 
   return (
     <Layout>
-      <div className="flex flex-col gap-5">
-        <div className="flex items-start justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-[22px] font-bold text-[#0f172a] m-0">Edge Cameras</h1>
-            <p className="text-[13px] text-[#64748b] mt-1">
-              จัดการกล้อง USB ที่ประมวลผลบนเครื่อง GPU ภายในโรงงาน
-            </p>
+      <div className="flex flex-col gap-7">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="page-heading">
+            <h1>กล้องตรวจจับหน้างาน</h1>
+            <p>Hybrid YOLOv8m + YOLO11n บน GPU พร้อม preview แบบ privacy filtered</p>
           </div>
-          <button
-            onClick={() => void load()}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[#dbe3ee] bg-white text-[#475569] cursor-pointer"
-          >
+          <button type="button" onClick={() => void load()} className="btn-apple-secondary">
             <RefreshCw size={15} /> Refresh
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {[
-            { label: 'Registered', value: cameras.length, color: '#2563eb' },
-            { label: 'Online', value: onlineCount, color: '#16a34a' },
-            { label: 'Analyzed frames', value: cameras.reduce((sum, camera) => sum + camera.frames_analyzed, 0), color: '#7c3aed' },
+            { label: 'Registered', value: cameras.length, color: '#0066cc' },
+            { label: 'Online', value: onlineCount, color: '#15803d' },
+            { label: 'Analyzed frames', value: analyzedFrames, color: '#b21d61' },
           ].map((item) => (
-            <div key={item.label} className="bg-white border border-[#e2e8f0] rounded-2xl p-5 shadow-sm">
-              <p className="text-[12px] font-semibold text-[#64748b] m-0">{item.label}</p>
-              <p className="text-[30px] font-bold mt-2 mb-0" style={{ color: item.color }}>{item.value.toLocaleString()}</p>
+            <div key={item.label} className="surface-card p-5">
+              <p className="m-0 text-[12px] font-semibold text-[#6e6e73]">{item.label}</p>
+              <p className="mb-0 mt-2 text-[30px] font-bold" style={{ color: item.color }}>{item.value.toLocaleString()}</p>
             </div>
           ))}
         </div>
 
         {isAdmin && (
-          <section className="bg-white border border-[#e2e8f0] rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center gap-2 mb-4">
-              <Plus size={17} className="text-[#2563eb]" />
-              <h2 className="text-[16px] font-bold text-[#0f172a] m-0">Register USB camera</h2>
+          <section className="surface-card p-5">
+            <div className="mb-4 flex items-center gap-2">
+              <Plus size={17} className="text-[#0066cc]" />
+              <h2 className="m-0 text-[16px] font-bold text-[#1d1d1f]">Register USB camera</h2>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_160px_1fr_auto] gap-3 items-end">
-              <label className="text-[12px] font-semibold text-[#64748b]">
+            <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-[1fr_150px_1fr_auto]">
+              <label className="text-[12px] font-semibold text-[#6e6e73]">
                 Camera name
-                <input value={name} onChange={(event) => setName(event.target.value)} className="mt-1.5 w-full border border-[#dbe3ee] rounded-lg px-3 py-2.5 text-[14px] box-border" />
+                <input value={name} onChange={(event) => setName(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#d2d2d7] px-3 py-2.5 text-[14px]" />
               </label>
-              <label className="text-[12px] font-semibold text-[#64748b]">
+              <label className="text-[12px] font-semibold text-[#6e6e73]">
                 Device index
-                <input type="number" min={0} max={32} value={deviceIndex} onChange={(event) => setDeviceIndex(Number(event.target.value))} className="mt-1.5 w-full border border-[#dbe3ee] rounded-lg px-3 py-2.5 text-[14px] box-border" />
+                <input type="number" min={0} max={32} value={deviceIndex} onChange={(event) => setDeviceIndex(Number(event.target.value))} className="mt-1.5 w-full rounded-xl border border-[#d2d2d7] px-3 py-2.5 text-[14px]" />
               </label>
-              <label className="text-[12px] font-semibold text-[#64748b]">
+              <label className="text-[12px] font-semibold text-[#6e6e73]">
                 Safety zone
-                <select value={zoneId ?? ''} onChange={(event) => setZoneId(event.target.value ? Number(event.target.value) : undefined)} className="mt-1.5 w-full border border-[#dbe3ee] rounded-lg px-3 py-2.5 text-[14px] bg-white box-border">
+                <select value={zoneId ?? ''} onChange={(event) => setZoneId(event.target.value ? Number(event.target.value) : undefined)} className="mt-1.5 w-full rounded-xl border border-[#d2d2d7] bg-white px-3 py-2.5 text-[14px]">
                   <option value="">Default PPE rules</option>
                   {zones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)}
                 </select>
               </label>
-              <button onClick={() => void createCamera()} disabled={creating} className="h-[42px] flex items-center justify-center gap-2 px-5 rounded-lg border-none bg-[#2563eb] text-white font-semibold cursor-pointer disabled:opacity-60">
+              <button type="button" onClick={() => void createCamera()} disabled={creating} className="btn-apple-primary">
                 {creating ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Add
               </button>
             </div>
@@ -251,50 +266,50 @@ export function CameraPage() {
         )}
 
         {loading ? (
-          <div className="flex items-center justify-center py-16 text-[#64748b]"><Loader2 className="animate-spin mr-2" size={18} /> Loading cameras...</div>
+          <div className="flex items-center justify-center py-16 text-[#6e6e73]"><Loader2 className="mr-2 animate-spin" size={18} /> Loading cameras…</div>
         ) : cameras.length === 0 ? (
-          <div className="bg-white border border-dashed border-[#cbd5e1] rounded-2xl py-16 text-center text-[#64748b]">
-            <Camera size={32} className="mx-auto mb-3 text-[#94a3b8]" />
+          <div className="surface-card border-dashed py-16 text-center text-[#6e6e73]">
+            <Camera size={32} className="mx-auto mb-3 text-[#a1a1a6]" />
             ยังไม่มีกล้อง Edge ในระบบ
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             {cameras.map((camera) => (
-              <article key={camera.id} className="bg-white border border-[#e2e8f0] rounded-2xl p-5 shadow-sm">
+              <article key={camera.id} className="surface-card p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${camera.is_online ? 'bg-[#dcfce7] text-[#16a34a]' : camera.is_active ? 'bg-[#fef3c7] text-[#d97706]' : 'bg-[#f1f5f9] text-[#64748b]'}`}>
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${camera.is_online ? 'bg-[#e8f7ec] text-[#15803d]' : camera.is_active ? 'bg-[#fff4df] text-[#b45309]' : 'bg-[#f0f0f2] text-[#6e6e73]'}`}>
                       <Camera size={19} />
                     </div>
                     <div>
-                      <h2 className="text-[16px] font-bold text-[#0f172a] m-0">{camera.name}</h2>
-                      <p className="text-[12px] text-[#64748b] mt-1 mb-0">USB device {camera.device_index ?? 0} {camera.location ? `• ${camera.location}` : ''}</p>
+                      <h2 className="m-0 text-[16px] font-bold text-[#1d1d1f]">{camera.name}</h2>
+                      <p className="mb-0 mt-1 text-[12px] text-[#6e6e73]">USB device {camera.device_index ?? 0}{camera.location ? ` · ${camera.location}` : ''}</p>
                     </div>
                   </div>
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${camera.is_online ? 'bg-[#dcfce7] text-[#15803d]' : camera.is_active ? 'bg-[#fef3c7] text-[#b45309]' : 'bg-[#f1f5f9] text-[#64748b]'}`}>
+                  <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${camera.is_online ? 'bg-[#e8f7ec] text-[#15803d]' : camera.is_active ? 'bg-[#fff4df] text-[#b45309]' : 'bg-[#f0f0f2] text-[#6e6e73]'}`}>
                     <CircleDot size={11} /> {camera.is_online ? 'ONLINE' : camera.is_active ? 'STARTING' : 'OFFLINE'}
                   </span>
                 </div>
 
                 {canViewPreview && <CameraPreview camera={camera} />}
 
-                <div className="grid grid-cols-3 gap-2 mt-5">
-                  <div className="bg-[#f8fafc] rounded-xl p-3"><p className="text-[10px] uppercase text-[#94a3b8] font-bold m-0">FPS</p><p className="text-[18px] font-bold text-[#0f172a] mt-1 mb-0">{camera.measured_fps.toFixed(1)}</p></div>
-                  <div className="bg-[#f8fafc] rounded-xl p-3"><p className="text-[10px] uppercase text-[#94a3b8] font-bold m-0">Frames</p><p className="text-[18px] font-bold text-[#0f172a] mt-1 mb-0">{camera.frames_analyzed}</p></div>
-                  <div className="bg-[#f8fafc] rounded-xl p-3"><p className="text-[10px] uppercase text-[#94a3b8] font-bold m-0">Zone</p><p className="text-[14px] font-bold text-[#0f172a] mt-1 mb-0 truncate">{zones.find((zone) => zone.id === camera.zone_id)?.name || 'Default'}</p></div>
+                <div className="mt-5 grid grid-cols-3 gap-2">
+                  <div className="rounded-xl bg-[#f5f5f7] p-3"><p className="m-0 text-[10px] font-bold uppercase text-[#86868b]">AI FPS</p><p className="mb-0 mt-1 text-[18px] font-bold text-[#1d1d1f]">{camera.measured_fps.toFixed(1)}</p></div>
+                  <div className="rounded-xl bg-[#f5f5f7] p-3"><p className="m-0 text-[10px] font-bold uppercase text-[#86868b]">Frames</p><p className="mb-0 mt-1 text-[18px] font-bold text-[#1d1d1f]">{camera.frames_analyzed}</p></div>
+                  <div className="rounded-xl bg-[#f5f5f7] p-3"><p className="m-0 text-[10px] font-bold uppercase text-[#86868b]">Zone</p><p className="mb-0 mt-1 truncate text-[14px] font-bold text-[#1d1d1f]">{zones.find((zone) => zone.id === camera.zone_id)?.name || 'Default'}</p></div>
                 </div>
 
-                {camera.last_error && <p className="text-[12px] text-[#dc2626] bg-[#fff1f2] rounded-lg px-3 py-2 mt-3 mb-0">{camera.last_error}</p>}
+                {camera.last_error && <p className="mb-0 mt-3 rounded-lg bg-[#fff1f2] px-3 py-2 text-[12px] text-[#d70015]">{camera.last_error}</p>}
 
                 {isAdmin && (
-                  <div className="flex items-center gap-2 mt-4 pt-4 border-t border-[#f1f5f9]">
-                    <button onClick={() => void runAction(camera, 'test')} disabled={busyId === camera.id || camera.is_active} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#dbe3ee] bg-white text-[#475569] text-[12px] font-semibold cursor-pointer disabled:opacity-50"><Activity size={14} /> Test</button>
+                  <div className="mt-4 flex items-center gap-2 border-t border-[#ececf0] pt-4">
+                    <button type="button" title="ทดสอบว่าระบบเปิดอุปกรณ์และอ่านเฟรมได้" onClick={() => void runAction(camera, 'test')} disabled={busyId === camera.id || camera.is_active} className="btn-apple-secondary min-h-9 px-3"><Activity size={14} /> Test</button>
                     {camera.is_active ? (
-                      <button onClick={() => void runAction(camera, 'stop')} disabled={busyId === camera.id} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border-none bg-[#f59e0b] text-white text-[12px] font-semibold cursor-pointer"><Square size={13} /> Stop</button>
+                      <button type="button" title="หยุดวิเคราะห์ชั่วคราว กล้องยังอยู่ในรายการ" onClick={() => void runAction(camera, 'stop')} disabled={busyId === camera.id} className="btn-apple-secondary min-h-9 px-3"><Square size={13} /> Stop</button>
                     ) : (
-                      <button onClick={() => void runAction(camera, 'start')} disabled={busyId === camera.id} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border-none bg-[#16a34a] text-white text-[12px] font-semibold cursor-pointer"><Play size={13} /> Start</button>
+                      <button type="button" title="เปิดกล้องและเริ่มวิเคราะห์แบบเรียลไทม์" onClick={() => void runAction(camera, 'start')} disabled={busyId === camera.id} className="btn-apple-primary min-h-9 px-3"><Play size={13} /> Start</button>
                     )}
-                    <button onClick={() => void runAction(camera, 'delete')} disabled={busyId === camera.id} className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#fecaca] bg-white text-[#dc2626] text-[12px] font-semibold cursor-pointer"><Trash2 size={13} /> Disable</button>
+                    <button type="button" title="หยุดและนำกล้องออกจากรายการ โดยไม่ลบประวัติเหตุการณ์" onClick={() => void runAction(camera, 'delete')} disabled={busyId === camera.id} className="btn-apple-danger ml-auto min-h-9 px-3"><Trash2 size={13} /> Remove</button>
                   </div>
                 )}
               </article>

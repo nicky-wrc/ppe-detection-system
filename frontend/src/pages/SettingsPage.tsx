@@ -185,7 +185,7 @@ export function SettingsPage() {
                 {/* Person Detection Sensitivity */}
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <label className="text-[14px] font-semibold text-[#0f172a] m-0">Person Detection Sensitivity</label>
+                    <label className="text-[14px] font-semibold text-[#0f172a] m-0">Person Confidence Threshold</label>
                     <span className="px-[12px] py-[4px] bg-[#eff6ff] text-[#2563eb] font-bold rounded-lg text-[13px] border border-[#dbeafe]">
                       {settings.confidence_threshold}%
                     </span>
@@ -199,7 +199,7 @@ export function SettingsPage() {
                     onChange={(e) => setSettings({ ...settings, confidence_threshold: parseInt(e.target.value) })}
                     className="w-full h-[8px] bg-[#e2e8f0] rounded-full appearance-none cursor-pointer accent-[#2563eb]"
                   />
-                  <p className="text-[12px] text-[#94a3b8] m-0 mt-3">Determines how strict the AI is when detecting people in the frame.</p>
+                  <p className="text-[12px] text-[#94a3b8] m-0 mt-3">Person detections below this confidence are ignored. Lower values detect more difficult angles but can increase false positives.</p>
                 </div>
 
                 {/* PPE Detection Sensitivity */}
@@ -219,7 +219,7 @@ export function SettingsPage() {
                     onChange={(e) => setSettings({ ...settings, ppe_detection_sensitivity: parseInt(e.target.value) })}
                     className="w-full h-[8px] bg-[#e2e8f0] rounded-full appearance-none cursor-pointer accent-[#2563eb]"
                   />
-                  <p className="text-[12px] text-[#94a3b8] m-0 mt-3">Determines how strict the AI is when classifying PPE equipment like hard hats or vests.</p>
+                  <p className="text-[12px] text-[#94a3b8] m-0 mt-3">Higher sensitivity lowers the PPE confidence floor. Temporal confirmation still filters one-frame noise before creating an alert.</p>
                 </div>
 
                 {/* Active PPE Rules */}
@@ -393,7 +393,7 @@ export function SettingsPage() {
                   </div>
                   <div className="bg-[#f8fafc] border border-[#e2e8f0] rounded-2xl p-[24px]">
                     <p className="text-[12px] font-bold text-[#64748b] uppercase tracking-[0.05em] m-0 mb-3">AI Model</p>
-                    <p className="text-[16px] text-[#2563eb] font-bold m-0 flex items-center gap-[6px]">SH17 baseline <span className="px-[8px] py-[2px] bg-[#dbeafe] text-[#1d4ed8] text-[11px] font-bold rounded-full border border-[#bfdbfe]">Active</span></p>
+                    <p className="text-[16px] text-[#b21d61] font-bold m-0 flex items-center gap-[6px]">YOLOv8m + YOLO11n <span className="px-[8px] py-[2px] bg-[#fff1f5] text-[#9d174d] text-[11px] font-bold rounded-full border border-[#fbcfe8]">Hybrid</span></p>
                   </div>
                 </div>
               </div>

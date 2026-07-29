@@ -9,9 +9,14 @@ from app.models import Detection, ViolationLog
 
 logger = logging.getLogger(__name__)
 
+NON_FILE_REFERENCES = {"expired", "live-camera-frame"}
+
 
 def _safe_unlink(path_value: str | None, root: Path | None = None) -> bool:
     if not path_value:
+        return False
+    normalized = path_value.strip().lower()
+    if normalized in NON_FILE_REFERENCES or normalized.startswith("camera:"):
         return False
     allowed_root = (root or Path(settings.EVIDENCE_DIR)).resolve()
     path = Path(path_value).resolve()

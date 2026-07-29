@@ -22,6 +22,9 @@ def test_active_model_metadata_requires_auth(client, admin_headers):
     response = client.get("/api/v1/models/active", headers=admin_headers)
     assert response.status_code == 200
     assert response.json()["classes"] == ["person", "helmet", "safety-vest"]
+    assert response.json()["strategy"] == "yolov8-sh17-ppe+yolo11-person-assist"
+    assert response.json()["models"]["ppe"]["filename"] == "yolo8m.pt"
+    assert response.json()["models"]["person"]["filename"] == "yolo11n.pt"
     assert response.json()["license_approved"] is False
     assert response.json()["temporal"] == {"window_size": 5, "confirm_count": 4, "clear_count": 3}
 

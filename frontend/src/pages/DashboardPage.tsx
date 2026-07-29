@@ -537,8 +537,32 @@ export function DashboardPage() {
     <Layout>
       <div className="flex flex-col" style={{ gap: '32px' }}>
 
+        <section className="ppe-hero">
+          <div className="hero-copy">
+            <span className="hero-eyebrow"><i /> Live safety operations</span>
+            <h1>เห็นความเสี่ยง ก่อนกลายเป็นอุบัติเหตุ</h1>
+            <p>
+              ศูนย์ควบคุม PPE แบบเรียลไทม์ด้วย Hybrid YOLOv8m + YOLO11n
+              สำหรับตรวจหมวกนิรภัยและเสื้อสะท้อนแสงจากกล้องหน้างาน
+            </p>
+            <div className="hero-actions">
+              <button type="button" className="hero-action is-primary" onClick={() => navigate('/camera')}>
+                <Camera size={16} /> เปิดกล้องตรวจจับ
+              </button>
+              <button type="button" className="hero-action" onClick={() => navigate('/detection')}>
+                <Activity size={16} /> ทดสอบภาพหรือวิดีโอ
+              </button>
+            </div>
+          </div>
+          <div className="hero-status">
+            <span>Compliance rate</span>
+            <strong>{stats?.compliance_rate ?? 0}%</strong>
+            <small>{activeCameras} กล้องออนไลน์ · อัปเดตแบบเรียลไทม์</small>
+          </div>
+        </section>
+
         {/* Stat Cards */}
-        <div className="grid grid-cols-4" style={{ gap: '24px' }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4" style={{ gap: '18px' }}>
           {/* Total Detections */}
           <div className="bg-white border border-[#e2e8f0] rounded-[16px] shadow-sm min-h-[110px] flex flex-col justify-between" style={{ padding: '24px', boxSizing: 'border-box' }}>
             <div className="flex items-start justify-between">
@@ -644,7 +668,7 @@ export function DashboardPage() {
         </div>
 
         {/* Charts */}
-        <div className="grid grid-cols-2" style={{ gap: '24px' }}>
+        <div className="grid grid-cols-1 xl:grid-cols-2" style={{ gap: '24px' }}>
 
           {/* Daily Compliance */}
           <div ref={complianceChartRef} className="bg-white border border-[#e2e8f0] rounded-[16px] shadow-sm" style={{ padding: '24px', boxSizing: 'border-box' }}>

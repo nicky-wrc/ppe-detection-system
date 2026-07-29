@@ -25,6 +25,26 @@ def bbox_iou(a: list[float], b: list[float]) -> float:
     return intersection / union if union > 0 else 0.0
 
 
+def bbox_match_score(a: list[float], b: list[float]) -> float | None:
+    """Return a soft spatial match score resilient to detector box jitter."""
+
+    overlap = bbox_iou(a, b)
+    aw, ah = max(1.0, a[2] - a[0]), max(1.0, a[3] - a[1])
+    bw, bh = max(1.0, b[2] - b[0]), max(1.0, b[3] - b[1])
+    acx, acy = (a[0] + a[2]) / 2, (a[1] + a[3]) / 2
+    bcx, bcy = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+    center_distance = ((acx - bcx) ** 2 + (acy - bcy) ** 2) ** 0.5
+    reference_diagonal = max(1.0, ((aw + bw) / 2) ** 2 + ((ah + bh) / 2) ** 2) ** 0.5
+    normalized_distance = center_distance / reference_diagonal
+    area_a, area_b = aw * ah, bw * bh
+    scale_similarity = min(area_a, area_b) / max(area_a, area_b)
+
+    if overlap < 0.10 and (normalized_distance > 0.45 or scale_similarity < 0.30):
+        return None
+    proximity = max(0.0, 1.0 - normalized_distance)
+    return overlap * 0.65 + proximity * 0.25 + scale_similarity * 0.10
+
+
 @dataclass
 class ConfirmedViolation:
     track_id: int
@@ -55,8 +75,8 @@ class TemporalViolationTracker:
         window_size: int = 5,
         confirm_count: int = 4,
         clear_count: int = 3,
-        iou_threshold: float = 0.25,
-        max_missed_frames: int = 10,
+        iou_threshold: float = 0.20,
+        max_missed_frames: int = 20,
     ):
         if not 1 <= confirm_count <= window_size:
             raise ValueError("confirm_count must be between 1 and window_size")
@@ -87,8 +107,13 @@ class TemporalViolationTracker:
         candidates: list[tuple[float, int, int]] = []
         for person_index, person in enumerate(persons):
             for track_id, track in self.tracks.items():
-                score = bbox_iou(track.bbox, person["bbox"])
-                if score >= self.iou_threshold:
+                match_score = bbox_match_score(track.bbox, person["bbox"])
+                if match_score is not None and (
+                    bbox_iou(track.bbox, person["bbox"]) >= self.iou_threshold
+                    or match_score >= 0.28
+                ):
+                    # Prefer established tracks when spatial scores are nearly tied.
+                    score = match_score - track.missed_frames * 0.01
                     candidates.append((score, track_id, person_index))
 
         used_persons: set[int] = set()

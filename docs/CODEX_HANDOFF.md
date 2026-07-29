@@ -1,5 +1,63 @@
 # Codex Handoff — PPE Guard AI
 
+## Session update — 2026-07-30 (Hybrid detector, smooth camera, Apple-inspired UI)
+
+สถานะล่าสุดของ working tree ก่อนจบ session นี้:
+
+- Branch `nicky_dev`; baseline commit ก่อนเริ่มงานคือ `234cbfb` (`Codex_Handoff`)
+- `apple-music.design.md` เป็นไฟล์ untracked ของผู้ใช้และยังไม่ได้แก้ไข
+- ห้าม commit/push โดยอัตโนมัติ งานทั้งหมดของ session นี้ยังเป็น working-tree changes
+- Backend ที่ port `8000` ถูกเปิดด้วย `backend/.venv` แบบ CUDA และกล้องทั้งหมดถูกหยุดหลัง hardware test
+
+### สิ่งที่ทำเสร็จใน session นี้
+
+- เปลี่ยน runtime เป็น hybrid:
+  - `backend/yolo8m.pt` (SH17) ตรวจ `person`, `helmet`, `safety-vest`
+  - `backend/yolo11n.pt` (COCO) ช่วยตรวจ `person`; checkpoint นี้ไม่มีคลาส PPE จึงห้ามใช้ตัดสิน helmet/vest โดยตรง
+  - รวม person boxes ด้วย NMS, ตรวจ PPE ซ้ำจาก person crop เมื่อมี CUDA และจับคู่ helmet กับ head region / vest กับ torso region
+- เพิ่ม conditional CLAHE เฉพาะเฟรมที่ค่า luminance ต่ำกว่า `LOW_LIGHT_LUMA_THRESHOLD`
+- แก้ semantic bug ของ Settings: `confidence_threshold` เป็น person confidence และ `ppe_detection_sensitivity` ถูก map เป็น PPE confidence จริงแล้ว
+- เพิ่ม metadata ของ hybrid strategy ใน `GET /api/v1/models/active`
+- ปรับ camera target เป็น 10 analyzed/preview FPS, capture buffer 1 เฟรม, JPEG quality 80 และ frontend poll ทุก 120 ms
+- ปรับ tracker ให้ทนต่อ bounding-box jitter และเพิ่ม spatial event cooldown เพื่อกัน alert flood เมื่อ track ID เปลี่ยน
+- แก้ retention warning spam โดยข้าม non-file references `expired`, `camera:<id>` และ `live-camera-frame` แต่ยังปฏิเสธ path จริงที่อยู่นอก configured root
+- สร้าง frontend design system จากหลักการใน `apple-music.design.md` โดยปรับเป็น PPE operations UI:
+  - system fonts, parchment/white surfaces, action blue, safety red-magenta-aubergine gradient
+  - translucent navigation, mobile bottom navigation, dashboard safety hero
+  - redesign หน้า Login และ Cameras; อธิบาย Stop/Remove และเพิ่ม confirmation ก่อน Remove
+  - หน้า Settings แสดงชื่อ hybrid model และอธิบาย threshold/sensitivity ตรงกับ backend
+
+### Runtime และ benchmark ที่ยืนยันจริง
+
+- `backend/.venv`: PyTorch `2.10.0+cu128`, CUDA available, NVIDIA GeForce RTX 4070 12 GB
+- Hybrid inference บนภาพ 1280×720 ไม่มีคน: เฉลี่ยประมาณ 30.3 ms (ประมาณ 33 FPS เฉพาะ inference)
+- Hybrid inference บนภาพ 1080p ที่มี 5 คนและ crop refinement: เฉลี่ยประมาณ 71.1 ms
+- USB camera index 0 เปิดได้จริง: 640×480, source 30 FPS
+- กล้องจริงหลัง warm-up: ประมาณ 8.48 analyzed FPS, preview endpoint ตอบ `200 image/jpeg` ขนาดประมาณ 50 KB
+- เฟรม webcam ที่ทดสอบมี mean luma 58.53 จึงเปิด low-light enhancement และตรวจ person ได้คงที่ 2 คนในตัวอย่าง 5 เฟรม
+- ผลนี้เป็น runtime smoke test ไม่ใช่หลักฐานความแม่นยำของโมเดล
+
+Hardware test สร้าง violation logs IDs `35–56` บน camera 1 เพราะผู้ทดสอบไม่ได้สวม PPE ระหว่างวัด throughput ระบบไม่ได้ลบรายการเหล่านี้อัตโนมัติ ให้ผู้ดูแลตัดสินใจว่าจะเก็บเป็น test evidence หรือลบด้วยขั้นตอนข้อมูลที่ตรวจสอบแล้ว
+
+### Validation ล่าสุด
+
+- Backend full suite: `34 passed`, มี 9 deprecation warnings เดิมจาก `python-jose`
+- Targeted hybrid/retention/tracker tests ล่าสุดผ่าน (`test_hybrid_detector.py`, `test_retention_service.py`, `test_temporal_tracker.py`)
+- Frontend `npm run lint`: ผ่าน
+- Frontend `npx tsc -b --pretty false`: ผ่าน
+- Standard `npm run build`: transform ผ่านแต่ล้มที่ `EPERM` เพราะไฟล์เดิมใน `frontend/dist/assets` ถูก process อื่นล็อก
+- Isolated build ผ่านด้วย `npx vite build --outDir node_modules/.ppe-build-verify-20260730`
+- ตรวจ screenshot หน้า Login จริงที่ desktop viewport แล้ว; ไฟล์ screenshot อยู่ใน `D:\tmp` และไม่ใช่ repository artifact
+
+### งานสำคัญที่ยังต้องทำ
+
+1. สร้าง approved factory dataset ที่ครอบคลุมมุมกล้อง, ระยะ, occlusion, PPE สีต่าง ๆ และ low-light แล้วทำ locked test split
+2. วัด per-class/event precision, recall, F1, AP, false alerts/camera-hour และ missed violations; ห้ามอ้างว่า “แม่นยำที่สุด” ก่อนมีผลนี้
+3. ทดสอบพร้อมกัน 2–4 cameras, RTSP, 8-hour soak, reconnect และ VRAM/RAM/disk growth
+4. ตรวจและล้าง test events IDs `35–56` เฉพาะเมื่อผู้ใช้อนุมัติการลบข้อมูลชัดเจน
+5. แก้ Windows lock ของ `frontend/dist` เมื่อ process ที่ถือไฟล์ถูกปิด; ห้ามลบ `frontend/dist-check` โดยไม่ตรวจ diff/รับคำสั่ง
+6. ตรวจ commercial license ของ SH17 checkpoint/data และ Ultralytics runtime ก่อนตั้ง `MODEL_LICENSE_APPROVED=true`
+
 เอกสารนี้เป็นจุดส่งต่องานระหว่าง Codex sessions สำหรับ repository นี้ ให้อ่านร่วมกับ `AGENTS.md`, `README.md` และเอกสารที่เกี่ยวข้องใน `docs/pilot/` ก่อนเริ่มทำงานทุกครั้ง
 
 > ห้ามนำ password, token, connection string ที่มี credential, ภาพโรงงาน หรือข้อมูลส่วนบุคคลมาใส่ในไฟล์นี้

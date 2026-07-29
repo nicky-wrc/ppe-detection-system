@@ -12,11 +12,11 @@ import numpy as np
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.ml.detector import get_detector
+from app.ml.detector import get_detector, ppe_sensitivity_to_confidence
 from app.models import Alert, AlertDelivery, Camera, Detection, UserSettings, ViolationLog, Zone
 from app.services.email_notifier import email_notifier
 from app.services.evidence_recorder import EvidenceRecorder, blur_person_heads
-from app.services.temporal_tracker import ConfirmedViolation, TemporalViolationTracker
+from app.services.temporal_tracker import ConfirmedViolation, TemporalViolationTracker, bbox_match_score
 from app.services.websocket_manager import ws_manager
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,7 @@ def _source_for_camera(camera: Camera) -> int | str:
 def test_camera_source(camera: Camera) -> dict[str, Any]:
     cap = cv2.VideoCapture(_source_for_camera(camera))
     try:
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, max(1, settings.CAMERA_CAPTURE_BUFFER_SIZE))
         if not cap.isOpened():
             return {"ok": False, "error": "Could not open camera source"}
         ok, frame = cap.read()
@@ -49,15 +50,15 @@ def test_camera_source(camera: Camera) -> dict[str, Any]:
 
 
 class CameraRuntimeManager:
-    PREVIEW_INTERVAL_SECONDS = 0.5
     PREVIEW_MAX_WIDTH = 960
-    PREVIEW_JPEG_QUALITY = 75
+    PREVIEW_JPEG_QUALITY = 80
 
     def __init__(self):
         self.tasks: dict[int, asyncio.Task] = {}
         self._inference_lock = asyncio.Lock()
         self.detector = None
         self._last_events: dict[tuple[int, int, str], float] = {}
+        self._recent_event_boxes: dict[tuple[int, str], list[tuple[float, list[float]]]] = {}
         self._preview_frames: dict[int, tuple[bytes, float]] = {}
 
     async def start(self, camera_id: int) -> None:
@@ -89,6 +90,36 @@ class CameraRuntimeManager:
     def get_preview(self, camera_id: int) -> tuple[bytes, float] | None:
         """Return the latest privacy-filtered JPEG without persisting it."""
         return self._preview_frames.get(camera_id)
+
+    def _deduplicate_confirmed_events(
+        self,
+        camera_id: int,
+        events: list[ConfirmedViolation],
+        now_monotonic: float,
+    ) -> list[ConfirmedViolation]:
+        """Suppress duplicate alerts when a detector assigns a new track ID to the same person."""
+
+        accepted: list[ConfirmedViolation] = []
+        cooldown = max(1, settings.EVENT_COOLDOWN_SECONDS)
+        for event in events:
+            track_key = (camera_id, event.track_id, event.violation_type)
+            if now_monotonic - self._last_events.get(track_key, float("-inf")) < cooldown:
+                continue
+
+            spatial_key = (camera_id, event.violation_type)
+            recent = [
+                (created_at, bbox)
+                for created_at, bbox in self._recent_event_boxes.get(spatial_key, [])
+                if now_monotonic - created_at < cooldown
+            ]
+            self._recent_event_boxes[spatial_key] = recent
+            if any(bbox_match_score(previous_bbox, event.bbox) is not None for _, previous_bbox in recent):
+                continue
+
+            accepted.append(event)
+            self._last_events[track_key] = now_monotonic
+            recent.append((now_monotonic, list(event.bbox)))
+        return accepted
 
     @classmethod
     def _encode_preview(cls, frame: np.ndarray) -> bytes | None:
@@ -172,8 +203,8 @@ class CameraRuntimeManager:
         if camera.owner_id:
             user_settings = db.query(UserSettings).filter(UserSettings.user_id == camera.owner_id).first()
             if user_settings:
-                confidence = max(0.1, min(0.9, user_settings.confidence_threshold / 100))
-                person_confidence = max(0.1, min(0.9, 1 - user_settings.ppe_detection_sensitivity / 100))
+                person_confidence = max(0.1, min(0.9, user_settings.confidence_threshold / 100))
+                confidence = ppe_sensitivity_to_confidence(user_settings.ppe_detection_sensitivity)
                 save_evidence = user_settings.save_evidence
         return required, confidence, person_confidence, save_evidence
 
@@ -348,6 +379,7 @@ class CameraRuntimeManager:
             analyzed = 0
             started = time.perf_counter()
             interval = 1 / max(0.5, settings.CAMERA_ANALYSIS_FPS)
+            preview_interval = 1 / max(1.0, settings.CAMERA_PREVIEW_FPS)
             preview_generated_at = float("-inf")
 
             while True:
@@ -358,6 +390,7 @@ class CameraRuntimeManager:
                     if cap is not None:
                         cap.release()
                     cap = cv2.VideoCapture(_source_for_camera(camera))
+                    cap.set(cv2.CAP_PROP_BUFFERSIZE, max(1, settings.CAMERA_CAPTURE_BUFFER_SIZE))
                     if not cap.isOpened():
                         self._preview_frames.pop(camera_id, None)
                         camera.is_online = False
@@ -393,15 +426,7 @@ class CameraRuntimeManager:
                 result = self._filter_to_zone(result, zone, frame.shape)
                 confirmed = tracker.update(result.get("persons", []))
                 now_monotonic = time.monotonic()
-                confirmed = [
-                    event
-                    for event in confirmed
-                    if now_monotonic
-                    - self._last_events.get((camera.id, event.track_id, event.violation_type), float("-inf"))
-                    >= settings.EVENT_COOLDOWN_SECONDS
-                ]
-                for event in confirmed:
-                    self._last_events[(camera.id, event.track_id, event.violation_type)] = now_monotonic
+                confirmed = self._deduplicate_confirmed_events(camera.id, confirmed, now_monotonic)
 
                 privacy_frame = None
                 if save_evidence:
@@ -418,7 +443,7 @@ class CameraRuntimeManager:
                                 db.commit()
 
                 preview_now = time.monotonic()
-                if preview_now - preview_generated_at >= self.PREVIEW_INTERVAL_SECONDS:
+                if preview_now - preview_generated_at >= preview_interval:
                     if privacy_frame is None:
                         privacy_frame = blur_person_heads(
                             self.detector.draw_detections(frame, result),

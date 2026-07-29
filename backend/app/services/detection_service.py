@@ -11,7 +11,7 @@ from datetime import timedelta, date as date_type
 from fastapi import UploadFile
 from app.core.config import settings
 from app.models import Detection, Alert, Zone, UserSettings
-from app.ml.detector import get_detector
+from app.ml.detector import get_detector, ppe_sensitivity_to_confidence
 
 
 class DetectionService:
@@ -54,8 +54,8 @@ class DetectionService:
         if user_id is not None:
             user_settings = self.db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
             if user_settings:
-                confidence = max(0.1, min(0.9, user_settings.confidence_threshold / 100))
-                person_confidence = max(0.1, min(0.9, 1 - (user_settings.ppe_detection_sensitivity / 100)))
+                person_confidence = max(0.1, min(0.9, user_settings.confidence_threshold / 100))
+                confidence = ppe_sensitivity_to_confidence(user_settings.ppe_detection_sensitivity)
                 if required_ppe is None and user_settings.active_ppe_rules:
                     active = [
                         item
