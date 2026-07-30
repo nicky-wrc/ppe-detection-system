@@ -30,10 +30,21 @@ def _source_for_camera(camera: Camera) -> int | str:
     raise ValueError(f"Camera {camera.id} has an invalid source configuration")
 
 
+def _configure_capture(cap: cv2.VideoCapture, camera: Camera) -> None:
+    """Apply low-latency capture settings without assuming RTSP supports USB properties."""
+
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, max(1, settings.CAMERA_CAPTURE_BUFFER_SIZE))
+    if camera.source_type != "usb":
+        return
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, max(320, settings.CAMERA_CAPTURE_WIDTH))
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, max(240, settings.CAMERA_CAPTURE_HEIGHT))
+    cap.set(cv2.CAP_PROP_FPS, max(1.0, settings.CAMERA_CAPTURE_FPS))
+
+
 def test_camera_source(camera: Camera) -> dict[str, Any]:
     cap = cv2.VideoCapture(_source_for_camera(camera))
     try:
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, max(1, settings.CAMERA_CAPTURE_BUFFER_SIZE))
+        _configure_capture(cap, camera)
         if not cap.isOpened():
             return {"ok": False, "error": "Could not open camera source"}
         ok, frame = cap.read()
@@ -88,7 +99,7 @@ class CameraRuntimeManager:
         return bool(task and not task.done())
 
     def get_preview(self, camera_id: int) -> tuple[bytes, float] | None:
-        """Return the latest privacy-filtered JPEG without persisting it."""
+        """Return the latest authorized in-memory JPEG without persisting it."""
         return self._preview_frames.get(camera_id)
 
     def _deduplicate_confirmed_events(
@@ -390,7 +401,7 @@ class CameraRuntimeManager:
                     if cap is not None:
                         cap.release()
                     cap = cv2.VideoCapture(_source_for_camera(camera))
-                    cap.set(cv2.CAP_PROP_BUFFERSIZE, max(1, settings.CAMERA_CAPTURE_BUFFER_SIZE))
+                    _configure_capture(cap, camera)
                     if not cap.isOpened():
                         self._preview_frames.pop(camera_id, None)
                         camera.is_online = False
@@ -428,10 +439,12 @@ class CameraRuntimeManager:
                 now_monotonic = time.monotonic()
                 confirmed = self._deduplicate_confirmed_events(camera.id, confirmed, now_monotonic)
 
+                annotated_frame = None
                 privacy_frame = None
                 if save_evidence:
+                    annotated_frame = self.detector.draw_detections(frame, result)
                     privacy_frame = blur_person_heads(
-                        self.detector.draw_detections(frame, result),
+                        annotated_frame,
                         result.get("persons", []),
                     )
                     for event_id, frames in recorder.push(privacy_frame):
@@ -444,12 +457,9 @@ class CameraRuntimeManager:
 
                 preview_now = time.monotonic()
                 if preview_now - preview_generated_at >= preview_interval:
-                    if privacy_frame is None:
-                        privacy_frame = blur_person_heads(
-                            self.detector.draw_detections(frame, result),
-                            result.get("persons", []),
-                        )
-                    encoded_preview = self._encode_preview(privacy_frame)
+                    if annotated_frame is None:
+                        annotated_frame = self.detector.draw_detections(frame, result)
+                    encoded_preview = self._encode_preview(annotated_frame)
                     if encoded_preview is not None:
                         self._preview_frames[camera_id] = (encoded_preview, time.time())
                         preview_generated_at = preview_now

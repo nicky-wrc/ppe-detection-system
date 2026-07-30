@@ -12,6 +12,7 @@ from fastapi import UploadFile
 from app.core.config import settings
 from app.models import Detection, Alert, Zone, UserSettings
 from app.ml.detector import get_detector, ppe_sensitivity_to_confidence
+from app.services.websocket_manager import ws_manager
 
 
 class DetectionService:
@@ -108,7 +109,7 @@ class DetectionService:
         self.db.refresh(detection)
         
         if detection.has_violation:
-            self._create_alerts(detection)
+            await self._create_alerts(detection)
         
         return detection
 
@@ -196,11 +197,12 @@ class DetectionService:
         self.db.refresh(detection)
         
         if detection.has_violation:
-            self._create_alerts(detection)
+            await self._create_alerts(detection)
         
         return detection
 
-    def _create_alerts(self, detection: Detection):
+    async def _create_alerts(self, detection: Detection) -> None:
+        alerts: list[Alert] = []
         for violation in detection.violations:
             alert = Alert(
                 detection_id=detection.id,
@@ -208,7 +210,21 @@ class DetectionService:
                 message=f"ตรวจพบ: {violation}"
             )
             self.db.add(alert)
+            alerts.append(alert)
         self.db.commit()
+
+        for alert in alerts:
+            self.db.refresh(alert)
+            await ws_manager.broadcast_alert(
+                {
+                    "alert_id": alert.id,
+                    "detection_id": detection.id,
+                    "camera_name": "Detection",
+                    "violation_type": alert.alert_type,
+                    "created_at": (alert.created_at or datetime.now()).isoformat(),
+                },
+                user_id=detection.user_id,
+            )
 
     def get_detection(self, detection_id: int, user_id: Optional[int] = None) -> Optional[Detection]:
         query = self.db.query(Detection).filter(Detection.id == detection_id)

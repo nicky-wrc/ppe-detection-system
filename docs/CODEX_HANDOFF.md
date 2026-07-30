@@ -1,6 +1,35 @@
 # Codex Handoff — PPE Guard AI
 
+## Follow-up — Detection live persistence and alert sound (2026-07-30)
+
+- หน้า Detection ยังใช้ `/detection/frame` สำหรับผล overlay ชั่วคราว แต่ frontend จะยืนยัน violation signature เดิม 2 เฟรมติดกันก่อนเรียก authenticated `/detection/image` เพื่อบันทึก Detection/Alert และหลักฐานผ่าน flow เดิม
+- ตรวจเฟรมทุก 1 วินาที, reset episode หลัง clear 2 เฟรม, ใช้ cooldown 60 วินาทีต่อ violation signature และหน่วง retry การบันทึกที่ไม่สำเร็จ 10 วินาที เพื่อไม่ให้บันทึกหรือส่งเสียงทุกเฟรม
+- `DetectionService._create_alerts` เปลี่ยนเป็น async และ broadcast Alert ไปยัง WebSocket room `alerts` โดยจำกัด `user_id` เจ้าของ ทำให้หน้า Detection ใช้เสียงและ toast จาก Layout เดียวกับหน้า Cameras โดยยังเคารพค่า `alert_sound` ของผู้ใช้
+- เพิ่ม `backend/tests/test_detection_alerts.py` ตรวจทั้ง Alert rows, payload และ user targeting; backend full suite ผ่าน `46 passed` (มี 9 `python-jose` deprecation warnings เดิม), frontend ESLint/TypeScript ผ่าน และ isolated Vite production build ผ่าน
+- ยังไม่ได้ทดสอบ end-to-end ด้วย browser + webcam + speaker จริง จึงต้อง smoke test การตรวจต่อเนื่อง, History/Alerts และเสียงบน browser ของผู้ใช้ก่อนสาธิต
+
 ## Session update — 2026-07-30 (Hybrid detector, smooth camera, Apple-inspired UI)
+
+### Follow-up — camera person-fusion accuracy guard
+
+- ปรับ `backend/app/ml/detector.py` ให้รวม person box จาก SH17 และ YOLO11 แบบ source-aware โดยใช้ containment ร่วมกับ IoU เพื่อไม่ให้นับคนเดียวซ้ำเมื่อโมเดลหนึ่งให้กล่องลำตัวและอีกโมเดลให้กล่องที่แคบกว่า
+- เพิ่ม geometry guard สำหรับกล่องที่เล็กผิดปกติและชิ้นส่วนแคบที่ติดขอบภาพ ซึ่งไม่เพียงพอสำหรับประเมิน PPE
+- คงการเบลอหน้าไว้ เพราะทำหลัง inference และการเอาออกไม่ช่วย accuracy แต่เพิ่มความเสี่ยงด้าน privacy
+- เพิ่ม regression tests จากรูปแบบกล่องที่พบจริง: nested cross-model boxes, false person ขนาดประมาณ 12×30 px, คนสองคนที่อยู่ใกล้กัน, คนระยะไกลที่ยังสมเหตุสมผล และ partial edge sliver
+- Validation: `test_hybrid_detector.py` ผ่าน 10 tests; backend full suite ผ่าน 39 tests และมี 9 deprecation warnings เดิมจาก `python-jose`
+- Live in-memory check บน USB camera 0 ยืนยันว่า false person บริเวณฉากหลังที่ confidence 0.61 และ partial person ที่ติดขอบขวาถูกกรองออก เหลือ `person_count=0`; ไม่มีการบันทึก diagnostic frame ลงดิสก์
+- ข้อจำกัดเดิมยังอยู่: SH17 ไม่สร้าง helmet/vest candidate ในเฟรมที่ PPE ไม่อยู่ในมุมมอง จึงแก้ไม่ได้ด้วย threshold หรือ post-processing และยังต้องใช้ approved target dataset/fine-tuning พร้อม locked evaluation ก่อนอ้าง accuracy
+
+### Follow-up — helmet/vest association and smoother authorized preview
+
+- พบจาก evidence ล่าสุดว่า SH17 ตรวจหมวกสีแดงได้ confidence ประมาณ `0.63–0.79` แต่ helmet association region เดิมแคบเกินไปเมื่อ person box สูง/หลวม จึงขยาย head matching region พร้อม regression test
+- map SH17 `safety-suit` เป็น pilot contract `safety-vest`; โมเดลเรียกเสื้อสะท้อนแสงสีเหลืองด้านข้างว่า `safety-suit` ที่ confidence ประมาณ `0.27`
+- เปิด test-time augmentation เฉพาะ person-crop refinement ด้วย guarded rescue confidence เพื่อกู้เสื้อด้านหน้าที่ full-frame inference พลาด โดยยังใช้ spatial association และ temporal confirmation เดิม
+- replay บน evidence ล่าสุด: เสื้อด้านหน้าพบที่ confidence `0.38`, เสื้อด้านข้าง `0.27`, หมวก `0.71–0.90`; เป็น targeted replay ไม่ใช่ locked accuracy result
+- USB capture ขอ `1280×720 @ 30 FPS` และยืนยันกับ camera 0 แล้วว่าอุปกรณ์ตอบค่าดังกล่าว; analysis/preview target เพิ่มเป็น 15 FPS สำหรับ local one-camera demo
+- authorized Camera preview ไม่เบลอและไม่ persist เพื่อให้ตรวจภาพ/overlay ได้ชัด แต่ persisted snapshot/clip ยังผ่าน `blur_person_heads` เหมือนเดิม; endpoint ยังคงจำกัด `admin`/`safety_officer` และส่ง `Cache-Control: no-store`
+- frontend poll preview ทุก 70 ms; lint และ TypeScript ผ่าน, isolated production build ผ่าน ส่วน standard `dist` build ยังติด Windows `EPERM` จากไฟล์เดิมที่ process อื่นล็อก
+- Backend full suite ล่าสุด `45 passed`, มี 9 deprecation warnings เดิมจาก `python-jose`; benchmark 1280×720 หลัง warm-up เฉลี่ย `44.25 ms/frame` (ประมาณ 22.6 inference FPS) บน RTX 4070
 
 สถานะล่าสุดของ working tree ก่อนจบ session นี้:
 
@@ -107,7 +136,7 @@ React/Vite UI ─────── FastAPI ─────── PostgreSQL
        └── WebSocket ────┤
                          └── in-process camera runtime ── YOLO SH17
                                                         ├── temporal confirmation
-                                                        └── blurred evidence/preview
+                                                        └── blurred evidence + authorized memory-only preview
 ```
 
 - Backend: Python, FastAPI, SQLAlchemy, Alembic, PostgreSQL
@@ -163,11 +192,11 @@ React/Vite UI ─────── FastAPI ─────── PostgreSQL
 - Preview endpoint: `GET /api/v1/cameras/{camera_id}/preview`
 - จำกัดสิทธิ์ `admin` และ `safety_officer`
 - คืน `204 No Content` ระหว่างรอเฟรมแรก เพื่อลด expected browser errors
-- Preview เป็น JPEG ลดขนาดสูงสุด 960 px และ update ประมาณทุก 0.5 วินาที
-- Frontend poll ประมาณทุก 750 ms
+- Preview เป็น JPEG ลดขนาดสูงสุด 960 px และ target update 15 FPS สำหรับ local one-camera demo
+- Frontend poll ทุก 70 ms แบบ sequential request
 - เก็บ preview ใน memory เท่านั้น ไม่บันทึกลงดิสก์
-- ใช้ annotated frame ที่ผ่าน best-effort head/face blur
-- ต้องทดสอบกับ USB/RTSP hardware จริงอีกครั้ง การ blur ไม่ใช่การรับประกัน anonymization
+- Preview ไม่เบลอเพื่อให้ผู้มีสิทธิ์ตรวจภาพและ overlay ได้ชัด; endpoint จำกัด `admin`/`safety_officer` และห้าม browser cache
+- Snapshot/clip ที่ persist ยังผ่าน best-effort head/face blur; การ blur ไม่ใช่การรับประกัน anonymization
 
 ไฟล์หลัก: `backend/app/api/v1/endpoints/cameras.py`, `backend/app/services/camera_runtime.py`, `frontend/src/pages/CameraPage.tsx`, `frontend/src/services/cameras.ts`
 

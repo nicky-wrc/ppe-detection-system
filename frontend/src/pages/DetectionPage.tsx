@@ -20,6 +20,19 @@ import toast from 'react-hot-toast'
 
 type TabType = 'image' | 'video' | 'camera'
 
+const LIVE_DETECT_INTERVAL_MS = 1000
+const LIVE_CONFIRM_FRAMES = 2
+const LIVE_CLEAR_FRAMES = 2
+const LIVE_EVENT_COOLDOWN_MS = 60_000
+const LIVE_PERSIST_RETRY_MS = 10_000
+
+const getViolationSignature = (detection: Detection): string => {
+  const violations = [...(detection.violations || [])].filter(Boolean).sort()
+  return violations.length > 0
+    ? violations.join('|')
+    : `violation:${detection.violation_count}`
+}
+
 const drawDetectionOverlay = (
   ctx: CanvasRenderingContext2D,
   canvasWidth: number,
@@ -158,11 +171,18 @@ export function DetectionPage() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const lastDetectionRef = useRef<Detection | null>(null)
   const isFrameBusyRef = useRef(false)
+  const liveSessionRef = useRef(0)
+  const activeViolationSignatureRef = useRef<string | null>(null)
+  const violationStreakRef = useRef(0)
+  const clearStreakRef = useRef(0)
+  const recordedViolationSignatureRef = useRef<string | null>(null)
+  const persistedAtBySignatureRef = useRef<Record<string, number>>({})
+  const persistAttemptAtBySignatureRef = useRef<Record<string, number>>({})
+  const isPersistingViolationRef = useRef(false)
   const [isLiveDetecting, setIsLiveDetecting] = useState(false)
   const [isCameraOn, setIsCameraOn] = useState(false)
   const [isCameraStarting, setIsCameraStarting] = useState(false)
   const [liveFrameCount, setLiveFrameCount] = useState(0)
-  const DETECT_INTERVAL_MS = 2000
 
   const renderLoop = useCallback(() => {
     const video = videoRef.current
@@ -214,6 +234,64 @@ export function DetectionPage() {
     }
   }, [])
 
+  const updateLiveViolationEpisode = useCallback(async (
+    detection: Detection,
+    frameFile: File,
+    sessionId: number,
+  ) => {
+    if (!detection.has_violation) {
+      clearStreakRef.current += 1
+      if (clearStreakRef.current >= LIVE_CLEAR_FRAMES) {
+        activeViolationSignatureRef.current = null
+        recordedViolationSignatureRef.current = null
+        violationStreakRef.current = 0
+      }
+      return
+    }
+
+    clearStreakRef.current = 0
+    const signature = getViolationSignature(detection)
+    if (activeViolationSignatureRef.current === signature) {
+      violationStreakRef.current += 1
+    } else {
+      activeViolationSignatureRef.current = signature
+      recordedViolationSignatureRef.current = null
+      violationStreakRef.current = 1
+    }
+
+    const now = Date.now()
+    const lastPersistedAt = persistedAtBySignatureRef.current[signature] || 0
+    const lastAttemptAt = persistAttemptAtBySignatureRef.current[signature] || 0
+    if (
+      violationStreakRef.current < LIVE_CONFIRM_FRAMES
+      || recordedViolationSignatureRef.current === signature
+      || now - lastPersistedAt < LIVE_EVENT_COOLDOWN_MS
+      || now - lastAttemptAt < LIVE_PERSIST_RETRY_MS
+      || isPersistingViolationRef.current
+      || sessionId !== liveSessionRef.current
+    ) {
+      return
+    }
+
+    isPersistingViolationRef.current = true
+    persistAttemptAtBySignatureRef.current[signature] = now
+    try {
+      // Reuse the authenticated image flow so the confirmed frame, Detection and
+      // Alert are committed together instead of creating a second API contract.
+      const persisted = await detectionService.uploadImage(frameFile)
+      if (persisted.has_violation) {
+        recordedViolationSignatureRef.current = signature
+        persistedAtBySignatureRef.current[signature] = Date.now()
+        toast.success('บันทึกเหตุการณ์ฝ่าฝืนแล้ว')
+      }
+    } catch (error) {
+      console.error('Live violation persist error:', error)
+      toast.error('บันทึกเหตุการณ์ฝ่าฝืนไม่สำเร็จ')
+    } finally {
+      isPersistingViolationRef.current = false
+    }
+  }, [])
+
   const captureAndDetect = useCallback(async () => {
     const video = videoRef.current
     const cap = captureCanvasRef.current
@@ -223,6 +301,7 @@ export function DetectionPage() {
     const ctx = cap.getContext('2d')
     if (!ctx) return
     ctx.drawImage(video, 0, 0, cap.width, cap.height)
+    const sessionId = liveSessionRef.current
     isFrameBusyRef.current = true
     cap.toBlob(async (blob) => {
       if (!blob) {
@@ -232,22 +311,29 @@ export function DetectionPage() {
       try {
         const frameFile = new File([blob], 'frame.jpg', { type: 'image/jpeg' })
         const detection = await detectionService.detectFrame(frameFile)
+        if (sessionId !== liveSessionRef.current) return
         lastDetectionRef.current = detection
         
         // Setting state here triggers the overall right-panel updates for video as well
         setResult(detection)
         setLiveFrameCount(prev => prev + 1)
+        await updateLiveViolationEpisode(detection, frameFile, sessionId)
       } catch (err) {
         console.error('Frame detect error:', err)
       } finally {
         isFrameBusyRef.current = false
       }
     }, 'image/jpeg', 0.8)
-  }, [])
+  }, [updateLiveViolationEpisode])
 
   const stopLiveDetection = useCallback(() => {
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
+    liveSessionRef.current += 1
+    activeViolationSignatureRef.current = null
+    recordedViolationSignatureRef.current = null
+    violationStreakRef.current = 0
+    clearStreakRef.current = 0
     isFrameBusyRef.current = false
     setIsLiveDetecting(false)
   }, [])
@@ -258,7 +344,8 @@ export function DetectionPage() {
     if (rafRef.current) cancelAnimationFrame(rafRef.current)
     rafRef.current = requestAnimationFrame(renderLoop)
     if (intervalRef.current) clearInterval(intervalRef.current)
-    intervalRef.current = setInterval(captureAndDetect, DETECT_INTERVAL_MS)
+    void captureAndDetect()
+    intervalRef.current = setInterval(captureAndDetect, LIVE_DETECT_INTERVAL_MS)
   }, [renderLoop, captureAndDetect])
 
   const stopCamera = useCallback(() => {

@@ -74,7 +74,7 @@ async def get_camera_preview(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("admin", "safety_officer")),
 ):
-    """Return the latest in-memory, privacy-filtered camera frame."""
+    """Return the latest authorized in-memory camera frame without persisting it."""
     _get_camera_or_404(db, camera_id, current_user)
     preview = camera_runtime.get_preview(camera_id)
     if preview is None:

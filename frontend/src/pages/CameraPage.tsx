@@ -24,6 +24,7 @@ interface CameraSocketMessage {
 }
 
 type PreviewStatus = 'offline' | 'waiting' | 'live' | 'stale'
+const PREVIEW_POLL_INTERVAL_MS = 70
 
 function CameraPreview({ camera }: { camera: EdgeCamera }) {
   const [preview, setPreview] = useState<{ url: string | null; status: PreviewStatus }>({
@@ -66,7 +67,7 @@ function CameraPreview({ camera }: { camera: EdgeCamera }) {
           }))
         }
       } finally {
-        if (mounted) timer = window.setTimeout(() => void poll(), 120)
+        if (mounted) timer = window.setTimeout(() => void poll(), PREVIEW_POLL_INTERVAL_MS)
       }
     }
     void poll()
@@ -101,7 +102,7 @@ function CameraPreview({ camera }: { camera: EdgeCamera }) {
         {statusLabel}
       </div>
       <div className="absolute bottom-2.5 right-2.5 rounded-full bg-black/65 px-2.5 py-1 text-[9px] font-medium text-white backdrop-blur-sm">
-        Privacy filtered · memory only
+        Authorized live view · memory only
       </div>
     </div>
   )
@@ -216,7 +217,7 @@ export function CameraPage() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="page-heading">
             <h1>กล้องตรวจจับหน้างาน</h1>
-            <p>Hybrid YOLOv8m + YOLO11n บน GPU พร้อม preview แบบ privacy filtered</p>
+            <p>Hybrid YOLOv8m + YOLO11n บน GPU พร้อม authorized live preview</p>
           </div>
           <button type="button" onClick={() => void load()} className="btn-apple-secondary">
             <RefreshCw size={15} /> Refresh

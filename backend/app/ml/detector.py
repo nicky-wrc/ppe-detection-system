@@ -51,7 +51,30 @@ SH17_THAI = {
 }
 
 PPE_ITEMS = {"helmet", "safety-vest"}
+PPE_CLASS_ALIASES = {"safety-suit": "safety-vest"}
 DEFAULT_REQUIRED_PPE = ["helmet", "safety-vest"]
+MIN_PERSON_HEIGHT_RATIO = 0.06
+MIN_PERSON_AREA_RATIO = 0.0015
+MIN_PERSON_ASPECT_RATIO = 0.18
+MAX_PERSON_ASPECT_RATIO = 3.0
+FRAME_EDGE_MARGIN_RATIO = 0.01
+MIN_EDGE_PERSON_WIDTH_RATIO = 0.08
+PERSON_SOURCE_NMS_IOU = 0.55
+PPE_CROP_RESCUE_CONFIDENCE_RATIO = 0.60
+MIN_UNCONFIRMED_SH17_AREA_RATIO = 0.01
+MIN_UNCONFIRMED_SH17_HEIGHT_RATIO = 0.20
+
+
+def canonical_ppe_class(class_name: str) -> str:
+    """Map compatible SH17 labels to the pilot's helmet/vest contract."""
+
+    return PPE_CLASS_ALIASES.get(class_name, class_name)
+
+
+def crop_refinement_confidence(ppe_confidence: float) -> float:
+    """Use a guarded lower floor for spatially constrained test-time augmentation."""
+
+    return max(0.10, min(0.95, ppe_confidence * PPE_CROP_RESCUE_CONFIDENCE_RATIO))
 
 
 def ppe_sensitivity_to_confidence(sensitivity: float) -> float:
@@ -75,6 +98,149 @@ def bbox_iou(first: list[float], second: list[float]) -> float:
     second_area = max(0.0, second[2] - second[0]) * max(0.0, second[3] - second[1])
     union = first_area + second_area - intersection
     return intersection / union if union > 0 else 0.0
+
+
+def _bbox_area(bbox: list[float]) -> float:
+    return max(0.0, bbox[2] - bbox[0]) * max(0.0, bbox[3] - bbox[1])
+
+
+def _person_box_match_score(first: list[float], second: list[float]) -> float | None:
+    """Match cross-model person boxes even when one model returns a tighter crop."""
+
+    x1 = max(first[0], second[0])
+    y1 = max(first[1], second[1])
+    x2 = min(first[2], second[2])
+    y2 = min(first[3], second[3])
+    intersection = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+    if intersection <= 0:
+        return None
+
+    first_area = _bbox_area(first)
+    second_area = _bbox_area(second)
+    if first_area <= 0 or second_area <= 0:
+        return None
+
+    overlap = bbox_iou(first, second)
+    containment = intersection / min(first_area, second_area)
+    first_center = ((first[0] + first[2]) / 2, (first[1] + first[3]) / 2)
+    second_center = ((second[0] + second[2]) / 2, (second[1] + second[3]) / 2)
+    center_distance = (
+        (first_center[0] - second_center[0]) ** 2
+        + (first_center[1] - second_center[1]) ** 2
+    ) ** 0.5
+    reference_diagonal = max(
+        1.0,
+        max(
+            ((first[2] - first[0]) ** 2 + (first[3] - first[1]) ** 2) ** 0.5,
+            ((second[2] - second[0]) ** 2 + (second[3] - second[1]) ** 2) ** 0.5,
+        ),
+    )
+    normalized_distance = center_distance / reference_diagonal
+    area_similarity = min(first_area, second_area) / max(first_area, second_area)
+
+    if overlap >= 0.45:
+        return overlap + containment * 0.20
+    if containment >= 0.72 and normalized_distance <= 0.35:
+        return containment * 0.75 + (1.0 - normalized_distance) * 0.20
+    if overlap >= 0.15 and normalized_distance <= 0.20 and area_similarity >= 0.20:
+        return overlap * 0.60 + (1.0 - normalized_distance) * 0.25 + area_similarity * 0.15
+    return None
+
+
+def fuse_person_detections(
+    objects: list[dict[str, Any]],
+    image_width: int,
+    image_height: int,
+) -> list[dict[str, Any]]:
+    """Fuse SH17 and COCO person proposals while rejecting unusably small boxes.
+
+    Cross-model boxes often describe the same partially visible person with low
+    IoU because one model returns a full upper body and the other a tight crop.
+    Matching by containment avoids duplicate people without merging two boxes
+    emitted by the same model.
+    """
+
+    if image_width <= 0 or image_height <= 0:
+        return []
+
+    image_area = float(image_width * image_height)
+    plausible: list[dict[str, Any]] = []
+    for item in objects:
+        bbox = item.get("bbox")
+        if not isinstance(bbox, list) or len(bbox) != 4:
+            continue
+        width = max(0.0, bbox[2] - bbox[0])
+        height = max(0.0, bbox[3] - bbox[1])
+        area_ratio = width * height / image_area
+        height_ratio = height / image_height
+        width_ratio = width / image_width
+        aspect_ratio = width / height if height > 0 else 0.0
+        touches_horizontal_edge = (
+            bbox[0] <= image_width * FRAME_EDGE_MARGIN_RATIO
+            or bbox[2] >= image_width * (1.0 - FRAME_EDGE_MARGIN_RATIO)
+        )
+        if (
+            width <= 0
+            or height <= 0
+            or height_ratio < MIN_PERSON_HEIGHT_RATIO
+            or area_ratio < MIN_PERSON_AREA_RATIO
+            or aspect_ratio < MIN_PERSON_ASPECT_RATIO
+            or aspect_ratio > MAX_PERSON_ASPECT_RATIO
+            or (touches_horizontal_edge and width_ratio < MIN_EDGE_PERSON_WIDTH_RATIO)
+        ):
+            continue
+        plausible.append(item)
+
+    by_source: dict[str, list[dict[str, Any]]] = {}
+    for index, item in enumerate(plausible):
+        source_key = str(item.get("source") or f"unknown-{index}")
+        by_source.setdefault(source_key, []).append(item)
+    plausible = [
+        item
+        for source_items in by_source.values()
+        for item in non_max_suppression(source_items, iou_threshold=PERSON_SOURCE_NMS_IOU)
+    ]
+    candidates: list[tuple[float, int, int]] = []
+    for first_index, first in enumerate(plausible):
+        first_source = first.get("source")
+        for second_index in range(first_index + 1, len(plausible)):
+            second = plausible[second_index]
+            second_source = second.get("source")
+            if not first_source or not second_source or first_source == second_source:
+                continue
+            score = _person_box_match_score(first["bbox"], second["bbox"])
+            if score is not None:
+                candidates.append((score, first_index, second_index))
+
+    used: set[int] = set()
+    fused: list[dict[str, Any]] = []
+    for _, first_index, second_index in sorted(candidates, reverse=True):
+        if first_index in used or second_index in used:
+            continue
+        first = plausible[first_index]
+        second = plausible[second_index]
+        larger = first if _bbox_area(first["bbox"]) >= _bbox_area(second["bbox"]) else second
+        sources = sorted({str(first["source"]), str(second["source"])})
+        fused.append({
+            **larger,
+            "confidence": max(float(first["confidence"]), float(second["confidence"])),
+            "source": "+".join(sources),
+        })
+        used.update({first_index, second_index})
+
+    for index, item in enumerate(plausible):
+        if index in used:
+            continue
+        if item.get("source") == "yolov8-sh17":
+            item_area_ratio = _bbox_area(item["bbox"]) / image_area
+            item_height_ratio = (item["bbox"][3] - item["bbox"][1]) / image_height
+            if (
+                item_area_ratio < MIN_UNCONFIRMED_SH17_AREA_RATIO
+                and item_height_ratio < MIN_UNCONFIRMED_SH17_HEIGHT_RATIO
+            ):
+                continue
+        fused.append(item)
+    return sorted(fused, key=lambda item: item["confidence"], reverse=True)
 
 
 def non_max_suppression(
@@ -233,6 +399,7 @@ class PPEDetector:
         source: np.ndarray | list[np.ndarray],
         confidence: float,
         classes: list[int] | None = None,
+        augment: bool = False,
     ) -> list[Any]:
         return model.predict(
             source=source,
@@ -241,6 +408,7 @@ class PPEDetector:
             imgsz=max(320, min(1280, settings.INFERENCE_IMAGE_SIZE)),
             device=self.device,
             classes=classes,
+            augment=augment,
             max_det=300,
             verbose=False,
         )
@@ -263,12 +431,19 @@ class PPEDetector:
             class_id = int(box.cls[0])
             confidence = float(box.conf[0])
             class_name = names.get(class_id, SH17_CLASSES.get(class_id, f"class_{class_id}"))
+            canonical_class = canonical_ppe_class(class_name)
             x1, y1, x2, y2 = [float(value) for value in box.xyxy[0].tolist()]
             bbox = [x1 + offset_x, y1 + offset_y, x2 + offset_x, y2 + offset_y]
             if include_person and class_name == "person" and confidence >= person_confidence:
                 persons.append({"bbox": bbox, "confidence": confidence, "source": "yolov8-sh17"})
-            elif class_name in PPE_ITEMS and confidence >= ppe_confidence:
-                ppe.append({"class": class_name, "bbox": bbox, "confidence": confidence, "source": "yolov8-sh17"})
+            elif canonical_class in PPE_ITEMS and confidence >= ppe_confidence:
+                ppe.append({
+                    "class": canonical_class,
+                    "source_class": class_name,
+                    "bbox": bbox,
+                    "confidence": confidence,
+                    "source": "yolov8-sh17",
+                })
         return persons, ppe
 
     def _person_assist(self, frame: np.ndarray, confidence: float) -> list[dict[str, Any]]:
@@ -319,11 +494,20 @@ class PPEDetector:
         if not crops:
             return []
 
+        refinement_confidence = crop_refinement_confidence(ppe_confidence)
         refined: list[dict[str, Any]] = []
-        for result, offset in zip(self._predict(self.ppe_model, crops, ppe_confidence), offsets):
+        for result, offset in zip(
+            self._predict(
+                self.ppe_model,
+                crops,
+                refinement_confidence,
+                augment=True,
+            ),
+            offsets,
+        ):
             _, ppe = self._parse_ppe_result(
                 result,
-                ppe_confidence=ppe_confidence,
+                ppe_confidence=refinement_confidence,
                 person_confidence=1.0,
                 offset=offset,
                 include_person=False,
@@ -347,7 +531,7 @@ class PPEDetector:
                 px1 - person_width * 0.25,
                 py1 - person_height * 0.20,
                 px2 + person_width * 0.25,
-                py1 + person_height * 0.38,
+                py1 + person_height * 0.55,
             ]
             anchor_x, anchor_y = (px1 + px2) / 2, py1 + person_height * 0.08
         else:
@@ -522,7 +706,11 @@ class PPEDetector:
             ppe_objects.extend(ppe)
 
         raw_persons.extend(self._person_assist(inference_frame, minimum_person_confidence))
-        raw_persons = non_max_suppression(raw_persons, iou_threshold=0.55)
+        raw_persons = fuse_person_detections(
+            raw_persons,
+            image_width=image.shape[1],
+            image_height=image.shape[0],
+        )
         ppe_objects.extend(
             self._refine_ppe_in_person_crops(inference_frame, raw_persons, ppe_confidence)
         )

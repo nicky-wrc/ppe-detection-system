@@ -1,7 +1,10 @@
+from types import SimpleNamespace
+
 import cv2
 import numpy as np
 
-from app.services.camera_runtime import CameraRuntimeManager
+from app.core.config import settings
+from app.services.camera_runtime import CameraRuntimeManager, _configure_capture
 from app.services.evidence_recorder import blur_person_heads
 
 
@@ -25,3 +28,23 @@ def test_camera_preview_is_jpeg_and_bounded_in_memory():
     assert decoded is not None
     assert decoded.shape[1] == CameraRuntimeManager.PREVIEW_MAX_WIDTH
     assert decoded.shape[0] == 540
+
+
+def test_usb_capture_requests_configured_resolution_and_fps():
+    class FakeCapture:
+        def __init__(self):
+            self.properties = {}
+
+        def set(self, property_id, value):
+            self.properties[property_id] = value
+            return True
+
+    capture = FakeCapture()
+    camera = SimpleNamespace(source_type="usb")
+
+    _configure_capture(capture, camera)
+
+    assert capture.properties[cv2.CAP_PROP_BUFFERSIZE] == settings.CAMERA_CAPTURE_BUFFER_SIZE
+    assert capture.properties[cv2.CAP_PROP_FRAME_WIDTH] == settings.CAMERA_CAPTURE_WIDTH
+    assert capture.properties[cv2.CAP_PROP_FRAME_HEIGHT] == settings.CAMERA_CAPTURE_HEIGHT
+    assert capture.properties[cv2.CAP_PROP_FPS] == settings.CAMERA_CAPTURE_FPS
