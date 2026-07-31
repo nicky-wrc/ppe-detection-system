@@ -63,6 +63,35 @@ PERSON_SOURCE_NMS_IOU = 0.55
 PPE_CROP_RESCUE_CONFIDENCE_RATIO = 0.60
 MIN_UNCONFIRMED_SH17_AREA_RATIO = 0.01
 MIN_UNCONFIRMED_SH17_HEIGHT_RATIO = 0.20
+BROWSER_VIDEO_CODECS = (
+    (".mp4", "avc1"),
+    (".webm", "VP80"),
+)
+
+
+def open_browser_video_writer(
+    output_base: str,
+    fps: float,
+    frame_size: tuple[int, int],
+) -> tuple[cv2.VideoWriter | None, str | None]:
+    """Open a browser-decodable annotated-video writer when the runtime supports one."""
+
+    for extension, codec in BROWSER_VIDEO_CODECS:
+        output_path = f"{output_base}{extension}"
+        writer = cv2.VideoWriter(
+            output_path,
+            cv2.VideoWriter_fourcc(*codec),
+            fps,
+            frame_size,
+        )
+        if writer.isOpened():
+            logger.info("Writing browser video with codec %s to %s", codec, output_path)
+            return writer, output_path
+        writer.release()
+        Path(output_path).unlink(missing_ok=True)
+
+    logger.warning("No browser-compatible OpenCV video encoder is available")
+    return None, None
 
 
 def canonical_ppe_class(class_name: str) -> str:
@@ -821,9 +850,10 @@ class PPEDetector:
         source_fps = float(capture.get(cv2.CAP_PROP_FPS) or 24.0)
         output_fps = max(1.0, min(15.0, source_fps / frame_stride))
         output_base = str(Path(output_path).with_suffix(""))
-        output_video_path = f"{output_base}.mp4"
+        output_video_path: str | None = None
         best_frame_path = f"{output_base}_best.jpg"
         writer: cv2.VideoWriter | None = None
+        writer_attempted = False
         processed = 0
         source_index = 0
         best_result: dict[str, Any] | None = None
@@ -841,17 +871,14 @@ class PPEDetector:
 
                 result = self.detect(frame, required_ppe, confidence_threshold, person_confidence)
                 annotated = self.draw_detections(frame, result)
-                if writer is None:
+                if not writer_attempted:
+                    writer_attempted = True
                     height, width = annotated.shape[:2]
-                    writer = cv2.VideoWriter(
-                        output_video_path,
-                        cv2.VideoWriter_fourcc(*"mp4v"),
+                    writer, output_video_path = open_browser_video_writer(
+                        output_base,
                         output_fps,
                         (width, height),
                     )
-                    if not writer.isOpened():
-                        writer.release()
-                        writer = None
                 if writer is not None:
                     writer.write(annotated)
 
@@ -875,7 +902,11 @@ class PPEDetector:
             raise ValueError("ไม่พบเฟรมที่อ่านได้จากวิดีโอ")
         if not cv2.imwrite(best_frame_path, best_frame):
             raise OSError(f"ไม่สามารถบันทึก best frame ได้: {best_frame_path}")
-        if not os.path.exists(output_video_path) or os.path.getsize(output_video_path) < 1000:
+        if (
+            output_video_path is None
+            or not os.path.exists(output_video_path)
+            or os.path.getsize(output_video_path) < 1000
+        ):
             output_video_path = best_frame_path
 
         final_result = {**best_result}

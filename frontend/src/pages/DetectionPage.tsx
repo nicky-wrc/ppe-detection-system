@@ -122,8 +122,18 @@ export function DetectionPage() {
   const [activeTab, setActiveTab] = useState<TabType>('image')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
+  const [processedVideoUrl, setProcessedVideoUrl] = useState<string | null>(null)
+  const [videoPlaybackNotice, setVideoPlaybackNotice] = useState<string | null>(null)
   const [result, setResult] = useState<Detection | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(() => () => {
+    if (preview) URL.revokeObjectURL(preview)
+  }, [preview])
+
+  useEffect(() => () => {
+    if (processedVideoUrl) URL.revokeObjectURL(processedVideoUrl)
+  }, [processedVideoUrl])
 
   // ── Image detection overlay ──────────────────────────
   const imageCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -399,7 +409,13 @@ export function DetectionPage() {
   const imageDropzone = useDropzone({
     onDrop: useCallback((files: File[]) => {
       const f = files[0]
-      if (f) { setSelectedFile(f); setPreview(URL.createObjectURL(f)); setResult(null) }
+      if (f) {
+        setSelectedFile(f)
+        setPreview(URL.createObjectURL(f))
+        setProcessedVideoUrl(null)
+        setVideoPlaybackNotice(null)
+        setResult(null)
+      }
     }, []),
     accept: { 'image/*': ['.jpeg', '.jpg', '.png', '.webp'] },
     maxFiles: 1,
@@ -409,7 +425,14 @@ export function DetectionPage() {
   const videoDropzone = useDropzone({
     onDrop: useCallback((files: File[]) => {
       const f = files[0]
-      if (f) { setSelectedFile(f); setPreview(URL.createObjectURL(f)); setResult(null); stopLiveDetection() }
+      if (f) {
+        setSelectedFile(f)
+        setPreview(URL.createObjectURL(f))
+        setProcessedVideoUrl(null)
+        setVideoPlaybackNotice(null)
+        setResult(null)
+        stopLiveDetection()
+      }
     }, [stopLiveDetection]),
     accept: { 'video/mp4': ['.mp4'], 'video/x-msvideo': ['.avi'], 'video/quicktime': ['.mov'] },
     maxFiles: 1,
@@ -426,6 +449,8 @@ export function DetectionPage() {
     setActiveTab(tab)
     setSelectedFile(null)
     setPreview(null)
+    setProcessedVideoUrl(null)
+    setVideoPlaybackNotice(null)
     setResult(null)
     setLiveFrameCount(0)
   }
@@ -434,12 +459,29 @@ export function DetectionPage() {
     if (!selectedFile) return
     stopLiveDetection()
     setIsLoading(true)
+    if (activeTab === 'video') {
+      setProcessedVideoUrl(null)
+      setVideoPlaybackNotice(null)
+    }
     try {
       const detection = activeTab === 'video'
         ? await detectionService.uploadVideo(selectedFile)
         : await detectionService.uploadImage(selectedFile)
       
       setResult(detection)
+      if (activeTab === 'video') {
+        try {
+          const videoBlob = await detectionService.getResultVideoBlob(detection.id)
+          if (videoBlob.type.startsWith('video/')) {
+            setProcessedVideoUrl(URL.createObjectURL(videoBlob))
+          } else {
+            setVideoPlaybackNotice('ได้ผลตรวจแบบภาพนิ่ง จึงกำลังแสดงวิดีโอต้นฉบับ')
+          }
+        } catch (mediaError) {
+          console.error('Result video load error:', mediaError)
+          setVideoPlaybackNotice('โหลดวิดีโอผลลัพธ์ไม่สำเร็จ กำลังแสดงวิดีโอต้นฉบับ')
+        }
+      }
       toast.success('ตรวจจับสำเร็จ')
     } catch (error) {
       console.error(error)
@@ -453,6 +495,8 @@ export function DetectionPage() {
     stopCamera()
     setSelectedFile(null)
     setPreview(null)
+    setProcessedVideoUrl(null)
+    setVideoPlaybackNotice(null)
     setResult(null)
     setLiveFrameCount(0)
   }
@@ -580,24 +624,36 @@ export function DetectionPage() {
                   ) : preview ? (
                     <div className="w-full">
                       {activeTab === 'video' ? (
-                        <div className="relative w-full bg-black rounded-lg overflow-hidden flex items-center justify-center min-h-[300px]">
-                          {/* Hidden video source */}
+                        <div
+                          className="relative w-full bg-black rounded-lg overflow-hidden flex items-center justify-center min-h-[300px]"
+                          onClick={(event) => event.stopPropagation()}
+                        >
                           <video
-                            ref={videoRef}
-                            src={preview}
-                            className="hidden"
-                            onPlay={startLiveDetection}
-                            onPause={stopLiveDetection}
-                            onEnded={stopLiveDetection}
+                            key={processedVideoUrl || preview}
+                            src={processedVideoUrl || preview}
+                            className="w-full block rounded-lg bg-black"
+                            style={{ maxHeight: '460px' }}
+                            controls
+                            playsInline
+                            preload="auto"
+                            onLoadedData={() => {
+                              if (processedVideoUrl) setVideoPlaybackNotice(null)
+                            }}
+                            onError={() => {
+                              if (processedVideoUrl) {
+                                setProcessedVideoUrl(null)
+                                setVideoPlaybackNotice('เบราว์เซอร์เล่นวิดีโอผลลัพธ์ไม่ได้ จึงเปลี่ยนเป็นวิดีโอต้นฉบับ')
+                              } else {
+                                setVideoPlaybackNotice('เบราว์เซอร์ไม่รองรับ codec ของไฟล์นี้ แนะนำใช้ MP4 (H.264)')
+                              }
+                            }}
                           />
-                          {/* Visible canvas with detection overlays */}
-                          <canvas
-                            ref={canvasRef}
-                            className="w-full block rounded-lg"
-                            style={{ maxHeight: '460px', objectFit: 'contain' }}
-                          />
-                          {/* Hidden capture canvas */}
-                          <canvas ref={captureCanvasRef} className="hidden" />
+                          {isLoading && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/55 text-white pointer-events-none">
+                              <Loader2 size={24} className="animate-spin" />
+                              <span className="text-[13px] font-semibold">Processing video...</span>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className="relative w-full bg-[#f8fafc] rounded-lg overflow-hidden flex items-center justify-center min-h-[300px]">
@@ -619,8 +675,13 @@ export function DetectionPage() {
                       )}
                       
                       <p className="text-[12px] font-medium text-[#64748b] mt-3 mb-0 text-center bg-white px-3 py-1 rounded-full border border-[#e2e8f0] inline-block shadow-sm">
-                        File: {selectedFile?.name}
+                        {activeTab === 'video' && processedVideoUrl ? 'Detection result' : `File: ${selectedFile?.name}`}
                       </p>
+                      {activeTab === 'video' && videoPlaybackNotice && (
+                        <p className="text-[12px] text-[#b45309] mt-2 mb-0 text-center">
+                          {videoPlaybackNotice}
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <div className="flex flex-col items-center gap-[10px] py-5">
@@ -706,7 +767,7 @@ export function DetectionPage() {
                   </div>
                 )}
                 
-                {(activeTab === 'video' || activeTab === 'camera') && isLiveDetecting && (
+                {activeTab === 'camera' && isLiveDetecting && (
                   <p className="text-center text-[12px] text-[#22c55e] font-semibold mt-3 animate-pulse">
                     Live Detection Active • {liveFrameCount} frames analyzed
                   </p>

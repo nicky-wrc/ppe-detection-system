@@ -132,4 +132,19 @@ export const detectionService = {
   getResultVideoUrl(id: number): string {
     return `${API_ORIGIN}/api/v1/detection/${id}/video/result`
   },
+
+  async getResultVideoBlob(detectionId: number): Promise<Blob> {
+    const response = await api.get(`/detection/${detectionId}/video/result`, {
+      responseType: 'blob',
+    })
+    const raw = response.data as Blob
+    const contentType = String(response.headers['content-type'] || '')
+      .split(';')[0]
+      .trim()
+      .toLowerCase()
+    if (contentType && raw.type !== contentType) {
+      return new Blob([raw], { type: contentType })
+    }
+    return raw
+  },
 }

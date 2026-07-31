@@ -1,5 +1,14 @@
 # Codex Handoff — PPE Guard AI
 
+## Follow-up — Detection Video black-screen fix (2026-07-31)
+
+- Root cause มีสองชั้น: `DetectionPage` ซ่อน `<video>` แล้วแสดง canvas เปล่าที่ไม่มีทางเริ่มเล่น และ backend เขียน annotated MP4 ด้วย `mp4v/FMP4` ซึ่งไฟล์ล่าสุดยืนยันว่า Chrome/Edge มักถอดรหัสไม่ได้ แม้ input เดิมเป็น H.264
+- หน้า Video เปลี่ยนเป็น native `<video controls>` ที่แสดงไฟล์ต้นฉบับทันที หลังประมวลผลจะโหลด protected result ผ่าน Axios/JWT เป็น Blob URL และเปลี่ยนไปเล่น annotated result; ถ้าผลลัพธ์หรือ codec เล่นไม่ได้จะย้อนกลับไปแสดงต้นฉบับพร้อมข้อความแทนจอดำ
+- Blob URL ของ preview/result ถูก revoke เมื่อเปลี่ยนไฟล์หรือออกจากหน้า และการเล่น uploaded video ไม่เรียก live-frame detection อีก จึงไม่สร้าง Detection/Alert ซ้ำกับ file-processing flow
+- `PPEDetector.process_video` เลือก browser-compatible H.264 (`avc1`) และ fallback เป็น VP8 WebM แทน `mp4v`; ถ้า runtime ไม่มี encoder ที่รองรับจะเก็บ best annotated frame และ frontend ยังแสดงวิดีโอต้นฉบับ
+- เพิ่ม regression test สำหรับ H.264 → WebM writer fallback; targeted detector tests ผ่าน `16 passed`, backend full suite ผ่าน `47 passed` พร้อม 9 `python-jose` warnings เดิม, frontend ESLint/TypeScript และ isolated Vite build ผ่าน
+- Codec smoke test บนเครื่องนี้เขียน H.264 ได้ 10/10 เฟรม แต่ dev servers ไม่ได้เปิดตอนจบงาน จึงยังไม่ได้ทำ authenticated browser E2E ด้วยไฟล์ผู้ใช้หลังแก้
+
 ## Follow-up — Detection live persistence and alert sound (2026-07-30)
 
 - หน้า Detection ยังใช้ `/detection/frame` สำหรับผล overlay ชั่วคราว แต่ frontend จะยืนยัน violation signature เดิม 2 เฟรมติดกันก่อนเรียก authenticated `/detection/image` เพื่อบันทึก Detection/Alert และหลักฐานผ่าน flow เดิม

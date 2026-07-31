@@ -6,6 +6,7 @@ from app.ml.detector import (
     crop_refinement_confidence,
     fuse_person_detections,
     non_max_suppression,
+    open_browser_video_writer,
     ppe_sensitivity_to_confidence,
 )
 
@@ -24,6 +25,42 @@ def test_safety_suit_is_compatible_with_required_safety_vest():
 def test_crop_refinement_uses_guarded_rescue_confidence():
     assert crop_refinement_confidence(0.24) == 0.144
     assert crop_refinement_confidence(0.10) == 0.10
+
+
+def test_browser_video_writer_falls_back_from_h264_to_webm(monkeypatch, tmp_path):
+    attempts: list[str] = []
+
+    class FakeWriter:
+        def __init__(self, path: str, codec: str):
+            self.path = path
+            self.codec = codec
+            self.released = False
+
+        def isOpened(self) -> bool:
+            return self.codec == "VP80"
+
+        def release(self) -> None:
+            self.released = True
+
+    def fake_fourcc(*characters: str) -> str:
+        return "".join(characters)
+
+    def fake_writer(path: str, codec: str, _fps: float, _size: tuple[int, int]) -> FakeWriter:
+        attempts.append(codec)
+        return FakeWriter(path, codec)
+
+    monkeypatch.setattr("app.ml.detector.cv2.VideoWriter_fourcc", fake_fourcc)
+    monkeypatch.setattr("app.ml.detector.cv2.VideoWriter", fake_writer)
+
+    writer, output_path = open_browser_video_writer(
+        str(tmp_path / "annotated"),
+        fps=5.0,
+        frame_size=(640, 480),
+    )
+
+    assert writer is not None
+    assert output_path == str(tmp_path / "annotated.webm")
+    assert attempts == ["avc1", "VP80"]
 
 
 def test_low_light_enhancement_only_changes_dark_frames():
