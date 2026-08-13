@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Layout } from '../components/layout/Layout'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 import { detectionService } from '../services/detection'
 import { alertsService } from '../services/alerts'
 import { camerasService } from '../services/cameras'
@@ -47,12 +48,12 @@ interface DailySummary {
 const chartTooltipStyle = {
   contentStyle: {
     backgroundColor: '#ffffff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '8px',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-    fontSize: '12px',
+    border: '1px solid rgba(0, 0, 0, 0.08)',
+    borderRadius: '11px',
+    boxShadow: 'none',
+    fontSize: '13px',
   },
-  labelStyle: { color: '#475569' },
+  labelStyle: { color: '#6e6e73' },
 }
 
 function escapePdfHtml(s: string): string {
@@ -126,12 +127,12 @@ async function dashboardPdfHtmlToCanvas(
   host.style.cssText = `position:fixed;left:-9000px;top:0;width:${widthPx}px;background:#ffffff;`
   host.innerHTML = `
   <style>
-    .db-pdf { font-family: "Prompt", "Inter", system-ui, sans-serif; color: #0f172a; }
-    .db-pdf h1 { margin: 0 0 10px; font-size: 20px; font-weight: 700; line-height: 1.3; }
-    .db-pdf h2 { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
-    .db-pdf p { margin: 0 0 8px; font-size: 11.5px; line-height: 1.5; color: #334155; }
-    .db-pdf .muted { color: #64748b; font-size: 10.5px; }
-    .db-pdf .box { border-left: 3px solid #2563eb; padding-left: 12px; margin-top: 12px; }
+    .db-pdf { font-family: "SF Pro Text", system-ui, -apple-system, BlinkMacSystemFont, sans-serif; color: #1d1d1f; }
+    .db-pdf h1 { margin: 0 0 10px; font-size: 20px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
+    .db-pdf h2 { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+    .db-pdf p { margin: 0 0 8px; font-size: 11.5px; line-height: 1.5; color: #424245; }
+    .db-pdf .muted { color: #6e6e73; font-size: 10.5px; }
+    .db-pdf .box { border-left: 3px solid #0066cc; padding-left: 12px; margin-top: 12px; }
     .db-pdf--compact { padding: 14px 18px !important; }
     .db-pdf--compact h1 { font-size: 17px; margin-bottom: 6px; }
     .db-pdf--compact h2 { font-size: 13px; margin-top: 12px; margin-bottom: 5px; }
@@ -141,12 +142,15 @@ async function dashboardPdfHtmlToCanvas(
   </style>
   <div class="db-pdf${compact ? ' db-pdf--compact' : ''}" style="padding:20px 22px;">${innerHtml}</div>`
   document.body.appendChild(host)
-  const root = host.querySelector('.db-pdf') as HTMLElement
-  if (document.fonts?.ready) await document.fonts.ready
-  const canvas = await html2canvas(root, { scale: 2, backgroundColor: '#ffffff', logging: false })
-  const dataUrl = canvas.toDataURL('image/png', 1.0)
-  document.body.removeChild(host)
-  return { dataUrl, cw: canvas.width, ch: canvas.height }
+  try {
+    const root = host.querySelector('.db-pdf') as HTMLElement
+    if (document.fonts?.ready) await document.fonts.ready
+    const canvas = await html2canvas(root, { scale: 2, backgroundColor: '#ffffff', logging: false })
+    const dataUrl = canvas.toDataURL('image/png', 1.0)
+    return { dataUrl, cw: canvas.width, ch: canvas.height }
+  } finally {
+    host.remove()
+  }
 }
 
 function pdfAddImageFitWidth(
@@ -173,12 +177,14 @@ export function DashboardPage() {
   const [stats, setStats] = useState<DetectionStats | null>(null)
   const [violations, setViolations] = useState<ViolationRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [activeCameras, setActiveCameras] = useState(0)
   const [activeFilter, setActiveFilter] = useState<string>('Today')
   const [customStartDate, setCustomStartDate] = useState<string>('')
   const [customEndDate, setCustomEndDate] = useState<string>('')
   const [dailyData, setDailyData] = useState<{ name: string; value: number; compliance?: number }[]>([])
   const [weeklyData, setWeeklyData] = useState<{ name: string; value: number }[]>([])
+  const [analyticsLoading, setAnalyticsLoading] = useState(true)
   const [todaySummary, setTodaySummary] = useState<DailySummary>({ detections: 0, violations: 0, compliance: 0 })
   const [yesterdaySummary, setYesterdaySummary] = useState<DailySummary>({ detections: 0, violations: 0, compliance: 0 })
   const [isExportOpen, setIsExportOpen] = useState(false)
@@ -190,6 +196,13 @@ export function DashboardPage() {
   const [selectedViolation, setSelectedViolation] = useState<ViolationRow | null>(null)
   const [fullDetectionDetails, setFullDetectionDetails] = useState<Detection | null>(null)
   const [isLoadingDetails, setIsLoadingDetails] = useState(false)
+  const [detailsError, setDetailsError] = useState(false)
+  const closeExportDialog = useCallback(() => {
+    if (!isExporting) setIsExportOpen(false)
+  }, [isExporting])
+  const closeViolationDialog = useCallback(() => setSelectedViolation(null), [])
+  const exportDialogRef = useDialogFocus<HTMLDivElement>(isExportOpen, closeExportDialog)
+  const violationDialogRef = useDialogFocus<HTMLDivElement>(Boolean(selectedViolation), closeViolationDialog)
   const complianceChartRef = useRef<HTMLDivElement | null>(null)
   const violationChartRef = useRef<HTMLDivElement | null>(null)
   const navigate = useNavigate()
@@ -197,18 +210,33 @@ export function DashboardPage() {
   useEffect(() => { loadData() }, [])
 
   useEffect(() => {
+    let cancelled = false
     if (selectedViolation) {
       setIsLoadingDetails(true)
+      setDetailsError(false)
       detectionService.getDetection(selectedViolation.detectionId)
-        .then(data => setFullDetectionDetails(data))
-        .catch(err => console.error('Failed to load detection details:', err))
-        .finally(() => setIsLoadingDetails(false))
+        .then(data => {
+          if (!cancelled) setFullDetectionDetails(data)
+        })
+        .catch(err => {
+          if (cancelled) return
+          console.error('Failed to load detection details:', err)
+          setDetailsError(true)
+        })
+        .finally(() => {
+          if (!cancelled) setIsLoadingDetails(false)
+        })
     } else {
       setFullDetectionDetails(null)
+      setDetailsError(false)
+    }
+    return () => {
+      cancelled = true
     }
   }, [selectedViolation])
 
   const loadData = async () => {
+    setLoadError(false)
     try {
       const [statsData, alertsData, camerasData] = await Promise.all([
         detectionService.getStats(),
@@ -244,13 +272,16 @@ export function DashboardPage() {
       setViolations(rows.slice(0, 10))
     } catch (error) {
       console.error('Error loading data:', error)
+      setLoadError(true)
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
+    let cancelled = false
     const loadAnalytics = async () => {
+      setAnalyticsLoading(true)
       try {
         let days: number | undefined = undefined
         let start: string | undefined = undefined
@@ -260,12 +291,23 @@ export function DashboardPage() {
         else if (activeFilter === '7 days') days = 7
         else if (activeFilter === '30 days') days = 30
         else if (activeFilter === 'Custom') {
-          if (!customStartDate || !customEndDate) return
+          const customSpanDays = customStartDate && customEndDate
+            ? (new Date(`${customEndDate}T12:00:00`).getTime() - new Date(`${customStartDate}T12:00:00`).getTime()) / 86_400_000
+            : null
+          if (!customStartDate || !customEndDate || customStartDate > customEndDate || (customSpanDays !== null && customSpanDays >= 30)) {
+            if (!cancelled) {
+              setDailyData([])
+              setWeeklyData([])
+              setAnalyticsLoading(false)
+            }
+            return
+          }
           start = customStartDate
           end = customEndDate
         }
 
         const analytics = await detectionService.getAnalytics(days, start, end)
+        if (cancelled) return
         const isSingleDay = activeFilter === 'Today' || (activeFilter === 'Custom' && start === end)
 
         if (isSingleDay) {
@@ -299,26 +341,38 @@ export function DashboardPage() {
           }
         }
       } catch (e) {
+        if (cancelled) return
         console.error('Error loading analytics:', e)
         setDailyData([])
         setWeeklyData([])
+      } finally {
+        if (!cancelled) setAnalyticsLoading(false)
       }
     }
-    loadAnalytics()
+    void loadAnalytics()
+    return () => {
+      cancelled = true
+    }
   }, [activeFilter, customStartDate, customEndDate])
 
   useEffect(() => {
+    let cancelled = false
     const loadComparisons = async () => {
       try {
         const today = new Date()
         const yesterday = new Date()
         yesterday.setDate(today.getDate() - 1)
-        const toYmd = (d: Date) => d.toISOString().slice(0, 10)
+        const toYmd = (date: Date) => [
+          date.getFullYear(),
+          String(date.getMonth() + 1).padStart(2, '0'),
+          String(date.getDate()).padStart(2, '0'),
+        ].join('-')
 
         const [todayAnalytics, yesterdayAnalytics] = await Promise.all([
           detectionService.getAnalytics(1, toYmd(today), toYmd(today)),
           detectionService.getAnalytics(1, toYmd(yesterday), toYmd(yesterday)),
         ])
+        if (cancelled) return
 
         const todayData = todayAnalytics?.daily?.[0]
         const yesterdayData = yesterdayAnalytics?.daily?.[0]
@@ -334,11 +388,15 @@ export function DashboardPage() {
           compliance: yesterdayData?.compliance ?? 0,
         })
       } catch (error) {
+        if (cancelled) return
         console.error('Error loading day comparisons:', error)
       }
     }
 
-    loadComparisons()
+    void loadComparisons()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   /** Day-over-day trend vs yesterday. When yesterday had no baseline (0), % change is undefined — do not show fake +100%. */
@@ -367,32 +425,37 @@ export function DashboardPage() {
     compliance: getDayTrend(todaySummary.compliance, yesterdaySummary.compliance, 'rate'),
   }
 
-  const renderTrend = (trend: DayTrend) => {
-    const sub = <span className="text-[#94a3b8] font-medium">(Compared From Yesterday)</span>
+  const renderTrend = (trend: DayTrend, favorableDirection: 'up' | 'down' | 'neutral') => {
+    const sub = <span className="font-normal text-[var(--muted)]">vs yesterday</span>
+    const directionColor = (isUp: boolean) => {
+      if (favorableDirection === 'neutral') return 'text-[#6e6e73]'
+      return (isUp && favorableDirection === 'up') || (!isUp && favorableDirection === 'down')
+        ? 'text-[#248a3d]'
+        : 'text-[#d70015]'
+    }
     if (trend.kind === 'stable') {
       return (
-        <div className="text-[12px] text-[#94a3b8] font-semibold mt-1.5 flex items-center gap-1.5 flex-wrap">
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[13px] font-semibold text-[#6e6e73]">
           Stable {sub}
         </div>
       )
     }
     if (trend.kind === 'from_zero_count') {
       return (
-        <div className="flex items-center gap-[3px] text-[12px] font-semibold text-[#10b981] mt-1.5 flex-wrap">
+        <div className={`mt-2 flex flex-wrap items-center gap-1.5 text-[13px] font-semibold ${directionColor(true)}`}>
           ↑ +{trend.value.toLocaleString()} {sub}
         </div>
       )
     }
     if (trend.kind === 'from_zero_rate') {
       return (
-        <div className="flex items-center gap-[3px] text-[12px] font-semibold text-[#10b981] mt-1.5 flex-wrap">
+        <div className={`mt-2 flex flex-wrap items-center gap-1.5 text-[13px] font-semibold ${directionColor(true)}`}>
           ↑ +{trend.value.toFixed(1)} pts {sub}
         </div>
       )
     }
-    const color = trend.isUp ? 'text-[#10b981]' : 'text-[#ef4444]'
     return (
-      <div className={`flex items-center gap-[3px] text-[12px] font-semibold ${color} mt-1.5 flex-wrap`}>
+      <div className={`mt-2 flex flex-wrap items-center gap-1.5 text-[13px] font-semibold ${directionColor(trend.isUp)}`}>
         {trend.isUp ? '↑' : '↓'} {trend.isUp ? '+' : '-'}
         {trend.value.toFixed(1)}% {sub}
       </div>
@@ -514,19 +577,33 @@ export function DashboardPage() {
   const getViolationBadgeClass = (type: string) => {
     const t = type.toUpperCase()
     if (t.includes('HELMET') || t.includes('HARDHAT') || t.includes('หมวก'))
-      return 'inline-flex px-[10px] py-[3px] rounded-[6px] text-[11px] font-bold bg-[#fee2e2] text-[#dc2626] border border-[#fecaca]'
+      return 'inline-flex rounded-[8px] border border-[#f2b8bd] bg-[#fff5f5] px-2.5 py-1 text-[12px] font-semibold text-[#d70015]'
     if (t.includes('VEST') || t.includes('เสื้อ'))
-      return 'inline-flex px-[10px] py-[3px] rounded-[6px] text-[11px] font-bold bg-[#ffedd5] text-[#ea580c] border border-[#fed7aa]'
-    return 'inline-flex px-[10px] py-[3px] rounded-[6px] text-[11px] font-bold bg-[#fef3c7] text-[#d97706] border border-[#fde68a]'
+      return 'inline-flex rounded-[8px] border border-[#f2d5a7] bg-[#fff9ed] px-2.5 py-1 text-[12px] font-semibold text-[#9a5b00]'
+    return 'inline-flex rounded-[8px] border border-[#f2d5a7] bg-[#fff9ed] px-2.5 py-1 text-[12px] font-semibold text-[#9a5b00]'
   }
+
+  const customRangeError = activeFilter === 'Custom'
+    ? !customStartDate || !customEndDate
+      ? 'เลือกวันที่เริ่มต้นและสิ้นสุดเพื่อโหลดกราฟ'
+      : customStartDate > customEndDate
+        ? 'วันที่เริ่มต้นต้องไม่อยู่หลังวันที่สิ้นสุด'
+        : (new Date(`${customEndDate}T12:00:00`).getTime() - new Date(`${customStartDate}T12:00:00`).getTime()) / 86_400_000 >= 30
+          ? 'เลือกช่วงเวลาได้สูงสุด 30 วัน'
+          : null
+    : null
 
   if (loading) {
     return (
       <Layout>
-        <div className="flex justify-center items-center" style={{ height: 'calc(100vh - 100px)' }}>
+        <div
+          className="flex min-h-[60vh] items-center justify-center px-6"
+          role="status"
+          aria-live="polite"
+        >
           <div className="text-center">
-            <div className="w-9 h-9 border-4 border-[#e2e8f0] border-t-[#2563eb] rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-[#64748b] text-sm">Loading dashboard...</p>
+            <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-[3px] border-[#d2d2d7] border-t-[#0066cc]" />
+            <p className="m-0 text-[17px] leading-[1.47] text-[#6e6e73]">Loading dashboard…</p>
           </div>
         </div>
       </Layout>
@@ -535,227 +612,320 @@ export function DashboardPage() {
 
   return (
     <Layout>
-      <div className="flex flex-col" style={{ gap: '32px' }}>
+      <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-8 lg:gap-12">
+        <header className="page-heading max-w-[760px]">
+          <h1>ภาพรวมความปลอดภัย</h1>
+          <p>ติดตามสถานะกล้อง การตรวจจับ และแนวโน้มการปฏิบัติตาม PPE จากที่เดียว</p>
+        </header>
 
-        <section className="ppe-hero">
-          <div className="hero-copy">
-            <span className="hero-eyebrow"><i /> Live safety operations</span>
-            <h1>เห็นความเสี่ยง ก่อนกลายเป็นอุบัติเหตุ</h1>
-            <p>
-              ศูนย์ควบคุม PPE แบบเรียลไทม์ด้วย Hybrid YOLOv8m + YOLO11n
-              สำหรับตรวจหมวกนิรภัยและเสื้อสะท้อนแสงจากกล้องหน้างาน
-            </p>
-            <div className="hero-actions">
-              <button type="button" className="hero-action is-primary" onClick={() => navigate('/camera')}>
-                <Camera size={16} /> เปิดกล้องตรวจจับ
-              </button>
-              <button type="button" className="hero-action" onClick={() => navigate('/detection')}>
-                <Activity size={16} /> ทดสอบภาพหรือวิดีโอ
-              </button>
+        <section className="overflow-hidden bg-[#272729] text-white" aria-labelledby="safety-hero-title">
+          <div className="grid gap-10 px-6 py-12 sm:px-10 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)] lg:items-end lg:px-14 lg:py-16">
+            <div>
+              <div className="mb-5 flex items-center gap-2 text-[12px] font-semibold tracking-[0.08em] text-white/70 uppercase">
+                <span className="h-2 w-2 rounded-full bg-[#30d158]" aria-hidden="true" />
+                Live safety operations
+              </div>
+              <h2
+                id="safety-hero-title"
+                className="m-0 max-w-[780px] text-[clamp(34px,5vw,60px)] font-semibold leading-[1.02] tracking-[-0.035em]"
+              >
+                เห็นความเสี่ยง ก่อนกลายเป็นอุบัติเหตุ
+              </h2>
+              <p className="mt-5 max-w-[700px] text-[17px] font-normal leading-[1.47] tracking-[-0.01em] text-white/70">
+                ศูนย์ควบคุม PPE แบบเรียลไทม์ด้วย Hybrid YOLOv8m + YOLO11n
+                สำหรับตรวจหมวกนิรภัยและเสื้อสะท้อนแสงจากกล้องหน้างาน
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <button type="button" className="btn-apple-primary min-h-11 px-5 text-[15px]" onClick={() => navigate('/camera')}>
+                  <Camera size={17} aria-hidden="true" /> เปิดกล้องตรวจจับ
+                </button>
+                <button
+                  type="button"
+                  className="btn-apple-secondary min-h-11 !border-[#2997ff] !bg-transparent px-5 text-[15px] !text-[#2997ff]"
+                  onClick={() => navigate('/detection')}
+                >
+                  <Activity size={17} aria-hidden="true" /> ทดสอบภาพหรือวิดีโอ
+                </button>
+              </div>
             </div>
-          </div>
-          <div className="hero-status">
-            <span>Compliance rate</span>
-            <strong>{stats?.compliance_rate ?? 0}%</strong>
-            <small>{activeCameras} กล้องออนไลน์ · อัปเดตแบบเรียลไทม์</small>
+            <div className="rounded-[18px] border border-white/15 bg-[#272729] p-6 sm:p-8">
+              <span className="text-[12px] font-semibold tracking-[0.08em] text-white/60 uppercase">Compliance rate</span>
+              <strong className="mt-3 block text-[clamp(42px,6vw,68px)] font-semibold leading-none tracking-[-0.045em]">
+                {stats?.compliance_rate ?? 0}%
+              </strong>
+              <div className="my-6 h-px bg-white/15" />
+              <div className="flex items-center gap-2 text-[15px] leading-[1.47] text-white/70">
+                <Camera size={16} aria-hidden="true" />
+                <span>{activeCameras} กล้องออนไลน์ · อัปเดตแบบเรียลไทม์</span>
+              </div>
+            </div>
           </div>
         </section>
 
-        {/* Stat Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4" style={{ gap: '18px' }}>
-          {/* Total Detections */}
-          <div className="bg-white border border-[#e2e8f0] rounded-[16px] shadow-sm min-h-[110px] flex flex-col justify-between" style={{ padding: '24px', boxSizing: 'border-box' }}>
-            <div className="flex items-start justify-between">
-              <p className="text-[13px] text-[#64748b] font-medium m-0">Total Detections</p>
-              <Activity size={18} className="text-[#94a3b8]" strokeWidth={2} />
+        {loadError && (
+          <div className="surface-card flex flex-col gap-4 border-[#f2b8bd] bg-[#fff7f7] p-5 sm:flex-row sm:items-center sm:justify-between" role="alert">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 shrink-0 text-[#d70015]" size={20} aria-hidden="true" />
+              <div>
+                <p className="m-0 text-[17px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">โหลดข้อมูลบางส่วนไม่สำเร็จ</p>
+                <p className="mt-1 text-[15px] leading-[1.47] text-[#6e6e73]">ตรวจสอบการเชื่อมต่อกับ backend แล้วลองใหม่อีกครั้ง</p>
+              </div>
             </div>
-            <div className="mt-2">
-              <p className="text-[34px] font-extrabold text-[#0f172a] m-0 leading-[1] tracking-tight">
+            <button
+              type="button"
+              className="btn-apple-secondary shrink-0"
+              onClick={() => {
+                setLoading(true)
+                void loadData()
+              }}
+            >
+              ลองอีกครั้ง
+            </button>
+          </div>
+        )}
+
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Key safety metrics">
+          {/* Total Detections */}
+          <article className="surface-card flex min-h-[156px] flex-col justify-between p-6">
+            <div className="flex items-start justify-between">
+              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">Total detections</p>
+              <Activity size={20} className="text-[#86868b]" strokeWidth={1.75} aria-hidden="true" />
+            </div>
+            <div className="mt-5">
+              <p className="m-0 text-[38px] font-semibold leading-none tracking-[-0.035em] text-[#1d1d1f]">
                 {(stats?.total_detections ?? 0).toLocaleString()}
               </p>
-              {renderTrend(cardChange.detections)}
+              {renderTrend(cardChange.detections, 'neutral')}
             </div>
-          </div>
+          </article>
 
           {/* Total Violations */}
-          <div className="bg-white border border-[#e2e8f0] rounded-[16px] shadow-sm min-h-[110px] flex flex-col justify-between" style={{ padding: '24px', boxSizing: 'border-box' }}>
+          <article className="surface-card flex min-h-[156px] flex-col justify-between p-6">
             <div className="flex items-start justify-between">
-              <p className="text-[13px] text-[#64748b] font-medium m-0">Total Violations</p>
-              <AlertTriangle size={18} className="text-[#94a3b8]" strokeWidth={2} />
+              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">Total violations</p>
+              <AlertTriangle size={20} className="text-[#d70015]" strokeWidth={1.75} aria-hidden="true" />
             </div>
-            <div className="mt-2">
-              <p className="text-[34px] font-extrabold text-[#0f172a] m-0 leading-[1] tracking-tight">
+            <div className="mt-5">
+              <p className="m-0 text-[38px] font-semibold leading-none tracking-[-0.035em] text-[#1d1d1f]">
                 {(stats?.total_violations ?? 0).toLocaleString()}
               </p>
-              {renderTrend(cardChange.violations)}
+              {renderTrend(cardChange.violations, 'down')}
             </div>
-          </div>
+          </article>
 
           {/* Compliance Rate */}
-          <div className="bg-white border border-[#e2e8f0] rounded-[16px] shadow-sm min-h-[110px] flex flex-col justify-between" style={{ padding: '24px', boxSizing: 'border-box' }}>
+          <article className="surface-card flex min-h-[156px] flex-col justify-between p-6">
             <div className="flex items-start justify-between">
-              <p className="text-[13px] text-[#64748b] font-medium m-0">Compliance Rate (%)</p>
-              <CheckCircle size={18} className="text-[#94a3b8]" strokeWidth={2} />
+              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">Compliance rate</p>
+              <CheckCircle size={20} className="text-[#248a3d]" strokeWidth={1.75} aria-hidden="true" />
             </div>
-            <div className="mt-2">
-              <p className="text-[34px] font-extrabold text-[#0f172a] m-0 leading-[1] tracking-tight">
+            <div className="mt-5">
+              <p className="m-0 text-[38px] font-semibold leading-none tracking-[-0.035em] text-[#1d1d1f]">
                 {stats ? stats.compliance_rate : 0}%
               </p>
-              {renderTrend(cardChange.compliance)}
+              {renderTrend(cardChange.compliance, 'up')}
             </div>
-          </div>
+          </article>
 
           {/* Active Cameras */}
-          <div className="bg-white border border-[#e2e8f0] rounded-[16px] shadow-sm min-h-[110px] flex flex-col justify-between" style={{ padding: '24px', boxSizing: 'border-box' }}>
+          <article className="surface-card flex min-h-[156px] flex-col justify-between p-6">
             <div className="flex items-start justify-between">
-              <p className="text-[13px] text-[#64748b] font-medium m-0">Active Cameras</p>
-              <Camera size={18} className="text-[#94a3b8]" strokeWidth={2} />
+              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">Active cameras</p>
+              <Camera size={20} className="text-[#86868b]" strokeWidth={1.75} aria-hidden="true" />
             </div>
-            <div className="mt-2 flex flex-col gap-[2px]">
-              <p className="text-[34px] font-extrabold text-[#0f172a] m-0 leading-[1] tracking-tight">{activeCameras}</p>
-              <p className="text-[12px] text-[#94a3b8] font-medium m-0 mt-[2px]">Stable</p>
+            <div className="mt-5 flex flex-col gap-2">
+              <p className="m-0 text-[38px] font-semibold leading-none tracking-[-0.035em] text-[#1d1d1f]">{activeCameras}</p>
+              <p className="m-0 flex items-center gap-2 text-[13px] font-normal text-[#6e6e73]">
+                <span className={`h-2 w-2 rounded-full ${activeCameras > 0 ? 'bg-[#248a3d]' : 'bg-[#86868b]'}`} aria-hidden="true" />
+                {activeCameras > 0 ? 'Online now' : 'No camera online'}
+              </p>
             </div>
-          </div>
-        </div>
+          </article>
+        </section>
 
-        {/* Filter Bar */}
-        <div className="bg-white border border-[#e2e8f0] rounded-[16px] shadow-sm flex items-center justify-between flex-wrap" style={{ padding: '16px 24px', gap: '8px', boxSizing: 'border-box' }}>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1 bg-[#f1f5f9] rounded-full border border-[#f1f5f9] overflow-hidden">
+        <section className="surface-card flex flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between" aria-label="Dashboard date controls">
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full bg-[#f5f5f7] p-1" aria-label="Date range">
               {['Today', '7 days', '30 days', 'Custom'].map((f) => (
                 <button
+                  type="button"
                   key={f}
                   onClick={() => setActiveFilter(f)}
+                  aria-pressed={activeFilter === f}
                   className={
                     activeFilter === f
-                      ? 'px-6 py-[10px] text-[14px] font-bold bg-white text-[#0f172a] shadow-sm cursor-pointer transition-all tracking-tight h-full'
-                      : 'px-6 py-[10px] text-[14px] font-bold bg-transparent text-[#64748b] cursor-pointer hover:bg-black/5 hover:text-[#0f172a] tracking-tight h-full'
+                      ? 'min-h-11 shrink-0 cursor-pointer rounded-full border-0 bg-[#0066cc] px-5 text-[14px] font-semibold text-white transition active:scale-95'
+                      : 'min-h-11 shrink-0 cursor-pointer rounded-full border-0 bg-transparent px-5 text-[14px] font-semibold text-[#0066cc] transition active:scale-95'
                   }
-                  style={{ borderRadius: activeFilter === f ? '9999px' : '0' }}
                 >
                   {f}
                 </button>
               ))}
             </div>
             {activeFilter === 'Custom' && (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-2 min-[480px]:flex-row min-[480px]:items-center">
                 <input
                   type="date"
                   value={customStartDate}
                   onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="px-6 py-[10px] rounded-full border border-[#e2e8f0] text-[14px] font-bold text-[#475569] outline-none focus:border-[#2563eb] transition-colors"
+                  max={customEndDate || undefined}
+                  aria-label="Start date"
+                  aria-invalid={Boolean(customRangeError)}
+                  className="min-h-11 rounded-full border border-black/10 bg-white px-4 text-[14px] font-normal text-[#1d1d1f] outline-none transition focus:border-[#0066cc] focus:ring-2 focus:ring-[#0066cc]/20"
                 />
-                <span className="text-[#94a3b8] text-[15px] font-bold px-1">-</span>
+                <span className="hidden text-[14px] text-[var(--muted)] min-[480px]:inline" aria-hidden="true">to</span>
                 <input
                   type="date"
                   value={customEndDate}
                   onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="px-6 py-[10px] rounded-full border border-[#e2e8f0] text-[14px] font-bold text-[#475569] outline-none focus:border-[#2563eb] transition-colors"
+                  min={customStartDate || undefined}
+                  max={customStartDate
+                    ? (() => {
+                      const maxDate = new Date(`${customStartDate}T12:00:00`)
+                      maxDate.setDate(maxDate.getDate() + 29)
+                      return [maxDate.getFullYear(), String(maxDate.getMonth() + 1).padStart(2, '0'), String(maxDate.getDate()).padStart(2, '0')].join('-')
+                    })()
+                    : undefined}
+                  aria-label="End date"
+                  aria-invalid={Boolean(customRangeError)}
+                  className="min-h-11 rounded-full border border-black/10 bg-white px-4 text-[14px] font-normal text-[#1d1d1f] outline-none transition focus:border-[#0066cc] focus:ring-2 focus:ring-[#0066cc]/20"
                 />
               </div>
             )}
+            {customRangeError && (
+              <p className="text-[13px] leading-5 text-[#b4232f]" role="status">{customRangeError}</p>
+            )}
           </div>
-          <div className="flex gap-3 pr-1">
-            <button
-              onClick={() => setIsExportOpen(true)}
-              className="flex items-center justify-center gap-2 bg-[#2563eb] text-white border-none rounded-full cursor-pointer hover:bg-[#1d4ed8]"
-              style={{ padding: '10px 24px', fontSize: '14px', fontWeight: 700, letterSpacing: '-0.2px' }}
-            >
-              <Download size={18} strokeWidth={2.5} />
-              Export PDF
-            </button>
-          </div>
-        </div>
+          <button
+            type="button"
+            onClick={() => setIsExportOpen(true)}
+            disabled={analyticsLoading || Boolean(customRangeError)}
+            className="btn-apple-primary w-full shrink-0 px-5 sm:w-auto"
+          >
+            <Download size={17} strokeWidth={2} aria-hidden="true" />
+            Export PDF
+          </button>
+        </section>
 
-        {/* Charts */}
-        <div className="grid grid-cols-1 xl:grid-cols-2" style={{ gap: '24px' }}>
+        <section className="grid grid-cols-1 gap-6 xl:grid-cols-2" aria-label="Safety analytics">
 
           {/* Daily Compliance */}
-          <div ref={complianceChartRef} className="bg-white border border-[#e2e8f0] rounded-[16px] shadow-sm" style={{ padding: '24px', boxSizing: 'border-box' }}>
-            <p className="text-[15px] font-bold text-[#0f172a] m-0 tracking-tight">Daily Compliance</p>
-            <p className="text-[13px] text-[#64748b] mt-1 mb-6 m-0">Real-time safety adherence across all sectors</p>
-            <div className="h-[232px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={dailyData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} tickLine={false} axisLine={false} domain={[0, 100]} />
-                  <Tooltip contentStyle={chartTooltipStyle.contentStyle} labelStyle={chartTooltipStyle.labelStyle} />
-                  <Line type="monotone" dataKey="compliance" stroke="#3b82f6" strokeWidth={2.5} dot={{ fill: '#3b82f6', r: 4, strokeWidth: 2, stroke: '#fff' }} name="Compliance %" />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+          <article ref={complianceChartRef} className="surface-card p-6 sm:p-7">
+            <h2 className="m-0 text-[21px] font-semibold tracking-[-0.02em] text-[#1d1d1f]">Daily compliance</h2>
+            <p className="mt-1 text-[15px] leading-[1.47] text-[#6e6e73]">Real-time safety adherence across all sectors</p>
+            {analyticsLoading ? (
+              <div className="flex h-[248px] items-center justify-center gap-3 text-[14px] text-[var(--muted)]" role="status">
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#d2d2d7] border-t-[#0066cc]" aria-hidden="true" />
+                Loading analytics…
+              </div>
+            ) : dailyData.length === 0 ? (
+              <div className="flex h-[248px] flex-col items-center justify-center px-4 text-center" role="status">
+                <Activity size={32} className="mb-3 text-[#b7b7bb]" strokeWidth={1.5} aria-hidden="true" />
+                <p className="m-0 text-[15px] font-semibold text-[#1d1d1f]">No compliance data yet</p>
+                <p className="mt-1 text-[13px] leading-[1.47] text-[var(--muted)]">Data will appear after detections are processed.</p>
+              </div>
+            ) : (
+              <div className="mt-6 h-[248px]" aria-label="Compliance line chart">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={dailyData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e7" vertical={false} />
+                    <XAxis dataKey="name" tick={{ fill: '#6e6e73', fontSize: 12 }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fill: '#6e6e73', fontSize: 12 }} tickLine={false} axisLine={false} domain={[0, 100]} />
+                    <Tooltip contentStyle={chartTooltipStyle.contentStyle} labelStyle={chartTooltipStyle.labelStyle} />
+                    <Line type="monotone" dataKey="compliance" stroke="#0066cc" strokeWidth={2.5} dot={{ fill: '#0066cc', r: 4, strokeWidth: 2, stroke: '#fff' }} name="Compliance %" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </article>
 
           {/* Weekly Violations */}
-          <div ref={violationChartRef} className="bg-white border border-[#e2e8f0] rounded-[16px] shadow-sm" style={{ padding: '24px', boxSizing: 'border-box' }}>
-            <p className="text-[15px] font-bold text-[#0f172a] m-0 tracking-tight">Weekly Violations</p>
-            <p className="text-[13px] text-[#64748b] mt-1 mb-6 m-0">Historical trends by day of the week</p>
-            <div className="h-[232px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={weeklyData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={chartTooltipStyle.contentStyle} labelStyle={chartTooltipStyle.labelStyle} />
-                  <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2.5} dot={{ fill: '#3b82f6', r: 4, strokeWidth: 2, stroke: '#fff' }} name="Violations" />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
+          <article ref={violationChartRef} className="surface-card p-6 sm:p-7">
+            <h2 className="m-0 text-[21px] font-semibold tracking-[-0.02em] text-[#1d1d1f]">Violation trend</h2>
+            <p className="mt-1 text-[15px] leading-[1.47] text-[#6e6e73]">Historical violation counts for the selected period</p>
+            {analyticsLoading ? (
+              <div className="flex h-[248px] items-center justify-center gap-3 text-[14px] text-[var(--muted)]" role="status">
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#d2d2d7] border-t-[#0066cc]" aria-hidden="true" />
+                Loading analytics…
+              </div>
+            ) : weeklyData.length === 0 ? (
+              <div className="flex h-[248px] flex-col items-center justify-center px-4 text-center" role="status">
+                <ShieldAlert size={32} className="mb-3 text-[#b7b7bb]" strokeWidth={1.5} aria-hidden="true" />
+                <p className="m-0 text-[15px] font-semibold text-[#1d1d1f]">No violation data yet</p>
+                <p className="mt-1 text-[13px] leading-[1.47] text-[var(--muted)]">Choose another date range or wait for new activity.</p>
+              </div>
+            ) : (
+              <div className="mt-6 h-[248px]" aria-label="Violation line chart">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={weeklyData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e7" vertical={false} />
+                    <XAxis dataKey="name" tick={{ fill: '#6e6e73', fontSize: 12 }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fill: '#6e6e73', fontSize: 12 }} tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={chartTooltipStyle.contentStyle} labelStyle={chartTooltipStyle.labelStyle} />
+                    <Line type="monotone" dataKey="value" stroke="#d70015" strokeWidth={2.5} dot={{ fill: '#d70015', r: 4, strokeWidth: 2, stroke: '#fff' }} name="Violations" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </article>
+        </section>
 
-        {/* Recent Violations Table */}
-        <div className="bg-white border border-[#e2e8f0] rounded-[16px] overflow-hidden shadow-sm">
-          <div className="border-b border-[#f1f5f9] flex items-center justify-between" style={{ padding: '20px 24px' }}>
-            <div className="flex items-center gap-2 text-[15px] font-bold text-[#0f172a] tracking-tight">
-              <ShieldAlert size={18} className="text-[#64748b]" strokeWidth={2} />
-              Recent Violations
+        <section className="surface-card overflow-hidden" aria-labelledby="recent-violations-title">
+          <div className="flex flex-col gap-3 border-b border-black/8 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <ShieldAlert size={20} className="text-[#d70015]" strokeWidth={1.75} aria-hidden="true" />
+                <h2 id="recent-violations-title" className="m-0 text-[21px] font-semibold tracking-[-0.02em] text-[#1d1d1f]">
+                  Recent violations
+                </h2>
+              </div>
+              <p className="mt-1 text-[15px] leading-[1.47] text-[#6e6e73]">Latest events that require review</p>
             </div>
             <button
+              type="button"
               onClick={() => navigate('/reports')}
-              className="text-[13px] text-[#2563eb] font-semibold bg-transparent border-none cursor-pointer hover:underline"
+              className="min-h-11 self-start rounded-full border border-[#0066cc] bg-transparent px-5 text-[14px] font-semibold text-[#0066cc] transition active:scale-95 sm:self-auto"
             >
-              View all logs →
+              View all logs
             </button>
           </div>
 
           {violations.length === 0 ? (
-            <div className="py-[70px] px-6 text-center">
-              <Clock size={44} className="text-[#cbd5e1] mx-auto mb-4" strokeWidth={1.5} />
-              <p className="text-[15px] font-bold text-[#0f172a] m-0 tracking-tight">No violations recorded</p>
-              <p className="text-[13px] text-[#64748b] mt-1 m-0">Violations will appear here when detected</p>
+            <div className="px-6 py-16 text-center" role="status">
+              <Clock size={40} className="mx-auto mb-4 text-[#b7b7bb]" strokeWidth={1.5} aria-hidden="true" />
+              <p className="m-0 text-[17px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">No violations recorded</p>
+              <p className="mt-1 text-[15px] leading-[1.47] text-[#6e6e73]">Violations will appear here when detected.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto" style={{ maxHeight: '480px', overflowY: 'auto' }}>
-              <table className="w-full border-collapse relative">
-                <thead className="sticky top-0 z-10 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+            <div className="max-h-[480px] overflow-auto">
+              <table className="relative w-full min-w-[780px] border-collapse">
+                <thead className="sticky top-0 z-10">
                   <tr>
-                    <th className="text-left text-[11px] font-semibold text-[#94a3b8] uppercase tracking-[0.05em] bg-[#f8fafc] m-0" style={{ padding: '12px 24px' }}>Thumbnail</th>
-                    <th className="text-left text-[11px] font-semibold text-[#94a3b8] uppercase tracking-[0.05em] bg-[#f8fafc] m-0" style={{ padding: '12px 24px' }}>Date &amp; Time</th>
-                    <th className="text-left text-[11px] font-semibold text-[#94a3b8] uppercase tracking-[0.05em] bg-[#f8fafc] m-0" style={{ padding: '12px 24px' }}>Reference</th>
-                    <th className="text-left text-[11px] font-semibold text-[#94a3b8] uppercase tracking-[0.05em] bg-[#f8fafc] m-0" style={{ padding: '12px 24px' }}>Violation Type</th>
-                    <th className="text-left text-[11px] font-semibold text-[#94a3b8] uppercase tracking-[0.05em] bg-[#f8fafc] m-0" style={{ padding: '12px 24px' }}>Actions</th>
+                    <th className="m-0 bg-[#f5f5f7] px-6 py-3 text-left text-[12px] font-semibold text-[#6e6e73]">Thumbnail</th>
+                    <th className="m-0 bg-[#f5f5f7] px-6 py-3 text-left text-[12px] font-semibold text-[#6e6e73]">Date &amp; time</th>
+                    <th className="m-0 bg-[#f5f5f7] px-6 py-3 text-left text-[12px] font-semibold text-[#6e6e73]">Reference</th>
+                    <th className="m-0 bg-[#f5f5f7] px-6 py-3 text-left text-[12px] font-semibold text-[#6e6e73]">Violation type</th>
+                    <th className="m-0 bg-[#f5f5f7] px-6 py-3 text-left text-[12px] font-semibold text-[#6e6e73]">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {violations.map((row) => (
-                    <tr key={row.id} className="transition-colors duration-150">
-                      <td className="text-[13px] text-[#334155] border-b border-[#f1f5f9]" style={{ padding: '16px 24px' }}>
-                        <div className="w-14 h-14 rounded-lg bg-[#f1f5f9] overflow-hidden border border-[#e5eaf0]">
+                    <tr key={row.id} className="transition-colors hover:bg-[#fafafc]">
+                      <td className="border-b border-black/8 px-6 py-4 text-[15px] text-[#424245]">
+                        <div className="h-14 w-14 overflow-hidden rounded-[8px] border border-black/8 bg-[#f5f5f7]">
                           <ProtectedDetectionImage
                             detectionId={row.detectionId}
                             alt={row.refId}
-                            className="w-full h-full object-cover"
+                            className="h-full w-full object-cover"
                           />
                         </div>
                       </td>
-                      <td className="text-[13px] text-[#334155] border-b border-[#f1f5f9]" style={{ padding: '16px 24px' }}>
-                        <div className="font-medium text-[#1e293b]">{new Date(row.createdAt).toLocaleDateString()}</div>
-                        <div className="text-[11px] text-[#94a3b8] mt-[2px]">{new Date(row.createdAt).toLocaleTimeString()}</div>
+                      <td className="border-b border-black/8 px-6 py-4 text-[15px] text-[#424245]">
+                        <div className="font-semibold text-[#1d1d1f]">{new Date(row.createdAt).toLocaleDateString()}</div>
+                        <div className="mt-0.5 text-[13px] text-[var(--muted)]">{new Date(row.createdAt).toLocaleTimeString()}</div>
                       </td>
-                      <td className="text-[13px] text-[#334155] border-b border-[#f1f5f9]" style={{ padding: '16px 24px' }}>{row.refId}</td>
-                      <td className="text-[13px] text-[#334155] border-b border-[#f1f5f9]" style={{ padding: '16px 24px' }}>
+                      <td className="border-b border-black/8 px-6 py-4 text-[15px] text-[#424245]">{row.refId}</td>
+                      <td className="border-b border-black/8 px-6 py-4 text-[15px] text-[#424245]">
                         <div className="flex flex-wrap gap-2">
                           {row.violationTypes.map((type, idx) => (
                             <span key={idx} className={getViolationBadgeClass(type)}>
@@ -766,13 +936,14 @@ export function DashboardPage() {
                           ))}
                         </div>
                       </td>
-                      <td className="text-[13px] text-[#334155] border-b border-[#f1f5f9]" style={{ padding: '16px 24px' }}>
+                      <td className="border-b border-black/8 px-6 py-4 text-[15px] text-[#424245]">
                         <button
+                          type="button"
                           onClick={() => setSelectedViolation(row)}
-                          className="flex items-center justify-center w-8 h-8 rounded-lg border border-[#e5eaf0] bg-[#f8fafc] text-[#64748b] cursor-pointer hover:bg-[#eff6ff] hover:text-[#2563eb] transition-colors"
-                          title="View Details"
+                          className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-[#0066cc] bg-transparent text-[#0066cc] transition active:scale-95"
+                          aria-label={`View details for ${row.refId}`}
                         >
-                          <Eye size={14} />
+                          <Eye size={17} aria-hidden="true" />
                         </button>
                       </td>
                     </tr>
@@ -781,51 +952,77 @@ export function DashboardPage() {
               </table>
             </div>
           )}
-        </div>
+        </section>
 
       </div>
       {isExportOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-[rgba(15,23,42,0.45)]" onClick={() => setIsExportOpen(false)} />
-          <div className="relative w-full max-w-[420px] rounded-2xl bg-white border border-[#e5eaf0] shadow-[0_20px_60px_rgba(0,0,0,0.18)]">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#f1f5f9]">
-              <h3 className="text-[16px] font-semibold text-[#0f172a] m-0">Export PDF</h3>
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default border-0 bg-black/40 backdrop-blur-sm"
+            onClick={closeExportDialog}
+            disabled={isExporting}
+            aria-label="Close export dialog"
+          />
+          <div
+            ref={exportDialogRef}
+            tabIndex={-1}
+            className="relative w-full max-w-[440px] overflow-hidden rounded-[18px] border border-black/8 bg-white"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="export-dialog-title"
+          >
+            <div className="flex items-center justify-between border-b border-black/8 px-6 py-5">
+              <div>
+                <h2 id="export-dialog-title" className="m-0 text-[21px] font-semibold tracking-[-0.02em] text-[#1d1d1f]">Export PDF</h2>
+                <p className="mt-1 text-[14px] text-[#6e6e73]">Choose the charts to include.</p>
+              </div>
               <button
-                onClick={() => setIsExportOpen(false)}
-                className="w-8 h-8 rounded-lg bg-[#f1f5f9] border-none text-[#64748b] cursor-pointer flex items-center justify-center"
+                type="button"
+                onClick={closeExportDialog}
+                disabled={isExporting}
+                className="btn-apple-secondary h-11 w-11 !p-0"
+                aria-label="Close export dialog"
               >
-                <X size={16} />
+                <X size={18} aria-hidden="true" />
               </button>
             </div>
-            <div className="px-5 py-4 flex flex-col gap-3">
-              <label className="flex items-center gap-2 text-[14px] text-[#334155]">
+            <div className="flex flex-col gap-3 px-6 py-6">
+              <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-[11px] border border-black/8 px-4 text-[16px] text-[#1d1d1f]">
                 <input
                   type="checkbox"
                   checked={exportTarget.compliance}
-                  onChange={(e) => setExportTarget((prev) => ({ ...prev, compliance: e.target.checked }))}
+                onChange={(e) => setExportTarget((prev) => ({ ...prev, compliance: e.target.checked }))}
+                disabled={isExporting}
+                  className="h-5 w-5 accent-[#0066cc]"
                 />
                 Compliance chart
               </label>
-              <label className="flex items-center gap-2 text-[14px] text-[#334155]">
+              <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-[11px] border border-black/8 px-4 text-[16px] text-[#1d1d1f]">
                 <input
                   type="checkbox"
                   checked={exportTarget.violation}
                   onChange={(e) => setExportTarget((prev) => ({ ...prev, violation: e.target.checked }))}
+                  disabled={isExporting}
+                  className="h-5 w-5 accent-[#0066cc]"
                 />
                 Violation chart
               </label>
             </div>
-            <div className="px-5 py-4 border-t border-[#f1f5f9] flex justify-end gap-2">
+            <div className="flex justify-end gap-3 border-t border-black/8 bg-[#f5f5f7] px-6 py-5">
               <button
-                onClick={() => setIsExportOpen(false)}
-                className="px-4 py-2 text-[13px] font-semibold rounded-lg border border-[#e2e8f0] bg-white text-[#475569] cursor-pointer"
+                type="button"
+                onClick={closeExportDialog}
+                disabled={isExporting}
+                className="btn-apple-secondary"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleExportPdf}
                 disabled={(!exportTarget.compliance && !exportTarget.violation) || isExporting}
-                className="px-4 py-2 text-[13px] font-semibold rounded-lg border-none bg-[#2563eb] text-white cursor-pointer disabled:opacity-50"
+                className="btn-apple-primary"
               >
                 {isExporting ? 'Exporting...' : 'Export'}
               </button>
@@ -836,50 +1033,70 @@ export function DashboardPage() {
 
       {selectedViolation && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-[rgba(15,23,42,0.45)]" onClick={() => setSelectedViolation(null)} />
-          <div className="relative w-full max-w-[900px] max-h-[95vh] bg-white rounded-3xl border border-[#dbe3ee] shadow-[0_24px_70px_rgba(15,23,42,0.2)] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-8 py-6 border-b border-[#e9eff6] bg-[#f8fbff]">
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default border-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setSelectedViolation(null)}
+            aria-label="Close violation details"
+          />
+          <div
+            ref={violationDialogRef}
+            tabIndex={-1}
+            className="relative flex max-h-[95vh] w-full max-w-[900px] flex-col overflow-hidden rounded-[18px] border border-black/8 bg-white"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="violation-dialog-title"
+          >
+            <div className="flex items-center justify-between border-b border-black/8 px-5 py-5 sm:px-8">
               <div className="flex items-center gap-2">
-                <ShieldAlert size={16} className="text-[#6366f1]" />
-                <p className="text-[18px] font-bold text-[#1e293b] m-0 leading-none">Violation Details</p>
+                <ShieldAlert size={20} className="text-[#d70015]" aria-hidden="true" />
+                <h2 id="violation-dialog-title" className="m-0 text-[21px] font-semibold leading-none tracking-[-0.02em] text-[#1d1d1f]">Violation details</h2>
               </div>
               <button
+                type="button"
                 onClick={() => setSelectedViolation(null)}
-                className="w-10 h-10 rounded-xl bg-[#eef2f7] border-none text-[#64748b] cursor-pointer flex items-center justify-center hover:bg-[#e2e8f0] transition-colors"
+                className="btn-apple-secondary h-11 w-11 !p-0"
+                aria-label="Close violation details"
               >
-                <X size={17} />
+                <X size={18} aria-hidden="true" />
               </button>
             </div>
 
-            <div className="px-8 py-8 bg-[#f8fafc] overflow-y-auto">
+            <div className="overflow-y-auto bg-[#f5f5f7] px-4 py-6 sm:px-8 sm:py-8">
               {isLoadingDetails ? (
-                <div className="py-12 text-center text-[#64748b] text-[14px]">Loading details...</div>
+                <div className="py-12 text-center text-[15px] text-[#6e6e73]" role="status">Loading details…</div>
               ) : (
                 <div className="flex justify-center">
-                  <div className="w-full max-w-[740px] space-y-7">
-                    <div className="rounded-2xl overflow-hidden border border-[#d6e0ec] bg-white shadow-[0_6px_18px_rgba(15,23,42,0.08)]">
+                  <div className="w-full max-w-[740px] space-y-5">
+                    {detailsError && (
+                      <div className="rounded-[11px] border border-[#f2b8bd] bg-[#fff5f5] px-4 py-3 text-[14px] leading-[1.47] text-[#d70015]" role="alert">
+                        โหลดรายละเอียดเพิ่มเติมไม่สำเร็จ ข้อมูลเหตุการณ์พื้นฐานยังแสดงด้านล่าง
+                      </div>
+                    )}
+
+                    <div className="surface-card overflow-hidden">
                       <ProtectedDetectionImage
                         detectionId={selectedViolation.detectionId}
                         alt={selectedViolation.refId}
-                        className="w-full h-[400px] object-contain bg-[#f8fafc]"
+                        className="h-[260px] w-full bg-[#fafafc] object-contain sm:h-[400px]"
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-5">
-                      <div className="bg-white border border-[#e2e8f0] rounded-2xl p-5 shadow-sm">
-                        <p className="text-[12px] text-[#94a3b8] font-bold tracking-[0.08em] uppercase m-0 mb-1">Date & Time</p>
-                        <p className="text-[22px] font-semibold text-[#0f172a] m-0 leading-tight">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="surface-card p-5">
+                        <p className="m-0 mb-2 text-[12px] font-semibold tracking-[0.08em] text-[var(--muted)] uppercase">Date &amp; time</p>
+                        <p className="m-0 text-[20px] font-semibold leading-tight tracking-[-0.02em] text-[#1d1d1f]">
                           {new Date(selectedViolation.createdAt).toLocaleString('th-TH')}
                         </p>
                       </div>
-                      <div className="bg-white border border-[#e2e8f0] rounded-2xl p-5 shadow-sm">
-                        <p className="text-[12px] text-[#94a3b8] font-bold tracking-[0.08em] uppercase m-0 mb-1">Reference ID</p>
-                        <p className="text-[28px] font-semibold text-[#0f172a] m-0 leading-tight">{selectedViolation.refId}</p>
+                      <div className="surface-card p-5">
+                        <p className="m-0 mb-2 text-[12px] font-semibold tracking-[0.08em] text-[var(--muted)] uppercase">Reference ID</p>
+                        <p className="m-0 text-[24px] font-semibold leading-tight tracking-[-0.025em] text-[#1d1d1f]">{selectedViolation.refId}</p>
                       </div>
                     </div>
 
-                    <div className="bg-white border border-[#e2e8f0] rounded-2xl p-5 shadow-sm">
-                      <p className="text-[12px] text-[#94a3b8] font-bold tracking-[0.08em] uppercase m-0 mb-3">Violation Type</p>
+                    <div className="surface-card p-5">
+                      <p className="m-0 mb-3 text-[12px] font-semibold tracking-[0.08em] text-[var(--muted)] uppercase">Violation type</p>
                       <div className="flex flex-wrap gap-2">
                         {selectedViolation.violationTypes.map((type, idx) => (
                           <span key={idx} className={getViolationBadgeClass(type)}>
@@ -891,9 +1108,9 @@ export function DashboardPage() {
                       </div>
                     </div>
 
-                    <div className="bg-white border border-[#e2e8f0] rounded-2xl p-5 shadow-sm">
-                      <p className="text-[12px] text-[#94a3b8] font-bold tracking-[0.08em] uppercase m-0 mb-3">Message</p>
-                      <div className="rounded-xl border border-[#e2e8f0] bg-[#f3f6fb] px-5 py-4 text-[15px] text-[#334155] leading-relaxed">
+                    <div className="surface-card p-5">
+                      <p className="m-0 mb-3 text-[12px] font-semibold tracking-[0.08em] text-[var(--muted)] uppercase">Message</p>
+                      <div className="rounded-[11px] border border-black/8 bg-[#f5f5f7] px-5 py-4 text-[15px] leading-[1.47] text-[#424245]">
                         {(() => {
                           const types =
                             (fullDetectionDetails?.violations?.length
@@ -912,24 +1129,24 @@ export function DashboardPage() {
                     </div>
 
                     {fullDetectionDetails?.persons && (
-                      <div className="bg-white border border-[#e2e8f0] rounded-2xl p-5 shadow-sm">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-[12px] text-[#94a3b8] font-bold tracking-[0.08em] uppercase m-0">Detailed Breakdown</p>
-                          <span className="text-[12px] px-3 py-1 rounded-md bg-[#e2e8f0] text-[#0f172a] font-semibold">
+                      <div className="surface-card p-5">
+                        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <p className="m-0 text-[12px] font-semibold tracking-[0.08em] text-[var(--muted)] uppercase">Detailed breakdown</p>
+                          <span className="self-start rounded-[8px] bg-[#f5f5f7] px-3 py-1.5 text-[12px] font-semibold text-[#1d1d1f]">
                             Total Persons Detected: {fullDetectionDetails.person_count}
                           </span>
                         </div>
                         {fullDetectionDetails.persons.filter((p) => !p.is_compliant).map((person) => (
-                          <div key={person.id} className="rounded-xl border border-[#fecaca] bg-[#fff1f2] px-4 py-3 mb-3">
-                            <p className="text-[14px] font-semibold text-[#dc2626] m-0 mb-1">Person {person.id} (Violation)</p>
+                          <div key={person.id} className="mb-3 rounded-[11px] border border-[#f2b8bd] bg-[#fff5f5] px-4 py-3">
+                            <p className="m-0 mb-1 text-[14px] font-semibold text-[#d70015]">Person {person.id} (Violation)</p>
                             <div className="flex flex-wrap gap-2">
                               {person.not_wearing?.map((item, idx) => (
-                                <span key={idx} className="text-[13px] text-[#dc2626]">x Missing {item}</span>
+                                <span key={idx} className="text-[13px] text-[#d70015]">× Missing {item}</span>
                               ))}
                             </div>
                           </div>
                         ))}
-                        <p className="text-[14px] text-[#64748b] m-0">
+                        <p className="m-0 text-[14px] text-[#6e6e73]">
                           + {fullDetectionDetails.persons.filter((p) => p.is_compliant).length} person(s) fully compliant
                         </p>
                       </div>
@@ -937,8 +1154,9 @@ export function DashboardPage() {
 
                     <div className="flex justify-end pt-2">
                       <button
+                        type="button"
                         onClick={() => setSelectedViolation(null)}
-                        className="px-7 py-3 rounded-xl border-none bg-[#e2e8f0] text-[#334155] text-[14px] font-semibold cursor-pointer hover:bg-[#cbd5e1]"
+                        className="btn-apple-primary px-6"
                       >
                         Close
                       </button>

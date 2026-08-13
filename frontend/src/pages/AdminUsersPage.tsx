@@ -1,16 +1,21 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2, Plus, ShieldCheck, UserCog } from 'lucide-react'
+import { Loader2, Plus, ShieldCheck, UserCog, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { Layout } from '../components/layout/Layout'
 import { adminService } from '../services/admin'
+import { useAuthStore } from '../stores/authStore'
 import type { User } from '../types'
 
 type Role = 'admin' | 'safety_officer' | 'viewer'
 
+const fieldClassName = 'mt-2 min-h-12 w-full rounded-[11px] border border-[var(--line)] bg-white px-4 text-[15px] text-[var(--ink)] outline-none transition-colors focus:border-[var(--blue)] disabled:cursor-not-allowed disabled:opacity-50'
+
 export function AdminUsersPage() {
+  const currentUserId = useAuthStore((state) => state.user?.id)
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [saving, setSaving] = useState(false)
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
@@ -19,10 +24,12 @@ export function AdminUsersPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
+    setLoadError(false)
     try {
       setUsers(await adminService.listUsers())
     } catch (error) {
       console.error(error)
+      setLoadError(true)
       toast.error('โหลดผู้ใช้ไม่สำเร็จ')
     } finally {
       setLoading(false)
@@ -66,37 +73,171 @@ export function AdminUsersPage() {
 
   return (
     <Layout>
-      <div className="space-y-5">
-        <div>
-          <h1 className="text-[22px] font-bold text-[#0f172a] m-0 flex items-center gap-2"><UserCog size={22} className="text-[#2563eb]" /> User Management</h1>
-          <p className="text-[13px] text-[#64748b] mt-1">สร้างบัญชีและกำหนดสิทธิ์ตามหน้าที่ในโรงงาน</p>
-        </div>
+      <div className="mx-auto flex max-w-[1240px] flex-col gap-8 sm:gap-10">
+        <header className="page-heading flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--ink)] text-white" aria-hidden="true">
+              <UserCog size={20} strokeWidth={1.8} />
+            </div>
+            <h1>User Management</h1>
+            <p className="max-w-2xl !mt-3 !text-[17px] !leading-[1.47]">
+              สร้างบัญชีและกำหนดสิทธิ์ตามหน้าที่ในโรงงาน
+            </p>
+          </div>
+          <div className="inline-flex min-h-11 w-fit items-center gap-2 rounded-full border border-[var(--line)] bg-white px-4 text-[14px] text-[var(--muted)]">
+            <Users size={16} aria-hidden="true" />
+            <span><strong className="font-semibold text-[var(--ink)]">{users.length}</strong> accounts</span>
+          </div>
+        </header>
 
-        <section className="bg-white border border-[#e2e8f0] rounded-2xl p-5 shadow-sm">
-          <h2 className="text-[15px] font-bold text-[#0f172a] mt-0 mb-4 flex items-center gap-2"><Plus size={16} /> Create user</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
-            <label className="text-[12px] font-semibold text-[#64748b]">Full name<input value={fullName} onChange={(event) => setFullName(event.target.value)} className="mt-1.5 w-full box-border px-3 py-2.5 border border-[#dbe3ee] rounded-lg" /></label>
-            <label className="text-[12px] font-semibold text-[#64748b]">Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1.5 w-full box-border px-3 py-2.5 border border-[#dbe3ee] rounded-lg" /></label>
-            <label className="text-[12px] font-semibold text-[#64748b]">Temporary password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="mt-1.5 w-full box-border px-3 py-2.5 border border-[#dbe3ee] rounded-lg" /></label>
-            <label className="text-[12px] font-semibold text-[#64748b]">Role<select value={role} onChange={(event) => setRole(event.target.value as Role)} className="mt-1.5 w-full box-border px-3 py-2.5 border border-[#dbe3ee] rounded-lg bg-white"><option value="viewer">Viewer</option><option value="safety_officer">Safety officer</option><option value="admin">Administrator</option></select></label>
-            <button disabled={saving} onClick={() => void createUser()} className="h-[42px] flex justify-center items-center gap-2 px-4 bg-[#2563eb] text-white border-none rounded-lg font-semibold cursor-pointer disabled:opacity-60">{saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Create</button>
+        <section className="surface-card p-6 sm:p-8" aria-labelledby="create-user-title">
+          <div className="mb-7">
+            <h2 id="create-user-title" className="flex items-center gap-2 text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">
+              <Plus size={19} className="text-[var(--blue)]" aria-hidden="true" />
+              Create user
+            </h2>
+            <p className="mt-2 text-[15px] leading-relaxed text-[var(--muted)]">Create a temporary account and assign the appropriate access level.</p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+            <label className="text-[14px] font-semibold text-[var(--ink)]">
+              Full name
+              <input
+                value={fullName}
+                onChange={(event) => setFullName(event.target.value)}
+                autoComplete="name"
+                className={fieldClassName}
+              />
+            </label>
+            <label className="text-[14px] font-semibold text-[var(--ink)]">
+              Email
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                autoComplete="email"
+                className={fieldClassName}
+              />
+            </label>
+            <label className="text-[14px] font-semibold text-[var(--ink)]">
+              Temporary password
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                minLength={10}
+                autoComplete="new-password"
+                className={fieldClassName}
+              />
+              <span className="mt-2 block text-[12px] font-normal text-[var(--muted)]">At least 10 characters</span>
+            </label>
+            <label className="text-[14px] font-semibold text-[var(--ink)]">
+              Role
+              <select
+                value={role}
+                onChange={(event) => setRole(event.target.value as Role)}
+                className={fieldClassName}
+              >
+                <option value="viewer">Viewer</option>
+                <option value="safety_officer">Safety officer</option>
+                <option value="admin">Administrator</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="mt-7 flex justify-end">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void createUser()}
+              className="btn-apple-primary min-w-36 !min-h-11 active:scale-95"
+            >
+              {saving ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Plus size={16} aria-hidden="true" />}
+              {saving ? 'Creating…' : 'Create user'}
+            </button>
           </div>
         </section>
 
-        <section className="bg-white border border-[#e2e8f0] rounded-2xl overflow-hidden shadow-sm">
-          <div className="px-5 py-4 border-b border-[#f1f5f9] font-bold text-[#0f172a]">Accounts ({users.length})</div>
-          {loading ? <div className="py-16 flex justify-center text-[#64748b]"><Loader2 className="animate-spin mr-2" /> Loading...</div> : (
+        <section className="surface-card overflow-hidden" aria-labelledby="accounts-title">
+          <div className="flex min-h-16 items-center justify-between border-b border-[var(--line)] px-6 sm:px-8">
+            <h2 id="accounts-title" className="text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">Accounts</h2>
+            <span className="rounded-full bg-[#f5f5f7] px-4 py-2 text-[13px] text-[var(--muted)]">{users.length} total</span>
+          </div>
+
+          {loading ? (
+            <div className="flex min-h-64 items-center justify-center gap-3 text-[15px] text-[var(--muted)]" role="status">
+              <Loader2 size={20} className="animate-spin text-[var(--blue)]" aria-hidden="true" />
+              Loading accounts…
+            </div>
+          ) : loadError ? (
+            <div className="flex min-h-64 flex-col items-center justify-center gap-4 px-6 text-center" role="alert">
+              <p className="text-[17px] font-semibold text-[var(--ink)]">Unable to load accounts</p>
+              <p className="max-w-md text-[15px] leading-relaxed text-[var(--muted)]">Check the connection and try loading this list again.</p>
+              <button type="button" onClick={() => void load()} className="btn-apple-secondary !min-h-11 text-[var(--blue)]">Try again</button>
+            </div>
+          ) : users.length === 0 ? (
+            <div className="flex min-h-64 flex-col items-center justify-center gap-3 px-6 text-center">
+              <Users size={28} className="text-[var(--muted)]" strokeWidth={1.5} aria-hidden="true" />
+              <p className="text-[17px] font-semibold text-[var(--ink)]">No accounts yet</p>
+              <p className="text-[15px] text-[var(--muted)]">Create the first managed user with the form above.</p>
+            </div>
+          ) : (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead><tr className="bg-[#f8fafc] text-left text-[11px] uppercase text-[#94a3b8]"><th className="px-5 py-3">User</th><th className="px-5 py-3">Role</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Created</th></tr></thead>
-                <tbody>{users.map((user) => (
-                  <tr key={user.id} className="border-t border-[#f1f5f9]">
-                    <td className="px-5 py-4"><p className="text-[14px] font-semibold text-[#0f172a] m-0">{user.full_name}</p><p className="text-[12px] text-[#64748b] mt-1 mb-0">{user.email}</p></td>
-                    <td className="px-5 py-4"><select value={user.role} onChange={(event) => void update(user, { role: event.target.value })} className="border border-[#dbe3ee] rounded-lg px-2.5 py-2 bg-white text-[13px]"><option value="viewer">Viewer</option><option value="safety_officer">Safety officer</option><option value="admin">Administrator</option></select></td>
-                    <td className="px-5 py-4"><button onClick={() => void update(user, { is_active: !user.is_active })} className={`inline-flex items-center gap-1.5 px-3 py-1.5 border-none rounded-full text-[11px] font-bold cursor-pointer ${user.is_active ? 'bg-[#dcfce7] text-[#15803d]' : 'bg-[#fee2e2] text-[#b91c1c]'}`}><ShieldCheck size={12} />{user.is_active ? 'ACTIVE' : 'INACTIVE'}</button></td>
-                    <td className="px-5 py-4 text-[12px] text-[#64748b]">{new Date(user.created_at).toLocaleString()}</td>
+              <table className="w-full min-w-[760px] border-collapse">
+                <thead>
+                  <tr className="bg-[#f5f5f7] text-left text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--muted)]">
+                    <th scope="col" className="px-6 py-4 sm:px-8">User</th>
+                    <th scope="col" className="px-6 py-4">Role</th>
+                    <th scope="col" className="px-6 py-4">Status</th>
+                    <th scope="col" className="px-6 py-4 sm:pr-8">Created</th>
                   </tr>
-                ))}</tbody>
+                </thead>
+                <tbody>
+                  {users.map((user) => (
+                    <tr key={user.id} className="border-t border-[var(--line)] transition-colors hover:bg-[#fafafc]">
+                      <td className="px-6 py-5 sm:px-8">
+                        <p className="text-[16px] font-semibold text-[var(--ink)]">{user.full_name}</p>
+                        <p className="mt-1 text-[14px] text-[var(--muted)]">{user.email}</p>
+                      </td>
+                      <td className="px-6 py-5">
+                        <label className="sr-only" htmlFor={`role-${user.id}`}>Role for {user.full_name}</label>
+                        <select
+                          id={`role-${user.id}`}
+                          value={user.role}
+                          onChange={(event) => void update(user, { role: event.target.value })}
+                          disabled={user.id === currentUserId}
+                          title={user.id === currentUserId ? 'ไม่สามารถเปลี่ยนสิทธิ์ของบัญชีที่กำลังใช้งาน' : undefined}
+                          className="min-h-11 rounded-full border border-[var(--line)] bg-white px-4 text-[14px] text-[var(--ink)] outline-none focus:border-[var(--blue)]"
+                        >
+                          <option value="viewer">Viewer</option>
+                          <option value="safety_officer">Safety officer</option>
+                          <option value="admin">Administrator</option>
+                        </select>
+                      </td>
+                      <td className="px-6 py-5">
+                        <button
+                          type="button"
+                          onClick={() => void update(user, { is_active: !user.is_active })}
+                          disabled={user.id === currentUserId}
+                          aria-label={`${user.is_active ? 'Deactivate' : 'Activate'} ${user.full_name}`}
+                          aria-pressed={user.is_active}
+                          title={user.id === currentUserId ? 'ไม่สามารถปิดบัญชีที่กำลังใช้งาน' : undefined}
+                          className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-[12px] font-semibold active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${
+                            user.is_active
+                              ? 'border-[#b9dfc2] bg-[#f3fbf5] text-[#15803d]'
+                              : 'border-[#f0c3c8] bg-[#fff8f8] text-[#d70015]'
+                          }`}
+                        >
+                          <ShieldCheck size={14} aria-hidden="true" />
+                          {user.is_active ? 'Active' : 'Inactive'}
+                        </button>
+                      </td>
+                      <td className="px-6 py-5 text-[14px] text-[var(--muted)] sm:pr-8">
+                        {new Date(user.created_at).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
               </table>
             </div>
           )}

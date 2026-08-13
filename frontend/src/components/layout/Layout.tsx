@@ -6,11 +6,13 @@ import {
   FileText,
   LayoutDashboard,
   LogOut,
+  Menu,
   ScanLine,
   Settings,
   Shield,
   User,
   Users,
+  X,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -23,12 +25,12 @@ interface LayoutProps {
 }
 
 const navItems = [
-  { path: '/', icon: LayoutDashboard, label: 'Overview' },
-  { path: '/detection', icon: Camera, label: 'Detect' },
-  { path: '/camera', icon: ScanLine, label: 'Cameras' },
-  { path: '/reports', icon: FileText, label: 'Reports' },
-  { path: '/alerts', icon: Bell, label: 'Alerts' },
-  { path: '/settings', icon: Settings, label: 'Settings' },
+  { path: '/', icon: LayoutDashboard, label: 'Overview', description: 'Safety intelligence' },
+  { path: '/detection', icon: Camera, label: 'Detect', description: 'Analyze PPE media' },
+  { path: '/camera', icon: ScanLine, label: 'Cameras', description: 'Live edge monitoring' },
+  { path: '/reports', icon: FileText, label: 'Reports', description: 'Evidence and history' },
+  { path: '/alerts', icon: Bell, label: 'Alerts', description: 'Review safety events' },
+  { path: '/settings', icon: Settings, label: 'Settings', description: 'Detection preferences' },
 ]
 
 export function Layout({ children }: LayoutProps) {
@@ -36,15 +38,28 @@ export function Layout({ children }: LayoutProps) {
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
   const [alertSound, setAlertSound] = useState(false)
   const visibleNavItems = user?.role === 'admin'
-    ? [...navItems, { path: '/admin/users', icon: Users, label: 'Users' }]
+    ? [...navItems, { path: '/admin/users', icon: Users, label: 'Users', description: 'Access management' }]
     : navItems
+  const activeNavItem = visibleNavItems.find((item) => (
+    location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))
+  )) ?? visibleNavItems[0]
 
   useEffect(() => {
     if (!user) return
     void settingsService.getMe().then((value) => setAlertSound(value.alert_sound)).catch(() => undefined)
   }, [user])
+
+  useEffect(() => {
+    const handleSettingsUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<{ alertSound?: boolean }>).detail
+      if (typeof detail?.alertSound === 'boolean') setAlertSound(detail.alertSound)
+    }
+    window.addEventListener('ppe:settings-updated', handleSettingsUpdate)
+    return () => window.removeEventListener('ppe:settings-updated', handleSettingsUpdate)
+  }, [])
 
   useEffect(() => {
     if (!user) return
@@ -88,11 +103,22 @@ export function Layout({ children }: LayoutProps) {
           <span className="brand-mark"><Shield size={20} /></span>
           <span className="brand-copy">
             <strong>PPE Guard AI</strong>
-            <small>Safety intelligence</small>
+            <small>Edge safety</small>
           </span>
         </Link>
 
-        <nav className="app-nav" aria-label="Primary navigation">
+        <button
+          type="button"
+          className="mobile-nav-button"
+          onClick={() => setIsMobileNavOpen((open) => !open)}
+          aria-label={isMobileNavOpen ? 'Close navigation' : 'Open navigation'}
+          aria-expanded={isMobileNavOpen}
+          aria-controls="primary-navigation"
+        >
+          {isMobileNavOpen ? <X size={19} /> : <Menu size={19} />}
+        </button>
+
+        <nav id="primary-navigation" className={`app-nav${isMobileNavOpen ? ' is-open' : ''}`} aria-label="Primary navigation">
           {visibleNavItems.map((item) => {
             const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))
             return (
@@ -101,8 +127,12 @@ export function Layout({ children }: LayoutProps) {
                 to={item.path}
                 className={`app-nav-link${isActive ? ' is-active' : ''}`}
                 aria-current={isActive ? 'page' : undefined}
+                onClick={() => {
+                  setIsMobileNavOpen(false)
+                  setIsUserMenuOpen(false)
+                }}
               >
-                <item.icon size={16} strokeWidth={2.2} />
+                <item.icon size={15} strokeWidth={2} />
                 <span>{item.label}</span>
               </Link>
             )
@@ -123,7 +153,7 @@ export function Layout({ children }: LayoutProps) {
             </button>
             {isUserMenuOpen && (
               <>
-                <button className="profile-dismiss" aria-label="Close account menu" onClick={() => setIsUserMenuOpen(false)} />
+                <button type="button" className="profile-dismiss" aria-label="Close account menu" onClick={() => setIsUserMenuOpen(false)} />
                 <div className="profile-popover">
                   <div>
                     <strong>{user?.full_name || 'User'}</strong>
@@ -138,13 +168,20 @@ export function Layout({ children }: LayoutProps) {
         </div>
       </header>
 
+      <div className="app-subnav">
+        <div className="app-subnav-inner">
+          <span className="app-subnav-title">{activeNavItem.label}</span>
+          <span className="app-subnav-meta">{activeNavItem.description} · {user?.role?.replace('_', ' ') || 'workspace'}</span>
+        </div>
+      </div>
+
       <main className="app-main">
         <div className="app-content">{children}</div>
       </main>
 
       <footer className="app-footer">
-        <span><i /> AI core operational</span>
-        <span>Hybrid YOLOv8m + YOLO11n</span>
+        <span><i /> Edge AI operational</span>
+        <span>Privacy-aware PPE monitoring · Hybrid YOLOv8m + YOLO11n</span>
       </footer>
     </div>
   )

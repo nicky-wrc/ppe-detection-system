@@ -34,10 +34,10 @@ export function ProtectedDetectionImage({ detectionId, alt, className }: Protect
   }, [detectionId])
 
   if (result.id === detectionId && result.failed) {
-    return <div className={`flex items-center justify-center bg-[#f1f5f9] text-[#94a3b8] text-[11px] ${className || ''}`}>No evidence</div>
+    return <div className={`flex items-center justify-center bg-[var(--apple-parchment)] text-[var(--muted)] text-[12px] ${className || ''}`}>No evidence</div>
   }
   if (result.id !== detectionId || !result.url) {
-    return <div className={`animate-pulse bg-[#e2e8f0] ${className || ''}`} aria-label="Loading evidence" />
+    return <div className={`animate-pulse bg-[#e8e8ed] ${className || ''}`} aria-label="Loading evidence" />
   }
   return <img src={result.url} alt={alt} className={className} />
 }

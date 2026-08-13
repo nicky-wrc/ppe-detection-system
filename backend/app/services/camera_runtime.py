@@ -1,11 +1,16 @@
 import asyncio
 import logging
+import sys
 import time
 import uuid
 from collections import defaultdict
+from concurrent.futures import Future
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from queue import Queue
+from threading import Thread
+from typing import Any, Callable
 
 import cv2
 import numpy as np
@@ -21,6 +26,131 @@ from app.services.websocket_manager import ws_manager
 
 logger = logging.getLogger(__name__)
 
+USB_INITIAL_READ_ATTEMPTS = 12
+USB_INITIAL_READ_DELAY_SECONDS = 0.1
+CAPTURE_CANCEL_GRACE_SECONDS = 1.0
+
+
+@dataclass(frozen=True)
+class CameraCaptureSpec:
+    source_type: str
+    source: int | str
+
+
+@dataclass(frozen=True)
+class CaptureAttempt:
+    backend: int | None
+    backend_name: str
+    requested_profile: bool
+
+
+def _release_capture(cap: cv2.VideoCapture) -> None:
+    try:
+        cap.release()
+    except Exception as exc:
+        logger.warning("Camera capture release failed (%s)", type(exc).__name__)
+
+
+def _release_open_result(future: Future[Any]) -> None:
+    try:
+        cap, _, _, _ = future.result()
+    except Exception:
+        return
+    if cap is not None:
+        _release_capture(cap)
+
+
+def _release_capture_after_operation(cap: cv2.VideoCapture) -> Callable[[Future[Any]], None]:
+    def cleanup(future: Future[Any]) -> None:
+        try:
+            future.result()
+        except Exception:
+            pass
+        _release_capture(cap)
+
+    return cleanup
+
+
+class CameraCaptureWorker:
+    """Keep one camera's blocking OpenCV operations on a dedicated thread."""
+
+    def __init__(self, camera_id: int):
+        self._queue: Queue[Any] = Queue()
+        self._closed = False
+        self._stop_token = object()
+        self._thread = Thread(
+            target=self._run,
+            name=f"ppe-capture-{camera_id}",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def _run(self) -> None:
+        while True:
+            item = self._queue.get()
+            if item is self._stop_token:
+                return
+            future, function, args = item
+            if not future.set_running_or_notify_cancel():
+                continue
+            try:
+                result = function(*args)
+            except BaseException as exc:
+                future.set_exception(exc)
+            else:
+                future.set_result(result)
+
+    def _submit(self, function: Callable[..., Any], *args) -> Future[Any]:
+        if self._closed:
+            raise RuntimeError("Camera capture worker is closed")
+        future: Future[Any] = Future()
+        self._queue.put((future, function, args))
+        return future
+
+    async def call(
+        self,
+        function: Callable[..., Any],
+        *args,
+        cancel_cleanup: Callable[[Future[Any]], None] | None = None,
+    ) -> Any:
+        future = self._submit(function, *args)
+        wrapped = asyncio.wrap_future(future)
+        try:
+            return await asyncio.shield(wrapped)
+        except asyncio.CancelledError:
+            if cancel_cleanup is not None:
+                # The single-worker queue guarantees cleanup runs on the same
+                # thread immediately after the native operation completes.
+                self._submit(cancel_cleanup, future)
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(wrapped),
+                    timeout=CAPTURE_CANCEL_GRACE_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                wrapped.cancel()
+            except Exception:
+                pass
+            raise
+
+    async def release(self, cap: cv2.VideoCapture) -> None:
+        try:
+            await asyncio.wait_for(
+                self.call(_release_capture, cap),
+                timeout=CAPTURE_CANCEL_GRACE_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Timed out while releasing camera capture; cleanup continues in worker")
+
+    def close(self) -> None:
+        # Running native calls cannot be force-killed safely. Their cancellation
+        # callback releases the capture on this daemon worker if the call returns,
+        # while a broken driver cannot block interpreter shutdown indefinitely.
+        if self._closed:
+            return
+        self._closed = True
+        self._queue.put(self._stop_token)
+
 
 def _source_for_camera(camera: Camera) -> int | str:
     if camera.source_type == "usb":
@@ -30,26 +160,115 @@ def _source_for_camera(camera: Camera) -> int | str:
     raise ValueError(f"Camera {camera.id} has an invalid source configuration")
 
 
-def _configure_capture(cap: cv2.VideoCapture, camera: Camera) -> None:
+def _capture_spec(camera: Camera) -> CameraCaptureSpec:
+    return CameraCaptureSpec(source_type=camera.source_type, source=_source_for_camera(camera))
+
+
+def _configure_capture_profile(
+    cap: cv2.VideoCapture,
+    source_type: str,
+    requested_profile: bool,
+) -> None:
     """Apply low-latency capture settings without assuming RTSP supports USB properties."""
 
     cap.set(cv2.CAP_PROP_BUFFERSIZE, max(1, settings.CAMERA_CAPTURE_BUFFER_SIZE))
-    if camera.source_type != "usb":
+    if source_type != "usb" or not requested_profile:
         return
+    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, max(320, settings.CAMERA_CAPTURE_WIDTH))
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, max(240, settings.CAMERA_CAPTURE_HEIGHT))
     cap.set(cv2.CAP_PROP_FPS, max(1.0, settings.CAMERA_CAPTURE_FPS))
 
 
-def test_camera_source(camera: Camera) -> dict[str, Any]:
-    cap = cv2.VideoCapture(_source_for_camera(camera))
-    try:
-        _configure_capture(cap, camera)
-        if not cap.isOpened():
-            return {"ok": False, "error": "Could not open camera source"}
+def _configure_capture(cap: cv2.VideoCapture, camera: Camera) -> None:
+    _configure_capture_profile(cap, camera.source_type, requested_profile=True)
+
+
+def _capture_attempts(spec: CameraCaptureSpec, platform_name: str | None = None) -> tuple[CaptureAttempt, ...]:
+    if spec.source_type != "usb" or (platform_name or sys.platform) != "win32":
+        return (CaptureAttempt(None, "automatic", True),)
+
+    # Acer and other OEM camera transforms can reject a requested MSMF media type.
+    # DirectShow bypasses that transform; native-profile attempts cover devices that
+    # do not support the requested MJPEG 1280x720 mode.
+    return (
+        CaptureAttempt(cv2.CAP_DSHOW, "DirectShow", True),
+        CaptureAttempt(cv2.CAP_DSHOW, "DirectShow native", False),
+        CaptureAttempt(cv2.CAP_MSMF, "Media Foundation", True),
+        CaptureAttempt(cv2.CAP_MSMF, "Media Foundation native", False),
+        CaptureAttempt(None, "automatic", True),
+        CaptureAttempt(None, "automatic native", False),
+    )
+
+
+def _new_capture(source: int | str, backend: int | None) -> cv2.VideoCapture:
+    if backend is None:
+        return cv2.VideoCapture(source)
+    return cv2.VideoCapture(source, backend)
+
+
+def _read_initial_frame(
+    cap: cv2.VideoCapture,
+    attempts: int,
+    delay_seconds: float,
+) -> np.ndarray | None:
+    for attempt_index in range(attempts):
         ok, frame = cap.read()
-        if not ok or frame is None:
-            return {"ok": False, "error": "Camera opened but returned no frame"}
+        if ok and frame is not None:
+            return frame
+        if attempt_index + 1 < attempts:
+            time.sleep(delay_seconds)
+    return None
+
+
+def _open_capture_with_frame(
+    spec: CameraCaptureSpec,
+) -> tuple[cv2.VideoCapture | None, np.ndarray | None, str | None, str | None]:
+    """Open a source and return its first frame, trying safe Windows USB fallbacks."""
+
+    opened_without_frame = False
+    for attempt in _capture_attempts(spec):
+        cap = None
+        keep_capture = False
+        try:
+            cap = _new_capture(spec.source, attempt.backend)
+            _configure_capture_profile(cap, spec.source_type, attempt.requested_profile)
+            if not cap.isOpened():
+                continue
+            opened_without_frame = True
+            read_attempts = USB_INITIAL_READ_ATTEMPTS if spec.source_type == "usb" else 1
+            frame = _read_initial_frame(
+                cap,
+                attempts=read_attempts,
+                delay_seconds=USB_INITIAL_READ_DELAY_SECONDS,
+            )
+            if frame is None:
+                continue
+            keep_capture = True
+            return cap, frame, None, attempt.backend_name
+        except Exception as exc:
+            logger.warning(
+                "Camera capture attempt %s failed (%s); trying the next backend",
+                attempt.backend_name,
+                type(exc).__name__,
+            )
+        finally:
+            if cap is not None and not keep_capture:
+                _release_capture(cap)
+
+    error = (
+        "Camera opened but returned no frame"
+        if opened_without_frame
+        else "Could not open camera source"
+    )
+    return None, None, error, None
+
+
+def test_camera_source(camera: Camera) -> dict[str, Any]:
+    cap, frame, error, _ = _open_capture_with_frame(_capture_spec(camera))
+    if cap is None or frame is None:
+        return {"ok": False, "error": error or "Could not open camera source"}
+    try:
         return {
             "ok": True,
             "width": int(frame.shape[1]),
@@ -57,7 +276,7 @@ def test_camera_source(camera: Camera) -> dict[str, Any]:
             "fps": float(cap.get(cv2.CAP_PROP_FPS) or 0),
         }
     finally:
-        cap.release()
+        _release_capture(cap)
 
 
 class CameraRuntimeManager:
@@ -361,6 +580,9 @@ class CameraRuntimeManager:
     async def _run(self, camera_id: int) -> None:
         db = SessionLocal()
         cap = None
+        initial_frame = None
+        capture_worker = CameraCaptureWorker(camera_id)
+
         try:
             camera = db.query(Camera).filter(Camera.id == camera_id).first()
             if not camera:
@@ -397,32 +619,64 @@ class CameraRuntimeManager:
                 camera = db.query(Camera).filter(Camera.id == camera_id).first()
                 if not camera or not camera.is_active:
                     break
-                if cap is None or not cap.isOpened():
-                    if cap is not None:
-                        cap.release()
-                    cap = cv2.VideoCapture(_source_for_camera(camera))
-                    _configure_capture(cap, camera)
-                    if not cap.isOpened():
+                if cap is None:
+                    spec = _capture_spec(camera)
+                    cap, initial_frame, capture_error, capture_backend = await capture_worker.call(
+                        _open_capture_with_frame,
+                        spec,
+                        cancel_cleanup=_release_open_result,
+                    )
+                    if cap is None:
                         self._preview_frames.pop(camera_id, None)
                         camera.is_online = False
-                        camera.last_error = "Could not open camera source"
+                        camera.measured_fps = 0.0
+                        camera.last_error = f"{capture_error or 'Could not open camera source'}; retrying"
                         db.commit()
                         await asyncio.sleep(retry_seconds)
                         retry_seconds = min(settings.CAMERA_RECONNECT_MAX_SECONDS, retry_seconds * 2)
                         continue
-                    retry_seconds = 1
+                    logger.info(
+                        "Camera runtime %s opened USB/video source with %s",
+                        camera_id,
+                        capture_backend or "automatic backend",
+                    )
                     tracker.reset()
 
                 loop_started = time.perf_counter()
-                ok, frame = await asyncio.to_thread(cap.read)
+                if initial_frame is not None:
+                    ok, frame = True, initial_frame
+                    initial_frame = None
+                else:
+                    try:
+                        ok, frame = await capture_worker.call(
+                            cap.read,
+                            cancel_cleanup=_release_capture_after_operation(cap),
+                        )
+                    except asyncio.CancelledError:
+                        # The worker callback owns release after a pending native read.
+                        cap = None
+                        raise
+                    except Exception as exc:
+                        logger.warning(
+                            "Camera runtime %s read failed (%s)",
+                            camera_id,
+                            type(exc).__name__,
+                        )
+                        ok, frame = False, None
                 if not ok or frame is None:
                     self._preview_frames.pop(camera_id, None)
-                    cap.release()
+                    capture_to_release = cap
                     cap = None
+                    await capture_worker.release(capture_to_release)
                     camera.is_online = False
+                    camera.measured_fps = 0.0
                     camera.last_error = "Camera returned no frame; reconnecting"
                     db.commit()
+                    await asyncio.sleep(retry_seconds)
+                    retry_seconds = min(settings.CAMERA_RECONNECT_MAX_SECONDS, retry_seconds * 2)
                     continue
+
+                retry_seconds = 1
 
                 required, confidence, person_confidence, save_evidence = self._detection_options(db, camera)
                 async with self._inference_lock:
@@ -495,11 +749,17 @@ class CameraRuntimeManager:
                 db.rollback()
             except Exception:
                 pass
-            self._set_offline(camera_id, str(exc))
+            self._set_offline(camera_id, "Camera runtime stopped unexpectedly")
         finally:
             self._preview_frames.pop(camera_id, None)
             if cap is not None:
-                cap.release()
+                capture_to_release = cap
+                cap = None
+                try:
+                    await capture_worker.release(capture_to_release)
+                except (RuntimeError, asyncio.CancelledError):
+                    pass
+            capture_worker.close()
             try:
                 camera = db.query(Camera).filter(Camera.id == camera_id).first()
                 if camera:

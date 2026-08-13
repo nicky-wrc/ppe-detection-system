@@ -69,7 +69,7 @@ const drawDetectionOverlay = (
 
     const label = `Person ${person.id} · ${person.is_compliant ? '✓ Safe' : '✗ Violation'}`
     const fontSize = Math.max(11, canvasWidth / 60)
-    ctx.font = `bold ${fontSize}px Inter, sans-serif`
+    ctx.font = `600 ${fontSize}px system-ui, -apple-system, sans-serif`
     const tw = ctx.measureText(label).width
     const lh = fontSize + 8
     
@@ -81,7 +81,7 @@ const drawDetectionOverlay = (
     let ty = y1 + 4 + fontSize
     const drawPpe = (text: string, ok: boolean) => {
       const fs2 = Math.max(9, fontSize - 3)
-      ctx.font = `600 ${fs2}px Inter, sans-serif`
+      ctx.font = `600 ${fs2}px system-ui, -apple-system, sans-serif`
       const tw2 = ctx.measureText(text).width
       ctx.fillStyle = ok ? 'rgba(34,197,94,0.85)' : 'rgba(239,68,68,0.85)'
       ctx.fillRect(x1 + 5, ty - fs2, tw2 + 10, fs2 + 6)
@@ -114,7 +114,7 @@ const drawDetectionOverlay = (
   ctx.fillStyle = isViolation ? 'rgba(200,30,30,0.82)' : 'rgba(22,163,74,0.82)'
   ctx.fillRect(0, 0, canvasWidth, bannerH)
   ctx.fillStyle = '#fff'
-  ctx.font = `bold ${Math.max(11, bannerH * 0.5)}px Inter, sans-serif`
+  ctx.font = `600 ${Math.max(11, bannerH * 0.5)}px system-ui, -apple-system, sans-serif`
   ctx.fillText(msg, 12, bannerH * 0.72)
 }
 
@@ -126,6 +126,7 @@ export function DetectionPage() {
   const [videoPlaybackNotice, setVideoPlaybackNotice] = useState<string | null>(null)
   const [result, setResult] = useState<Detection | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [operationError, setOperationError] = useState<string | null>(null)
 
   useEffect(() => () => {
     if (preview) URL.revokeObjectURL(preview)
@@ -182,6 +183,8 @@ export function DetectionPage() {
   const lastDetectionRef = useRef<Detection | null>(null)
   const isFrameBusyRef = useRef(false)
   const liveSessionRef = useRef(0)
+  const cameraRequestRef = useRef(0)
+  const detectionRequestRef = useRef(0)
   const activeViolationSignatureRef = useRef<string | null>(null)
   const violationStreakRef = useRef(0)
   const clearStreakRef = useRef(0)
@@ -235,7 +238,7 @@ export function DetectionPage() {
       ctx.closePath(); ctx.fill()
       ctx.fillStyle = '#fff'
       ctx.beginPath(); ctx.arc(bx + 18, by + badgeH / 2, 5, 0, Math.PI * 2); ctx.fill()
-      ctx.font = `bold 11px Inter, sans-serif`
+      ctx.font = '600 11px system-ui, -apple-system, sans-serif'
       ctx.fillText('LIVE DETECT', bx + 28, by + 15)
     }
 
@@ -289,16 +292,18 @@ export function DetectionPage() {
       // Reuse the authenticated image flow so the confirmed frame, Detection and
       // Alert are committed together instead of creating a second API contract.
       const persisted = await detectionService.uploadImage(frameFile)
+      if (sessionId !== liveSessionRef.current) return
       if (persisted.has_violation) {
         recordedViolationSignatureRef.current = signature
         persistedAtBySignatureRef.current[signature] = Date.now()
         toast.success('บันทึกเหตุการณ์ฝ่าฝืนแล้ว')
       }
     } catch (error) {
+      if (sessionId !== liveSessionRef.current) return
       console.error('Live violation persist error:', error)
       toast.error('บันทึกเหตุการณ์ฝ่าฝืนไม่สำเร็จ')
     } finally {
-      isPersistingViolationRef.current = false
+      if (sessionId === liveSessionRef.current) isPersistingViolationRef.current = false
     }
   }, [])
 
@@ -314,11 +319,13 @@ export function DetectionPage() {
     const sessionId = liveSessionRef.current
     isFrameBusyRef.current = true
     cap.toBlob(async (blob) => {
+      if (sessionId !== liveSessionRef.current) return
       if (!blob) {
-        isFrameBusyRef.current = false
+        if (sessionId === liveSessionRef.current) isFrameBusyRef.current = false
         return
       }
       try {
+        if (sessionId !== liveSessionRef.current) return
         const frameFile = new File([blob], 'frame.jpg', { type: 'image/jpeg' })
         const detection = await detectionService.detectFrame(frameFile)
         if (sessionId !== liveSessionRef.current) return
@@ -329,9 +336,9 @@ export function DetectionPage() {
         setLiveFrameCount(prev => prev + 1)
         await updateLiveViolationEpisode(detection, frameFile, sessionId)
       } catch (err) {
-        console.error('Frame detect error:', err)
+        if (sessionId === liveSessionRef.current) console.error('Frame detect error:', err)
       } finally {
-        isFrameBusyRef.current = false
+        if (sessionId === liveSessionRef.current) isFrameBusyRef.current = false
       }
     }, 'image/jpeg', 0.8)
   }, [updateLiveViolationEpisode])
@@ -345,6 +352,7 @@ export function DetectionPage() {
     violationStreakRef.current = 0
     clearStreakRef.current = 0
     isFrameBusyRef.current = false
+    isPersistingViolationRef.current = false
     setIsLiveDetecting(false)
   }, [])
 
@@ -359,6 +367,7 @@ export function DetectionPage() {
   }, [renderLoop, captureAndDetect])
 
   const stopCamera = useCallback(() => {
+    cameraRequestRef.current += 1
     stopLiveDetection()
     if (cameraStreamRef.current) {
       cameraStreamRef.current.getTracks().forEach((track) => track.stop())
@@ -373,10 +382,15 @@ export function DetectionPage() {
 
   const startCamera = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      toast.error('เบราว์เซอร์นี้ไม่รองรับการเปิดกล้อง')
+      const message = 'เบราว์เซอร์นี้ไม่รองรับการเปิดกล้อง'
+      setOperationError(message)
+      toast.error(message)
       return
     }
 
+    const requestId = cameraRequestRef.current + 1
+    cameraRequestRef.current = requestId
+    setOperationError(null)
     setIsCameraStarting(true)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -384,10 +398,26 @@ export function DetectionPage() {
         audio: false,
       })
 
+      if (cameraRequestRef.current !== requestId) {
+        stream.getTracks().forEach((track) => track.stop())
+        return
+      }
+
       cameraStreamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        await videoRef.current.play()
+      const video = videoRef.current
+      if (!video) {
+        stream.getTracks().forEach((track) => track.stop())
+        cameraStreamRef.current = null
+        return
+      }
+      video.srcObject = stream
+      await video.play()
+
+      if (cameraRequestRef.current !== requestId) {
+        stream.getTracks().forEach((track) => track.stop())
+        if (video.srcObject === stream) video.srcObject = null
+        if (cameraStreamRef.current === stream) cameraStreamRef.current = null
+        return
       }
 
       setIsCameraOn(true)
@@ -396,27 +426,47 @@ export function DetectionPage() {
       startLiveDetection()
       toast.success('เปิดกล้องและเริ่มตรวจจับแล้ว')
     } catch (error) {
+      if (cameraRequestRef.current !== requestId) return
       console.error(error)
-      toast.error('ไม่สามารถเปิดกล้องได้ กรุณากด Allow หรือเชื่อมต่ออุปกรณ์กล้อง')
+      stopCamera()
+      const message = 'ไม่สามารถเปิดกล้องได้ กรุณากด Allow หรือเชื่อมต่ออุปกรณ์กล้อง'
+      setOperationError(message)
+      toast.error(message)
     } finally {
-      setIsCameraStarting(false)
+      if (cameraRequestRef.current === requestId) setIsCameraStarting(false)
     }
-  }, [startLiveDetection])
+  }, [startLiveDetection, stopCamera])
 
   useEffect(() => () => stopCamera(), [stopCamera])
+
+  const invalidateDetectionRequest = useCallback(() => {
+    detectionRequestRef.current += 1
+    setIsLoading(false)
+  }, [])
+
+  useEffect(() => () => {
+    detectionRequestRef.current += 1
+  }, [])
 
   // ── Drag n Drop Handlers ──────────────────────────
   const imageDropzone = useDropzone({
     onDrop: useCallback((files: File[]) => {
       const f = files[0]
       if (f) {
+        invalidateDetectionRequest()
         setSelectedFile(f)
         setPreview(URL.createObjectURL(f))
         setProcessedVideoUrl(null)
         setVideoPlaybackNotice(null)
         setResult(null)
+        setOperationError(null)
       }
-    }, []),
+    }, [invalidateDetectionRequest]),
+    onDropRejected: () => {
+      const message = 'ไฟล์ไม่รองรับ กรุณาเลือก JPG, PNG หรือ WebP เพียงหนึ่งไฟล์'
+      setOperationError(message)
+      toast.error(message)
+    },
     accept: { 'image/*': ['.jpeg', '.jpg', '.png', '.webp'] },
     maxFiles: 1,
     disabled: activeTab !== 'image',
@@ -426,14 +476,21 @@ export function DetectionPage() {
     onDrop: useCallback((files: File[]) => {
       const f = files[0]
       if (f) {
+        invalidateDetectionRequest()
         setSelectedFile(f)
         setPreview(URL.createObjectURL(f))
         setProcessedVideoUrl(null)
         setVideoPlaybackNotice(null)
         setResult(null)
+        setOperationError(null)
         stopLiveDetection()
       }
-    }, [stopLiveDetection]),
+    }, [invalidateDetectionRequest, stopLiveDetection]),
+    onDropRejected: () => {
+      const message = 'ไฟล์ไม่รองรับ กรุณาเลือก MP4, AVI หรือ MOV เพียงหนึ่งไฟล์'
+      setOperationError(message)
+      toast.error(message)
+    },
     accept: { 'video/mp4': ['.mp4'], 'video/x-msvideo': ['.avi'], 'video/quicktime': ['.mov'] },
     maxFiles: 1,
     disabled: activeTab !== 'video',
@@ -445,6 +502,7 @@ export function DetectionPage() {
   const isDragActive = activeTab === 'image' ? imageDropzone.isDragActive : videoDropzone.isDragActive
 
   const handleTabChange = (tab: TabType) => {
+    invalidateDetectionRequest()
     stopCamera()
     setActiveTab(tab)
     setSelectedFile(null)
@@ -453,45 +511,59 @@ export function DetectionPage() {
     setVideoPlaybackNotice(null)
     setResult(null)
     setLiveFrameCount(0)
+    setOperationError(null)
   }
 
   const handleDetect = async () => {
     if (!selectedFile) return
+    const requestId = detectionRequestRef.current + 1
+    detectionRequestRef.current = requestId
+    const sourceTab = activeTab
+    const sourceFile = selectedFile
     stopLiveDetection()
+    setOperationError(null)
     setIsLoading(true)
-    if (activeTab === 'video') {
+    if (sourceTab === 'video') {
       setProcessedVideoUrl(null)
       setVideoPlaybackNotice(null)
     }
     try {
-      const detection = activeTab === 'video'
-        ? await detectionService.uploadVideo(selectedFile)
-        : await detectionService.uploadImage(selectedFile)
+      const detection = sourceTab === 'video'
+        ? await detectionService.uploadVideo(sourceFile)
+        : await detectionService.uploadImage(sourceFile)
+
+      if (detectionRequestRef.current !== requestId) return
       
       setResult(detection)
-      if (activeTab === 'video') {
+      if (sourceTab === 'video') {
         try {
           const videoBlob = await detectionService.getResultVideoBlob(detection.id)
+          if (detectionRequestRef.current !== requestId) return
           if (videoBlob.type.startsWith('video/')) {
             setProcessedVideoUrl(URL.createObjectURL(videoBlob))
           } else {
             setVideoPlaybackNotice('ได้ผลตรวจแบบภาพนิ่ง จึงกำลังแสดงวิดีโอต้นฉบับ')
           }
         } catch (mediaError) {
+          if (detectionRequestRef.current !== requestId) return
           console.error('Result video load error:', mediaError)
           setVideoPlaybackNotice('โหลดวิดีโอผลลัพธ์ไม่สำเร็จ กำลังแสดงวิดีโอต้นฉบับ')
         }
       }
       toast.success('ตรวจจับสำเร็จ')
     } catch (error) {
+      if (detectionRequestRef.current !== requestId) return
       console.error(error)
-      toast.error('เกิดข้อผิดพลาด กรุณาลองใหม่')
+      const message = 'การวิเคราะห์ไม่สำเร็จ กรุณาตรวจสอบไฟล์และลองใหม่อีกครั้ง'
+      setOperationError(message)
+      toast.error(message)
     } finally {
-      setIsLoading(false)
+      if (detectionRequestRef.current === requestId) setIsLoading(false)
     }
   }
 
   const handleReset = () => {
+    invalidateDetectionRequest()
     stopCamera()
     setSelectedFile(null)
     setPreview(null)
@@ -499,6 +571,7 @@ export function DetectionPage() {
     setVideoPlaybackNotice(null)
     setResult(null)
     setLiveFrameCount(0)
+    setOperationError(null)
   }
 
   const hasValidFile = activeTab === 'image'
@@ -509,87 +582,94 @@ export function DetectionPage() {
 
   return (
     <Layout>
-      <div className="flex flex-col gap-5">
-
-        {/* ── Page Header ── */}
-        <div className="flex items-start justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-[22px] font-bold text-[#0f172a] m-0">Detection</h1>
-            <p className="text-[13px] text-[#64748b] mt-1">
-              Upload an image or video to automatically detect PPE compliance (helmet &amp; reflective vest).
+      <div className="flex flex-col gap-8">
+        <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="page-heading max-w-3xl">
+            <h1>ตรวจจับอุปกรณ์ PPE</h1>
+            <p className="max-w-2xl text-[17px] leading-7">
+              วิเคราะห์หมวกนิรภัยและเสื้อสะท้อนแสงจากภาพ วิดีโอ หรือกล้องแบบเรียลไทม์
             </p>
           </div>
-          {/* Image / Video tab switcher */}
-          <div className="flex items-center gap-1 bg-[#f1f5f9] p-1 rounded-[10px]">
+          <div
+            className="inline-flex w-full items-center gap-1 self-start rounded-full border border-[#e0e0e0] bg-white p-1 sm:w-auto"
+            role="group"
+            aria-label="Detection source"
+          >
             <button
+              type="button"
+              aria-pressed={activeTab === 'image'}
               onClick={() => handleTabChange('image')}
               className={
                 activeTab === 'image'
-                  ? 'flex items-center gap-[6px] px-[18px] py-[7px] rounded-[7px] text-[13px] font-semibold text-[#0f172a] bg-white border-none cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.1)]'
-                  : 'flex items-center gap-[6px] px-[18px] py-[7px] rounded-[7px] text-[13px] font-medium text-[#64748b] bg-transparent border-none cursor-pointer'
+                  ? 'flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-full border-0 bg-[#0066cc] px-3 text-[14px] font-semibold text-white sm:flex-none sm:px-5'
+                  : 'flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-full border-0 bg-transparent px-3 text-[14px] font-semibold text-[#424245] hover:bg-[#f5f5f7] sm:flex-none sm:px-5'
               }
             >
-              <ImageIcon size={14} /> Image
+              <ImageIcon size={16} aria-hidden="true" /> Image
             </button>
             <button
+              type="button"
+              aria-pressed={activeTab === 'video'}
               onClick={() => handleTabChange('video')}
               className={
                 activeTab === 'video'
-                  ? 'flex items-center gap-[6px] px-[18px] py-[7px] rounded-[7px] text-[13px] font-semibold text-[#0f172a] bg-white border-none cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.1)]'
-                  : 'flex items-center gap-[6px] px-[18px] py-[7px] rounded-[7px] text-[13px] font-medium text-[#64748b] bg-transparent border-none cursor-pointer'
+                  ? 'flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-full border-0 bg-[#0066cc] px-3 text-[14px] font-semibold text-white sm:flex-none sm:px-5'
+                  : 'flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-full border-0 bg-transparent px-3 text-[14px] font-semibold text-[#424245] hover:bg-[#f5f5f7] sm:flex-none sm:px-5'
               }
             >
-              <Video size={14} /> Video
+              <Video size={16} aria-hidden="true" /> Video
             </button>
             <button
+              type="button"
+              aria-pressed={activeTab === 'camera'}
               onClick={() => handleTabChange('camera')}
               className={
                 activeTab === 'camera'
-                  ? 'flex items-center gap-[6px] px-[18px] py-[7px] rounded-[7px] text-[13px] font-semibold text-[#0f172a] bg-white border-none cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.1)]'
-                  : 'flex items-center gap-[6px] px-[18px] py-[7px] rounded-[7px] text-[13px] font-medium text-[#64748b] bg-transparent border-none cursor-pointer'
+                  ? 'flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-full border-0 bg-[#0066cc] px-3 text-[14px] font-semibold text-white sm:flex-none sm:px-5'
+                  : 'flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-full border-0 bg-transparent px-3 text-[14px] font-semibold text-[#424245] hover:bg-[#f5f5f7] sm:flex-none sm:px-5'
               }
             >
-              <Camera size={14} /> Camera
+              <Camera size={16} aria-hidden="true" /> Camera
             </button>
           </div>
-        </div>
+        </header>
 
-        {/* ── Two column layout ── */}
-        <div className="grid gap-5 items-start" style={{ gridTemplateColumns: '1fr 360px' }}>
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
 
           {/* ── LEFT: Upload area + Live Canvas ── */}
           <div className="flex flex-col gap-4">
 
-            <div className="bg-white border border-[#e5eaf0] rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-              <div className="flex items-center justify-between pl-11 pr-10 py-5 border-b border-[#f1f5f9]">
-                <p className="text-[14px] font-semibold text-[#0f172a] m-0">
-                  {activeTab === 'image' ? 'Upload Image' : activeTab === 'video' ? 'Upload Video' : 'Live Camera'}
-                </p>
+            <section className="surface-card overflow-hidden" aria-labelledby="detection-input-title">
+              <div className="flex min-h-20 items-center justify-between gap-4 border-b border-[#e0e0e0] px-5 py-4 sm:px-8">
+                <div>
+                  <h2 id="detection-input-title" className="m-0 text-[21px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">
+                   {activeTab === 'image' ? 'Upload Image' : activeTab === 'video' ? 'Upload Video' : 'Live Camera'}
+                  </h2>
+                  <p className="mb-0 mt-1 text-[14px] leading-5 text-[#6e6e73]">
+                    {activeTab === 'camera' ? 'กล้องทำงานในหน่วยความจำของเบราว์เซอร์ระหว่างเซสชันนี้' : 'เลือกไฟล์หนึ่งรายการเพื่อเริ่มวิเคราะห์ด้วย AI'}
+                  </p>
+                </div>
                 {(selectedFile || isCameraOn) && (
-                  <button onClick={handleReset} className="bg-transparent border-none cursor-pointer text-[#94a3b8] p-[2px]">
-                    <X size={16} />
+                  <button type="button" onClick={handleReset} className="btn-apple-secondary h-11 w-11 shrink-0 p-0" aria-label="Clear selected source">
+                    <X size={17} aria-hidden="true" />
                   </button>
                 )}
               </div>
-              <div className="pl-11 pr-10 pb-7 pt-5">
+              <div className="p-5 sm:p-8">
                 {/* Dropzone */}
                 <div
                   {...(isCameraTab ? {} : getRootProps())}
-                  className={`flex flex-col items-center justify-center text-center transition-all duration-200 rounded-xl p-6 ${isCameraTab ? 'cursor-default' : 'cursor-pointer'}`}
-                  style={{
-                    minHeight: '280px',
-                    border: isCameraTab
-                      ? `2px solid ${isCameraOn ? '#bfdbfe' : '#d1d8e4'}`
-                      : `2px dashed ${isDragActive ? '#2563eb' : preview ? '#cbd5e1' : '#d1d8e4'}`,
-                    backgroundColor: isCameraTab
-                      ? '#f8fafc'
-                      : isDragActive ? '#eff6ff' : preview ? '#f8fafc' : '#fafbfc',
-                  }}
+                  className={`flex min-h-[360px] flex-col items-center justify-center rounded-[18px] border p-4 text-center transition-colors sm:p-6 ${
+                    isCameraTab
+                      ? `cursor-default bg-[#f5f5f7] ${isCameraOn ? 'border-[#0066cc]' : 'border-[#e0e0e0]'}`
+                      : `border-dashed ${isDragActive ? 'border-[#0066cc] bg-[#f2f7fc]' : preview ? 'border-[#e0e0e0] bg-[#f5f5f7]' : 'cursor-pointer border-[#d2d2d7] bg-[#fafafc] hover:border-[#0066cc] hover:bg-[#f5f9fd]'}`
+                  }`}
+                  aria-busy={isLoading || isCameraStarting}
                 >
                   {!isCameraTab && <input {...getInputProps()} />}
                   {isCameraTab ? (
                     <div className="w-full">
-                      <div className="relative w-full bg-black rounded-lg overflow-hidden flex items-center justify-center min-h-[300px]">
+                      <div className="relative flex min-h-[320px] w-full items-center justify-center overflow-hidden rounded-[18px] bg-black">
                         <video
                           ref={videoRef}
                           className="hidden"
@@ -598,18 +678,20 @@ export function DetectionPage() {
                         />
                         <canvas
                           ref={canvasRef}
-                          className="w-full block rounded-lg"
+                          className="block w-full rounded-[18px]"
                           style={{ maxHeight: '460px', objectFit: 'contain' }}
+                          role="img"
+                          aria-label="Live PPE detection camera view"
                         />
                         <canvas ref={captureCanvasRef} className="hidden" />
                         {!isCameraOn && (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white bg-[#020617]">
-                            <div className="w-14 h-14 rounded-[14px] bg-white/10 flex items-center justify-center border border-white/15">
-                              <Camera size={26} />
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 bg-black px-6 text-white">
+                            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/10">
+                              <Camera size={28} aria-hidden="true" />
                             </div>
                             <div>
-                              <p className="text-[15px] font-semibold m-0 mb-1">Connect a camera device</p>
-                              <p className="text-[13px] text-slate-300 m-0">
+                              <p className="m-0 text-[21px] font-semibold tracking-[-0.01em]">Connect a camera device</p>
+                              <p className="mx-auto mb-0 mt-2 max-w-md text-[15px] leading-6 text-[#cccccc]">
                                 Browser permission will appear after opening the camera.
                               </p>
                             </div>
@@ -617,7 +699,7 @@ export function DetectionPage() {
                         )}
                       </div>
 
-                      <p className="text-[12px] font-medium text-[#64748b] mt-3 mb-0 text-center bg-white px-3 py-1 rounded-full border border-[#e2e8f0] inline-block shadow-sm">
+                      <p className="mb-0 mt-4 inline-flex min-h-8 items-center rounded-full border border-[#e0e0e0] bg-white px-4 text-[13px] font-semibold text-[#6e6e73]">
                         {isCameraOn ? 'Camera: live device connected' : 'Camera: waiting for permission'}
                       </p>
                     </div>
@@ -625,13 +707,13 @@ export function DetectionPage() {
                     <div className="w-full">
                       {activeTab === 'video' ? (
                         <div
-                          className="relative w-full bg-black rounded-lg overflow-hidden flex items-center justify-center min-h-[300px]"
+                          className="relative flex min-h-[320px] w-full items-center justify-center overflow-hidden rounded-[18px] bg-black"
                           onClick={(event) => event.stopPropagation()}
                         >
                           <video
                             key={processedVideoUrl || preview}
                             src={processedVideoUrl || preview}
-                            className="w-full block rounded-lg bg-black"
+                            className="block w-full rounded-[18px] bg-black"
                             style={{ maxHeight: '460px' }}
                             controls
                             playsInline
@@ -649,14 +731,14 @@ export function DetectionPage() {
                             }}
                           />
                           {isLoading && (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/55 text-white pointer-events-none">
-                              <Loader2 size={24} className="animate-spin" />
-                              <span className="text-[13px] font-semibold">Processing video...</span>
+                            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/70 text-white" role="status" aria-live="polite">
+                              <Loader2 size={26} className="animate-spin" aria-hidden="true" />
+                              <span className="text-[15px] font-semibold">Processing video…</span>
                             </div>
                           )}
                         </div>
                       ) : (
-                        <div className="relative w-full bg-[#f8fafc] rounded-lg overflow-hidden flex items-center justify-center min-h-[300px]">
+                        <div className="relative flex min-h-[320px] w-full items-center justify-center overflow-hidden rounded-[18px] bg-[#f5f5f7]">
                           {/* Hidden pure image element for measuring and drawing */}
                           <img
                             ref={imageRef}
@@ -668,33 +750,35 @@ export function DetectionPage() {
                           {/* The visible Canvas that receives both Image and Overlays */}
                           <canvas
                             ref={imageCanvasRef}
-                            className="w-full h-auto block rounded-lg transition-opacity duration-300 shadow-sm"
+                            className="block h-auto w-full rounded-[18px] transition-opacity duration-300"
                             style={{ maxHeight: '460px', objectFit: 'contain' }}
+                            role="img"
+                            aria-label="PPE detection image preview"
                           />
                         </div>
                       )}
-                      
-                      <p className="text-[12px] font-medium text-[#64748b] mt-3 mb-0 text-center bg-white px-3 py-1 rounded-full border border-[#e2e8f0] inline-block shadow-sm">
+
+                      <p className="mb-0 mt-4 inline-flex max-w-full items-center truncate rounded-full border border-[#e0e0e0] bg-white px-4 py-2 text-[13px] font-semibold text-[#6e6e73]">
                         {activeTab === 'video' && processedVideoUrl ? 'Detection result' : `File: ${selectedFile?.name}`}
                       </p>
                       {activeTab === 'video' && videoPlaybackNotice && (
-                        <p className="text-[12px] text-[#b45309] mt-2 mb-0 text-center">
+                        <p className="mb-0 mt-3 text-center text-[14px] leading-5 text-[#9a5b00]" role="status">
                           {videoPlaybackNotice}
                         </p>
                       )}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center gap-[10px] py-5">
-                      <div className="w-14 h-14 rounded-[14px] bg-[#eff6ff] flex items-center justify-center border border-[#dbeafe]">
-                        <Upload size={26} color="#2563eb" />
+                    <div className="flex max-w-lg flex-col items-center gap-4 px-4 py-8">
+                      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#f0f0f2] text-[#0066cc]">
+                        <Upload size={28} aria-hidden="true" />
                       </div>
                       <div>
-                        <p className="text-[15px] font-semibold text-[#0f172a] m-0 mb-1">
+                        <p className="m-0 text-[21px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">
                           {isDragActive ? 'Drop your file here' : 'Drag & drop your file here'}
                         </p>
-                        <p className="text-[13px] text-[#94a3b8] m-0">or click to browse</p>
+                        <p className="mb-0 mt-2 text-[17px] leading-6 text-[#6e6e73]">or click to browse</p>
                       </div>
-                      <p className="text-[11px] text-[#cbd5e1] mt-1 font-medium">
+                      <p className="mt-1 text-[14px] text-[var(--muted)]">
                         {activeTab === 'image' ? 'Supported: JPG, PNG, WebP' : 'Supported: MP4, AVI, MOV'}
                       </p>
                     </div>
@@ -703,213 +787,211 @@ export function DetectionPage() {
 
                 {/* Actions / Detect / Reset buttons */}
                 {(preview || isCameraTab) && (hasValidFile || isCameraTab) && (
-                  <div className="flex gap-[10px] mt-4">
+                  <div className="mt-5 flex flex-wrap gap-3">
                     {activeTab === 'image' ? (
                       <button
+                        type="button"
                         onClick={(e) => { e.stopPropagation(); handleDetect() }}
                         disabled={isLoading}
-                        className={
-                          isLoading
-                            ? 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#93c5fd] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-not-allowed shadow-sm transition-all'
-                            : 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-pointer shadow-sm transition-all'
-                        }
+                        className="btn-apple-primary min-h-12 flex-1 px-6 text-[15px]"
                       >
                         {isLoading ? (
-                          <><Loader2 size={16} className="animate-spin" /> Processing Detection...</>
+                          <><Loader2 size={17} className="animate-spin" aria-hidden="true" /> Processing detection…</>
                         ) : (
-                          <><ShieldCheck size={16} /> Start Detection</>
+                          <><ShieldCheck size={17} aria-hidden="true" /> Start Detection</>
                         )}
                       </button>
                     ) : activeTab === 'video' ? (
                       <button
+                        type="button"
                         onClick={(e) => { e.stopPropagation(); void handleDetect() }}
                         disabled={isLoading}
-                        className={
-                          isLoading
-                            ? 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#93c5fd] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-not-allowed shadow-sm transition-all'
-                            : 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-pointer shadow-sm transition-all'
-                        }
+                        className="btn-apple-primary min-h-12 flex-1 px-6 text-[15px]"
                       >
-                        {isLoading ? <><Loader2 size={16} className="animate-spin" /> Processing video...</> : 'Process & save video'}
+                        {isLoading ? <><Loader2 size={17} className="animate-spin" aria-hidden="true" /> Processing video…</> : <><ShieldCheck size={17} aria-hidden="true" /> Process &amp; save video</>}
                       </button>
                     ) : (
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation()
                           if (isCameraOn) stopCamera()
                           else void startCamera()
                         }}
                         disabled={isCameraStarting}
-                        className={
-                          isCameraOn
-                            ? 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#ef4444] hover:bg-[#dc2626] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-pointer shadow-sm transition-all'
-                            : isCameraStarting
-                              ? 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#93c5fd] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-not-allowed shadow-sm transition-all'
-                              : 'flex-1 flex items-center justify-center gap-2 py-[11px] px-5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white border-none rounded-[10px] text-[14px] font-semibold cursor-pointer shadow-sm transition-all'
-                        }
+                        className={`${isCameraOn ? 'btn-apple-secondary' : 'btn-apple-primary'} min-h-12 flex-1 px-6 text-[15px]`}
                       >
                         {isCameraStarting ? (
-                          <><Loader2 size={16} className="animate-spin" /> Waiting for permission...</>
+                          <><Loader2 size={17} className="animate-spin" aria-hidden="true" /> Waiting for permission…</>
                         ) : isCameraOn ? (
-                          <><X size={16} /> Stop Camera</>
+                          <><X size={17} aria-hidden="true" /> Stop Camera</>
                         ) : (
-                          <><Camera size={16} /> Open Camera & Detect</>
+                          <><Camera size={17} aria-hidden="true" /> Open Camera &amp; Detect</>
                         )}
                       </button>
                     )}
-                    
+
                     <button
+                      type="button"
                       onClick={(e) => { e.stopPropagation(); handleReset() }}
-                      className="flex items-center justify-center px-[14px] py-[11px] bg-[#f1f5f9] hover:bg-[#e2e8f0] text-[#64748b] hover:text-[#0f172a] border-none rounded-[10px] cursor-pointer transition-colors"
+                      className="btn-apple-secondary min-h-12 px-5 text-[15px]"
+                      aria-label="Clear source and results"
                     >
-                      <X size={16} />
+                      <X size={17} aria-hidden="true" /> Clear
                     </button>
                   </div>
                 )}
-                
+
+                {operationError && (
+                  <div className="mt-4 flex items-start gap-3 rounded-[18px] border border-[#f0c3c8] bg-[#fff8f8] px-4 py-3 text-left text-[14px] leading-5 text-[#b4232f]" role="alert">
+                    <AlertTriangle size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+                    <span>{operationError}</span>
+                  </div>
+                )}
+
                 {activeTab === 'camera' && isLiveDetecting && (
-                  <p className="text-center text-[12px] text-[#22c55e] font-semibold mt-3 animate-pulse">
-                    Live Detection Active • {liveFrameCount} frames analyzed
+                  <p className="mb-0 mt-4 flex items-center justify-center gap-2 text-center text-[14px] font-semibold text-[#15803d]" role="status" aria-live="polite">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-[#15803d]" aria-hidden="true" />
+                    Live Detection Active · {liveFrameCount.toLocaleString()} frames analyzed
                   </p>
                 )}
 
                 {/* Progress bar */}
                 {isLoading && (
-                  <div className="h-1.5 bg-[#e2e8f0] rounded-sm overflow-hidden mt-3 max-w-[200px] mx-auto">
-                    <div className="h-full bg-[#2563eb] rounded-sm progress-bar-animation" />
+                  <div className="mx-auto mt-4 h-1.5 max-w-[240px] overflow-hidden rounded-full bg-[#e0e0e0]" role="progressbar" aria-label="Analyzing media">
+                    <div className="progress-bar-animation h-full rounded-full bg-[#0066cc]" />
                   </div>
                 )}
               </div>
-            </div>
+            </section>
 
           </div>
 
-          {/* ── RIGHT: Status panel ── */}
-          <div className="bg-white border border-[#e5eaf0] rounded-2xl overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)] sticky top-5">
-            <div className="flex items-center justify-between pl-11 pr-10 py-5 border-b border-[#f1f5f9]">
-              <p className="text-[14px] font-semibold text-[#0f172a] m-0">Detection Status</p>
+          <aside className="surface-card overflow-hidden xl:sticky xl:top-6" aria-labelledby="detection-status-title" aria-live="polite">
+            <div className="flex min-h-20 items-center justify-between border-b border-[#e0e0e0] px-6 py-4">
+              <h2 id="detection-status-title" className="m-0 text-[21px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">Detection Status</h2>
+              {result && (
+                <span className={`rounded-full px-3 py-1 text-[12px] font-semibold ${result.has_violation ? 'bg-[#fff1f2] text-[#b4232f]' : 'bg-[#edf8ef] text-[#15803d]'}`}>
+                  {result.has_violation ? 'Action needed' : 'Compliant'}
+                </span>
+              )}
             </div>
-            <div className="pl-11 pr-10 py-5 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 180px)' }}>
-              {result ? (
+            <div className="overflow-y-auto p-5 sm:p-6 xl:max-h-[calc(100vh-180px)]">
+              {(isLoading || isCameraStarting) && !result ? (
+                <div className="flex min-h-64 flex-col items-center justify-center gap-4 px-6 text-center" role="status">
+                  <Loader2 size={28} className="animate-spin text-[#0066cc]" aria-hidden="true" />
+                  <div>
+                    <p className="m-0 text-[17px] font-semibold text-[#1d1d1f]">กำลังเตรียมการวิเคราะห์</p>
+                    <p className="mb-0 mt-2 text-[14px] leading-5 text-[#6e6e73]">โปรดรอสักครู่ ระบบกำลังประมวลผลข้อมูลของคุณ</p>
+                  </div>
+                </div>
+              ) : result ? (
                 <>
-                  {/* Status alert */}
-                  <div className={
-                    result.has_violation
-                      ? 'flex items-start gap-[10px] p-[14px] bg-[#fff1f2] border border-[#fecaca] rounded-xl mb-4'
-                      : 'flex items-start gap-[10px] p-[14px] bg-[#f0fdf4] border border-[#bbf7d0] rounded-xl mb-4'
-                  }>
+                  <div className={`mb-5 flex items-start gap-3 rounded-[18px] border p-4 ${result.has_violation ? 'border-[#f0c3c8] bg-[#fff8f8]' : 'border-[#c8e5cf] bg-[#f5fbf6]'}`}>
                     {result.has_violation
-                      ? <AlertTriangle size={20} color="#dc2626" className="shrink-0 mt-[1px]" />
-                      : <CheckCircle size={20} color="#16a34a" className="shrink-0 mt-[1px]" />
+                      ? <AlertTriangle size={21} className="mt-0.5 shrink-0 text-[#d70015]" aria-hidden="true" />
+                      : <CheckCircle size={21} className="mt-0.5 shrink-0 text-[#15803d]" aria-hidden="true" />
                     }
                     <div>
-                      <p className={`text-[14px] font-bold m-0 mb-[2px] ${result.has_violation ? 'text-[#dc2626]' : 'text-[#16a34a]'}`}>
+                      <p className={`m-0 text-[17px] font-semibold ${result.has_violation ? 'text-[#b4232f]' : 'text-[#12652f]'}`}>
                         {result.has_violation ? 'Violation Detected' : 'Fully Compliant'}
                       </p>
-                      <p className="text-[12px] text-[#64748b] m-0">
+                      <p className="mb-0 mt-1 text-[14px] leading-5 text-[#6e6e73]">
                         {result.summary?.message || (result.has_violation ? `${result.violation_count} violation(s) found` : 'All persons wearing PPE correctly')}
                       </p>
                     </div>
                   </div>
 
-                  {/* Stats */}
-                  <div className="grid grid-cols-2 gap-[10px] mb-4">
-                    <div className="bg-[#f8fafc] border border-[#e5eaf0] rounded-[10px] px-4 py-[14px]">
-                      <p className="text-[11px] text-[#94a3b8] font-medium uppercase tracking-[0.05em] m-0 mb-[6px]">
-                        <Users size={11} className="inline mr-[3px]" />Persons
+                  <div className="mb-6 grid grid-cols-2 gap-3">
+                    <div className="rounded-[18px] bg-[#f5f5f7] p-4">
+                      <p className="m-0 flex items-center gap-1.5 text-[12px] font-semibold text-[#6e6e73]">
+                        <Users size={14} aria-hidden="true" /> Persons
                       </p>
-                      <p className="text-[28px] font-bold text-[#0f172a] m-0">{result.person_count ?? 0}</p>
+                      <p className="mb-0 mt-2 text-[32px] font-semibold tracking-[-0.03em] text-[#1d1d1f]">{result.person_count ?? 0}</p>
                     </div>
-                    <div className="bg-[#f8fafc] border border-[#e5eaf0] rounded-[10px] px-4 py-[14px]">
-                      <p className="text-[11px] text-[#94a3b8] font-medium uppercase tracking-[0.05em] m-0 mb-[6px]">
-                        <AlertTriangle size={11} className="inline mr-[3px]" />Violations
+                    <div className="rounded-[18px] bg-[#f5f5f7] p-4">
+                      <p className="m-0 flex items-center gap-1.5 text-[12px] font-semibold text-[#6e6e73]">
+                        <AlertTriangle size={14} aria-hidden="true" /> Violations
                       </p>
-                      <p className={`text-[28px] font-bold m-0 ${(result.violation_count ?? 0) > 0 ? 'text-[#dc2626]' : 'text-[#0f172a]'}`}>
+                      <p className={`mb-0 mt-2 text-[32px] font-semibold tracking-[-0.03em] ${(result.violation_count ?? 0) > 0 ? 'text-[#d70015]' : 'text-[#1d1d1f]'}`}>
                         {result.violation_count ?? 0}
                       </p>
                     </div>
-                    <div className="bg-[#f8fafc] border border-[#e5eaf0] rounded-[10px] px-4 py-[14px] col-span-2">
-                      <p className="text-[11px] text-[#94a3b8] font-medium uppercase tracking-[0.05em] m-0 mb-[6px]">
-                        <Clock size={11} className="inline mr-[3px]" />Processing Time
+                    <div className="col-span-2 rounded-[18px] bg-[#f5f5f7] p-4">
+                      <p className="m-0 flex items-center gap-1.5 text-[12px] font-semibold text-[#6e6e73]">
+                        <Clock size={14} aria-hidden="true" /> Processing Time
                       </p>
-                      <p className="text-[28px] font-bold text-[#0f172a] m-0">
-                        {result.processing_time_ms ?? '—'} <span className="text-[14px] text-[#94a3b8] font-medium">ms</span>
+                      <p className="mb-0 mt-2 text-[32px] font-semibold tracking-[-0.03em] text-[#1d1d1f]">
+                        {result.processing_time_ms ?? '—'} <span className="text-[14px] font-normal tracking-normal text-[var(--muted)]">ms</span>
                       </p>
                     </div>
                   </div>
 
-                  {/* Per-person PPE details */}
                   {result.persons && result.persons.length > 0 && (
-                    <>
-                      <p className="text-[12px] font-semibold text-[#64748b] uppercase tracking-[0.06em] mt-4 mb-[10px] flex items-center gap-[6px]">
-                        Per-Person PPE Details
-                      </p>
-                      {result.persons.map((person) => (
-                        <div
-                          key={person.id}
-                          className={`rounded-[10px] px-[14px] py-3 mb-2 border ${person.is_compliant ? 'border-[#bbf7d0] bg-[#f0fdf4]' : 'border-[#fecaca] bg-[#fff1f2]'}`}
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-[13px] font-semibold text-[#0f172a]">Person {person.id}</span>
-                            <span className={`text-[11px] font-semibold px-2 py-[2px] rounded-full ${person.is_compliant ? 'text-[#16a34a] bg-[#dcfce7]' : 'text-[#dc2626] bg-[#fee2e2]'}`}>
-                              {person.is_compliant ? 'Compliant' : 'Violation'}
-                            </span>
+                    <section aria-labelledby="person-details-title">
+                      <h3 id="person-details-title" className="mb-3 mt-0 text-[14px] font-semibold text-[#1d1d1f]">Per-person PPE details</h3>
+                      <div className="flex flex-col gap-3">
+                        {result.persons.map((person) => (
+                          <div key={person.id} className="rounded-[18px] border border-[#e0e0e0] bg-white p-4">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                              <span className="text-[15px] font-semibold text-[#1d1d1f]">Person {person.id}</span>
+                              <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${person.is_compliant ? 'bg-[#edf8ef] text-[#15803d]' : 'bg-[#fff1f2] text-[#b4232f]'}`}>
+                                {person.is_compliant ? 'Compliant' : 'Violation'}
+                              </span>
+                            </div>
+                            {person.wearing?.map((item, index) => (
+                              <div key={`w${index}`} className="mb-2 flex items-center gap-2 text-[13px] text-[#15803d]">
+                                <CheckCircle size={14} className="shrink-0" aria-hidden="true" />
+                                <span>{item}</span>
+                                <span className="ml-auto text-[11px] text-[#527a5d]">Wearing</span>
+                              </div>
+                            ))}
+                            {person.not_wearing?.map((item, index) => (
+                              <div key={`nw${index}`} className="mb-2 flex items-center gap-2 text-[13px] text-[#b4232f]">
+                                <X size={14} className="shrink-0" aria-hidden="true" />
+                                <span>{item}</span>
+                                <span className="ml-auto text-[11px] text-[#9e5a61]">Not wearing</span>
+                              </div>
+                            ))}
+                            <p className="mb-0 mt-3 border-t border-[#e0e0e0] pt-3 text-[12px] text-[var(--muted)]">Confidence: {Math.round(person.confidence * 100)}%</p>
                           </div>
-                          {person.wearing?.map((item, i) => (
-                            <div key={`w${i}`} className="flex items-center gap-[6px] text-[12px] mb-1">
-                              <CheckCircle size={13} color="#16a34a" />
-                              <span className="text-[#16a34a]">{item}</span>
-                              <span className="ml-auto text-[11px] text-[#86efac]">Wearing</span>
-                            </div>
-                          ))}
-                          {person.not_wearing?.map((item, i) => (
-                            <div key={`nw${i}`} className="flex items-center gap-[6px] text-[12px] mb-1">
-                              <X size={13} color="#dc2626" />
-                              <span className="text-[#dc2626]">{item}</span>
-                              <span className="ml-auto text-[11px] text-[#fca5a5]">Not Wearing</span>
-                            </div>
-                          ))}
-                          <p className="text-[11px] text-[#94a3b8] mt-[6px]">Confidence: {Math.round(person.confidence * 100)}%</p>
-                        </div>
-                      ))}
-                    </>
+                        ))}
+                      </div>
+                    </section>
                   )}
 
-                  {/* Violations summary */}
                   {result.violations && result.violations.length > 0 && (
-                    <>
-                      <p className="text-[12px] font-semibold text-[#64748b] uppercase tracking-[0.06em] mt-4 mb-[10px] flex items-center gap-[6px]">
-                        Violations Summary
-                      </p>
-                      {result.violations.map((v, i) => (
-                        <div key={i} className="flex items-center gap-2 px-3 py-[10px] bg-[#fff1f2] border border-[#fecaca] rounded-lg text-[13px] text-[#dc2626] mb-[6px]">
-                          <AlertTriangle size={14} color="#dc2626" className="shrink-0" />
-                          {v}
-                        </div>
-                      ))}
-                    </>
+                    <section className="mt-6" aria-labelledby="violations-summary-title">
+                      <h3 id="violations-summary-title" className="mb-3 mt-0 text-[14px] font-semibold text-[#1d1d1f]">Violations summary</h3>
+                      <div className="flex flex-col gap-2">
+                        {result.violations.map((violation, index) => (
+                          <div key={index} className="flex items-center gap-2 rounded-[18px] border border-[#f0c3c8] bg-[#fff8f8] px-4 py-3 text-[13px] text-[#b4232f]">
+                            <AlertTriangle size={15} className="shrink-0" aria-hidden="true" />
+                            {violation}
+                          </div>
+                        ))}
+                      </div>
+                    </section>
                   )}
                 </>
               ) : (
-                /* Empty state */
-                <div className="flex flex-col items-center justify-center py-10 px-5 text-center">
-                  <div className="w-14 h-14 rounded-[14px] bg-[#f1f5f9] flex items-center justify-center mb-3">
-                    <ImageIcon size={26} color="#cbd5e1" />
+                <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center">
+                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#f5f5f7] text-[#86868b]">
+                    <ImageIcon size={27} aria-hidden="true" />
                   </div>
-                  <p className="text-[14px] font-semibold text-[#475569] m-0 mb-[6px]">No results yet</p>
-                  <p className="text-[13px] text-[#94a3b8] m-0 leading-relaxed" style={{ maxWidth: '180px' }}>
-                    Upload a file and click Start Detection to see results.
+                  <p className="m-0 text-[17px] font-semibold text-[#1d1d1f]">No results yet</p>
+                  <p className="mb-0 mt-2 max-w-xs text-[14px] leading-6 text-[#6e6e73]">
+                    Choose a source and start detection. The result will appear here.
                   </p>
                 </div>
               )}
             </div>
-          </div>
+          </aside>
 
         </div>
       </div>
 
       <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes progress-bar {
           0% { width: 0%; transform: translateX(-10%); }
           50% { width: 40%; transform: translateX(50%); }
@@ -917,6 +999,12 @@ export function DetectionPage() {
         }
         .progress-bar-animation {
           animation: progress-bar 1.5s infinite ease-in-out;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .progress-bar-animation {
+            width: 100%;
+            animation: none;
+          }
         }
       `}</style>
     </Layout>

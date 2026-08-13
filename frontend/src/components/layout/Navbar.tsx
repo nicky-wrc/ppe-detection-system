@@ -12,40 +12,41 @@ export function Navbar() {
   }
 
   return (
-    <nav className="bg-blue-600 text-white shadow-lg">
-      <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-16">
-          <Link to="/" className="flex items-center space-x-2">
-            <Shield className="w-8 h-8" />
-            <span className="text-xl font-bold">PPE Detection</span>
+    <nav className="min-h-11 bg-black text-white" aria-label="Primary navigation">
+      <div className="mx-auto max-w-[1440px] px-5">
+        <div className="flex min-h-11 items-center justify-between gap-6">
+          <Link to="/" className="flex min-h-11 items-center gap-2 text-white no-underline">
+            <Shield className="h-5 w-5" />
+            <span className="text-[14px] font-semibold tracking-[-0.02em]">PPE Guard AI</span>
           </Link>
 
-          <div className="flex items-center space-x-6">
-            <Link to="/" className="flex items-center space-x-1 hover:text-blue-200">
-              <Home className="w-5 h-5" />
+          <div className="flex items-center gap-5 text-[12px]">
+            <Link to="/" className="flex min-h-11 items-center gap-1.5 text-[#d1d1d6] no-underline">
+              <Home className="h-4 w-4" />
               <span>หน้าหลัก</span>
             </Link>
-            <Link to="/detect" className="flex items-center space-x-1 hover:text-blue-200">
-              <Upload className="w-5 h-5" />
+            <Link to="/detection" className="flex min-h-11 items-center gap-1.5 text-[#d1d1d6] no-underline">
+              <Upload className="h-4 w-4" />
               <span>ตรวจจับ</span>
             </Link>
-            <Link to="/history" className="flex items-center space-x-1 hover:text-blue-200">
-              <History className="w-5 h-5" />
+            <Link to="/reports" className="flex min-h-11 items-center gap-1.5 text-[#d1d1d6] no-underline">
+              <History className="h-4 w-4" />
               <span>ประวัติ</span>
             </Link>
-            <Link to="/alerts" className="flex items-center space-x-1 hover:text-blue-200">
-              <Bell className="w-5 h-5" />
+            <Link to="/alerts" className="flex min-h-11 items-center gap-1.5 text-[#d1d1d6] no-underline">
+              <Bell className="h-4 w-4" />
               <span>แจ้งเตือน</span>
             </Link>
           </div>
 
-          <div className="flex items-center space-x-4">
-            <span className="text-sm">{user?.full_name}</span>
+          <div className="flex items-center gap-3 text-[12px]">
+            <span className="hidden text-[#a1a1a6] lg:inline">{user?.full_name}</span>
             <button
+              type="button"
               onClick={handleLogout}
-              className="flex items-center space-x-1 hover:text-blue-200"
+              className="flex min-h-11 items-center gap-1.5 rounded-full border-0 bg-[#272729] px-4 text-white"
             >
-              <LogOut className="w-5 h-5" />
+              <LogOut className="h-4 w-4" />
               <span>ออก</span>
             </button>
           </div>

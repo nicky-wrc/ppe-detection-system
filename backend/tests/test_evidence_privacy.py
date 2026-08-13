@@ -45,6 +45,7 @@ def test_usb_capture_requests_configured_resolution_and_fps():
     _configure_capture(capture, camera)
 
     assert capture.properties[cv2.CAP_PROP_BUFFERSIZE] == settings.CAMERA_CAPTURE_BUFFER_SIZE
+    assert capture.properties[cv2.CAP_PROP_FOURCC] == cv2.VideoWriter_fourcc(*"MJPG")
     assert capture.properties[cv2.CAP_PROP_FRAME_WIDTH] == settings.CAMERA_CAPTURE_WIDTH
     assert capture.properties[cv2.CAP_PROP_FRAME_HEIGHT] == settings.CAMERA_CAPTURE_HEIGHT
     assert capture.properties[cv2.CAP_PROP_FPS] == settings.CAMERA_CAPTURE_FPS

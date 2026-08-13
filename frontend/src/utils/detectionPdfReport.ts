@@ -157,7 +157,7 @@ function buildReportHtml(
 
   return `
   <div class="report-root">
-    <div class="brand">PPE Detection AI</div>
+    <div class="brand">PPE Guard AI</div>
     <h1>รายงานผลการตรวจสอบอุปกรณ์ป้องกันส่วนบุคคล (PPE)</h1>
     <p class="subtitle">เอกสารออกโดยระบบตรวจสอบอัตโนมัติเพื่อประกอบบันทึกความปลอดภัยในงาน (Occupational safety record)</p>
     <div class="rule"></div>
@@ -200,30 +200,30 @@ function buildReportHtml(
 function injectReportStyles(container: HTMLDivElement, innerHtml: string): void {
   container.innerHTML = `
   <style>
-    .report-root { width: 794px; background: #fff; color: #0f172a; font-family: Prompt, Inter, system-ui, sans-serif; font-size: 13px; line-height: 1.55; padding: 36px 40px; }
+    .report-root { width: 794px; background: #ffffff; color: #1d1d1f; font-family: "SF Pro Text", system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 13px; line-height: 1.55; padding: 36px 40px; }
     .report-root * { box-sizing: border-box; }
-    .brand { font-size: 14px; font-weight: 700; color: #2563eb; letter-spacing: 0.02em; margin-bottom: 6px; }
-    h1 { font-size: 20px; font-weight: 700; margin: 0 0 8px; line-height: 1.35; color: #0f172a; }
-    .subtitle { margin: 0 0 16px; font-size: 11.5px; color: #64748b; line-height: 1.45; }
-    .rule { height: 1px; background: #e2e8f0; margin: 14px 0 18px; }
+    .brand { font-size: 14px; font-weight: 600; color: #0066cc; letter-spacing: 0.02em; margin-bottom: 6px; }
+    h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; line-height: 1.35; color: #1d1d1f; }
+    .subtitle { margin: 0 0 16px; font-size: 11.5px; color: #6e6e73; line-height: 1.45; }
+    .rule { height: 1px; background: #e0e0e0; margin: 14px 0 18px; }
     .meta { margin-bottom: 18px; }
-    .sec-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; margin: 22px 0 10px; }
+    .sec-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #6e6e73; margin: 22px 0 10px; }
     .kv { margin: 6px 0; font-size: 12.5px; }
-    .k { display: inline-block; min-width: 160px; color: #64748b; font-weight: 600; }
-    .status.ok .k { color: #15803d; }
-    .status.bad .k { color: #b91c1c; }
-    .summary-box { margin-top: 12px; padding: 12px 14px; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 12.5px; }
-    .person-card { margin: 10px 0; padding: 12px 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #f8fafc; }
-    .person-card.bad { border-color: #fecaca; background: #fff1f2; }
-    .person-card.ok { border-color: #bbf7d0; background: #f0fdf4; }
-    .person-title { font-weight: 700; margin-bottom: 8px; font-size: 13px; }
+    .k { display: inline-block; min-width: 160px; color: #6e6e73; font-weight: 600; }
+    .status.ok .k { color: #248a3d; }
+    .status.bad .k { color: #d70015; }
+    .summary-box { margin-top: 12px; padding: 12px 14px; background: #f5f5f7; border: 1px solid #e0e0e0; border-radius: 11px; font-size: 12.5px; }
+    .person-card { margin: 10px 0; padding: 12px 14px; border-radius: 18px; border: 1px solid #e0e0e0; background: #fafafc; }
+    .person-card.bad { border-color: #f0c3c8; background: #fff8f8; }
+    .person-card.ok { border-color: #b9dfc2; background: #f3fbf5; }
+    .person-title { font-weight: 600; margin-bottom: 8px; font-size: 13px; }
     .evidence-wrap { margin-top: 8px; }
-    .evidence-img { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid #e2e8f0; margin-top: 8px; }
-    .caption { font-size: 11px; color: #64748b; margin: 8px 0 0; }
-    .note { padding: 12px; background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0; color: #475569; font-size: 12px; }
-    .note.warn { background: #fff7ed; border-color: #fed7aa; color: #9a3412; }
-    .footer { font-size: 10px; color: #64748b; line-height: 1.5; margin-top: 8px; }
-    .muted { color: #94a3b8; }
+    .evidence-img { display: block; width: 100%; height: auto; border-radius: 11px; border: 1px solid #e0e0e0; margin-top: 8px; }
+    .caption { font-size: 11px; color: #6e6e73; margin: 8px 0 0; }
+    .note { padding: 12px; background: #f5f5f7; border-radius: 11px; border: 1px solid #e0e0e0; color: #424245; font-size: 12px; }
+    .note.warn { background: #fffaf0; border-color: #efd39c; color: #9a5b00; }
+    .footer { font-size: 10px; color: #6e6e73; line-height: 1.5; margin-top: 8px; }
+    .muted { color: #6e6e73; }
   </style>
   ${innerHtml}`
 }
@@ -233,41 +233,41 @@ async function appendHtmlAsPdfPages(pdf: jsPDF, innerHtml: string): Promise<void
   const host = document.createElement('div')
   host.style.cssText = 'position:fixed;left:-12000px;top:0;pointer-events:none;z-index:-1'
   document.body.appendChild(host)
-  injectReportStyles(host as HTMLDivElement, innerHtml)
-  const root = host.querySelector('.report-root') as HTMLElement | null
-  if (!root) {
-    document.body.removeChild(host)
-    throw new Error('Report template error')
-  }
+  const canvas = await (async () => {
+    try {
+      injectReportStyles(host as HTMLDivElement, innerHtml)
+      const root = host.querySelector('.report-root') as HTMLElement | null
+      if (!root) throw new Error('Report template error')
 
-  if (document.fonts?.ready) {
-    await document.fonts.ready
-  }
+      if (document.fonts?.ready) await document.fonts.ready
 
-  await Promise.all(
-    Array.from(root.querySelectorAll('img')).map(
-      (img) =>
-        new Promise<void>((resolve) => {
-          if (img.complete && img.naturalWidth > 0) {
-            resolve()
-            return
-          }
-          const done = () => resolve()
-          img.addEventListener('load', done, { once: true })
-          img.addEventListener('error', done, { once: true })
-          setTimeout(done, 10000)
-        })
-    )
-  )
+      await Promise.all(
+        Array.from(root.querySelectorAll('img')).map(
+          (img) =>
+            new Promise<void>((resolve) => {
+              if (img.complete && img.naturalWidth > 0) {
+                resolve()
+                return
+              }
+              const done = () => resolve()
+              img.addEventListener('load', done, { once: true })
+              img.addEventListener('error', done, { once: true })
+              setTimeout(done, 10000)
+            })
+        )
+      )
 
-  const canvas = await html2canvas(root, {
-    scale: 2,
-    useCORS: true,
-    allowTaint: true,
-    logging: false,
-    backgroundColor: '#ffffff',
-  })
-  document.body.removeChild(host)
+      return await html2canvas(root, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      })
+    } finally {
+      host.remove()
+    }
+  })()
 
   const imgData = canvas.toDataURL('image/png', 1.0)
   const pageW = 210
