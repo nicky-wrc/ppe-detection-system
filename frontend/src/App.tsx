@@ -1,15 +1,29 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { Shield } from 'lucide-react'
 import { useAuthStore } from './stores/authStore'
 import { authService } from './services/auth'
 import { LoginPage } from './pages/LoginPage'
-import { DashboardPage } from './pages/DashboardPage'
-import { DetectionPage } from './pages/DetectionPage'
-import { CameraPage } from './pages/CameraPage'
-import { HistoryPage } from './pages/HistoryPage'
-import { SettingsPage } from './pages/SettingsPage'
-import { AlertsPage } from './pages/AlertsPage'
+
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })))
+const DetectionPage = lazy(() => import('./pages/DetectionPage').then((module) => ({ default: module.DetectionPage })))
+const CameraPage = lazy(() => import('./pages/CameraPage').then((module) => ({ default: module.CameraPage })))
+const HistoryPage = lazy(() => import('./pages/HistoryPage').then((module) => ({ default: module.HistoryPage })))
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then((module) => ({ default: module.SettingsPage })))
+const AlertsPage = lazy(() => import('./pages/AlertsPage').then((module) => ({ default: module.AlertsPage })))
+const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage').then((module) => ({ default: module.AdminUsersPage })))
+
+function AppLoading({ label = 'Loading workspace…' }: { label?: string }) {
+  return (
+    <div className="route-loader" role="status" aria-live="polite">
+      <div>
+        <span className="route-loader-mark"><Shield size={21} /></span>
+        <span>{label}</span>
+      </div>
+    </div>
+  )
+}
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user, setUser, logout } = useAuthStore()
@@ -42,30 +56,43 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, user, setUser, logout])
 
   if (!isAuthenticated) return <Navigate to="/login" replace />
-  if (bootstrapping) return null
+  if (bootstrapping) return <AppLoading label="Securing your workspace…" />
+  return <>{children}</>
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const user = useAuthStore((state) => state.user)
+  if (user?.role !== 'admin') return <Navigate to="/" replace />
   return <>{children}</>
 }
 
 function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
-        <Route path="/detection" element={<PrivateRoute><DetectionPage /></PrivateRoute>} />
-        <Route path="/camera" element={<PrivateRoute><CameraPage /></PrivateRoute>} />
-        <Route path="/reports" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
-        <Route path="/alerts" element={<PrivateRoute><AlertsPage /></PrivateRoute>} />
-        <Route path="/settings" element={<PrivateRoute><SettingsPage /></PrivateRoute>} />
-      </Routes>
+      <Suspense fallback={<AppLoading />}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
+          <Route path="/detection" element={<PrivateRoute><DetectionPage /></PrivateRoute>} />
+          <Route path="/camera" element={<PrivateRoute><CameraPage /></PrivateRoute>} />
+          <Route path="/reports" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
+          <Route path="/alerts" element={<PrivateRoute><AlertsPage /></PrivateRoute>} />
+          <Route path="/settings" element={<PrivateRoute><SettingsPage /></PrivateRoute>} />
+          <Route path="/admin/users" element={<PrivateRoute><AdminRoute><AdminUsersPage /></AdminRoute></PrivateRoute>} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
       <Toaster
         position="top-center"
         toastOptions={{
           duration: 3000,
           style: {
-            background: '#1e293b',
-            color: '#e2e8f0',
-            border: '1px solid #334155',
+            background: 'rgba(255, 255, 255, 0.96)',
+            color: '#1d1d1f',
+            border: '1px solid rgba(0, 0, 0, 0.08)',
+            borderRadius: '18px',
+            boxShadow: 'none',
+            fontSize: '14px',
           },
         }}
       />

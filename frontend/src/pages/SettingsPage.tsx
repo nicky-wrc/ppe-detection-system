@@ -1,72 +1,78 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Layout } from '../components/layout/Layout'
-import { Save, Bell, HardDrive, Cpu, Database, Monitor, Shield } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Bell, Cpu, Database, HardDrive, Loader2, Save, Shield, SlidersHorizontal } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { settingsService } from '../services/settings'
-import { zonesService } from '../services/zones'
-import type { Zone, UserSettings } from '../types'
 
-const ToggleSwitch = ({ checked, onChange }: { checked: boolean; onChange: () => void }) => (
+import { Layout } from '../components/layout/Layout'
+import { settingsService } from '../services/settings'
+import { useAuthStore } from '../stores/authStore'
+import { zonesService } from '../services/zones'
+import type { UserSettings, Zone } from '../types'
+
+const PPE_RULES = [
+  { key: 'helmet', label: 'Hard Hat / Helmet' },
+  { key: 'safety-vest', label: 'High-Vis Vest' },
+]
+
+interface ToggleSwitchProps {
+  checked: boolean
+  label: string
+  onChange: () => void
+  disabled?: boolean
+}
+
+const ToggleSwitch = ({ checked, label, onChange, disabled = false }: ToggleSwitchProps) => (
   <button
     type="button"
     role="switch"
     aria-checked={checked}
+    aria-label={label}
     onClick={onChange}
-    className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)] ${
-      checked ? 'bg-[#2563eb]' : 'bg-[#cbd5e1]'
-    }`}
+    disabled={disabled}
+    className="relative inline-flex h-11 w-[58px] shrink-0 cursor-pointer items-center rounded-full border-0 bg-transparent active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
   >
-    <span
-      className={`pointer-events-none inline-block h-[24px] w-[24px] transform rounded-full bg-white shadow-sm transition duration-200 ease-in-out border border-[#e2e8f0] ${
-        checked ? 'translate-x-5' : 'translate-x-0'
-      }`}
-    />
+    <span className={`absolute left-[3px] h-8 w-[52px] rounded-full transition-colors ${checked ? 'bg-[var(--blue)]' : 'bg-[#d2d2d7]'}`} />
+    <span className={`absolute left-[7px] h-6 w-6 rounded-full bg-white transition-transform ${checked ? 'translate-x-5' : 'translate-x-0'}`} />
   </button>
 )
 
 export function SettingsPage() {
+  const isAdmin = useAuthStore((state) => state.user?.role === 'admin')
   const [settings, setSettings] = useState<UserSettings | null>(null)
   const [zones, setZones] = useState<Zone[]>([])
   const [selectedZoneId, setSelectedZoneId] = useState<number | 'all'>('all')
+  const [isSaving, setIsSaving] = useState(false)
+  const [savingZoneId, setSavingZoneId] = useState<number | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
+
   const selectedZone = useMemo(
-    () => zones.find((z) => z.id === selectedZoneId) || null,
-    [zones, selectedZoneId]
+    () => zones.find((zone) => zone.id === selectedZoneId) || null,
+    [zones, selectedZoneId],
   )
 
-  const [isSaving, setIsSaving] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
-
-  const PPE_RULES = useMemo(() => ([
-    { key: 'helmet', label: 'Hard Hat / Helmet' },
-    { key: 'safety-vest', label: 'High-Vis Vest' },
-    { key: 'glasses', label: 'Safety Eyewear' },
-    { key: 'gloves', label: 'Safety Gloves' },
-    { key: 'shoes', label: 'Safety Shoes' },
-    { key: 'face-mask', label: 'Face Mask' },
-    { key: 'ear-mufs', label: 'Ear Protection' },
-  ]), [])
-
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     setIsLoading(true)
+    setLoadError(false)
     try {
-      const [s, z] = await Promise.all([
+      const [loadedSettings, loadedZones] = await Promise.all([
         settingsService.getMe(),
         zonesService.list().catch(() => [] as Zone[]),
       ])
-      setSettings(s)
-      setZones(z)
-      if (z.length > 0) setSelectedZoneId(z[0].id)
-    } catch (e) {
-      console.error(e)
+      setSettings(loadedSettings)
+      setZones(loadedZones)
+      if (loadedZones.length > 0) setSelectedZoneId(loadedZones[0].id)
+    } catch (error) {
+      console.error(error)
+      setLoadError(true)
       toast.error('โหลดการตั้งค่าไม่สำเร็จ')
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    loadAll()
-  }, [])
+    void loadAll()
+  }, [loadAll])
 
   const handleSave = () => {
     if (!settings) return
@@ -79,12 +85,15 @@ export function SettingsPage() {
         ppe_detection_sensitivity: settings.ppe_detection_sensitivity,
         active_ppe_rules: settings.active_ppe_rules,
       })
-      .then((s) => {
-        setSettings(s)
+      .then((updatedSettings) => {
+        setSettings(updatedSettings)
+        window.dispatchEvent(new CustomEvent('ppe:settings-updated', {
+          detail: { alertSound: updatedSettings.alert_sound },
+        }))
         toast.success('บันทึกการตั้งค่าเรียบร้อยแล้ว')
       })
-      .catch((e) => {
-        console.error(e)
+      .catch((error) => {
+        console.error(error)
         toast.error('บันทึกไม่สำเร็จ')
       })
       .finally(() => setIsSaving(false))
@@ -102,150 +111,153 @@ export function SettingsPage() {
   }
 
   const toggleZoneRequired = async (zoneId: number, ppeKey: string) => {
-    const zone = zones.find((z) => z.id === zoneId)
+    if (!isAdmin || savingZoneId !== null) return
+    const zone = zones.find((item) => item.id === zoneId)
     if (!zone) return
+
     const current = new Set(zone.required_ppe || [])
     if (current.has(ppeKey)) current.delete(ppeKey)
     else current.add(ppeKey)
-    const next = Array.from(current)
+
+    setSavingZoneId(zoneId)
     try {
-      const updated = await zonesService.update(zoneId, { required_ppe: next })
-      setZones((prev) => prev.map((z) => (z.id === zoneId ? updated : z)))
+      const updated = await zonesService.update(zoneId, { required_ppe: Array.from(current) })
+      setZones((previous) => previous.map((item) => (item.id === zoneId ? updated : item)))
       toast.success('อัปเดตโซนเรียบร้อย')
-    } catch (e) {
-      console.error(e)
+    } catch (error) {
+      console.error(error)
       toast.error('อัปเดตโซนไม่สำเร็จ')
+    } finally {
+      setSavingZoneId(null)
     }
   }
 
   return (
     <Layout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+      <div className="mx-auto flex max-w-[1240px] flex-col gap-8 sm:gap-10">
+        <header className="page-heading flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-[24px] font-bold text-[#0f172a] m-0 flex items-center gap-[12px]">
-              <Shield size={28} className="text-[#2563eb]" />
-              System Settings
-            </h1>
-            <p className="text-[14px] text-[#64748b] mt-2 m-0">
+            <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--ink)] text-white" aria-hidden="true">
+              <SlidersHorizontal size={20} strokeWidth={1.8} />
+            </div>
+            <h1>System Settings</h1>
+            <p className="max-w-3xl !mt-3 !text-[17px] !leading-[1.47]">
               Configure AI detection, notification preferences, and zone PPE requirements.
             </p>
           </div>
           <button
+            type="button"
             onClick={handleSave}
             disabled={isSaving || isLoading || !settings}
-            className="flex items-center justify-center gap-[9px] min-w-[190px] px-8 py-[14px] bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-[14px] text-[16px] font-bold border-none cursor-pointer disabled:opacity-70 transition-colors shadow-[0_3px_8px_rgba(37,99,235,0.25)]"
+            className="btn-apple-primary !min-h-11 min-w-44 px-6 active:scale-95"
           >
-            {isSaving ? (
-              <div className="w-5 h-5 border-[2.5px] border-white/30 border-t-white rounded-full animate-spin" />
-            ) : (
-              <Save size={19} />
-            )}
-            Save Changes
+            {isSaving ? <Loader2 size={18} className="animate-spin" aria-hidden="true" /> : <Save size={18} aria-hidden="true" />}
+            {isSaving ? 'Saving…' : 'Save changes'}
           </button>
-        </div>
+        </header>
 
-        {isLoading && (
-          <div className="bg-white border border-[#e5eaf0] rounded-2xl p-6 text-[#64748b] shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-            Loading settings...
+        {isLoading ? (
+          <div className="surface-card flex min-h-64 items-center justify-center gap-3 text-[15px] text-[var(--muted)]" role="status">
+            <Loader2 size={21} className="animate-spin text-[var(--blue)]" aria-hidden="true" />
+            Loading settings…
           </div>
-        )}
-
-        {!isLoading && settings && (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-[32px]">
-          {/* Sidebar Nav */}
-          <div className="lg:col-span-1">
-            <nav className="bg-white border border-[#e5eaf0] rounded-[20px] overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-3 flex flex-col gap-1">
+        ) : loadError || !settings ? (
+          <div className="surface-card flex min-h-64 flex-col items-center justify-center gap-4 px-6 text-center" role="alert">
+            <p className="text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">Unable to load settings</p>
+            <p className="max-w-md text-[15px] leading-relaxed text-[var(--muted)]">Check the backend connection, then try again.</p>
+            <button type="button" onClick={() => void loadAll()} className="btn-apple-secondary !min-h-11 text-[var(--blue)]">Try again</button>
+          </div>
+        ) : (
+          <div className="space-y-8">
+            <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="Settings sections">
               {[
-                { icon: Cpu, label: 'AI & Detection', active: true },
-                { icon: Monitor, label: 'Cameras', active: false },
-                { icon: Bell, label: 'Notifications', active: false },
-                { icon: Shield, label: 'User Management', active: false },
-                { icon: Database, label: 'System Health', active: false },
-              ].map((item, i) => (
-                <button
-                  key={i}
-                  className={`w-full flex items-center gap-[12px] px-4 py-3 text-[14px] font-semibold transition-colors text-left rounded-xl border-none cursor-pointer ${
-                    item.active
-                      ? 'bg-[#eff6ff] text-[#2563eb]'
-                      : 'bg-transparent text-[#64748b] hover:text-[#0f172a] hover:bg-[#f8fafc]'
+                { href: '#ai-detection', icon: Cpu, label: 'AI & Detection' },
+                { href: '#zones', icon: Shield, label: 'Zone rules' },
+                { href: '#notifications', icon: Bell, label: 'Notifications' },
+                { href: '#system-health', icon: Database, label: 'System health' },
+              ].map((item, index) => (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-4 text-[14px] font-semibold no-underline transition-colors ${
+                    index === 0
+                      ? 'border-[var(--blue)] bg-[var(--blue)] text-white'
+                      : 'border-[var(--line)] bg-white text-[var(--blue)] hover:bg-[#f5f5f7]'
                   }`}
                 >
-                  <item.icon size={20} />
+                  <item.icon size={16} aria-hidden="true" />
                   {item.label}
-                </button>
+                </a>
               ))}
             </nav>
-          </div>
 
-          {/* Main Settings */}
-          <div className="lg:col-span-3 space-y-[32px]">
-            {/* AI Settings */}
-            <div className="bg-white border border-[#e5eaf0] rounded-[20px] overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-              <div className="px-[32px] py-[24px] border-b border-[#f1f5f9]">
-                <h2 className="text-[16px] font-bold text-[#0f172a] m-0">AI & Detection Settings</h2>
+            <section id="ai-detection" className="surface-card scroll-mt-28 overflow-hidden" aria-labelledby="ai-detection-title">
+              <div className="border-b border-[var(--line)] px-6 py-6 sm:px-8">
+                <h2 id="ai-detection-title" className="text-[24px] font-semibold tracking-[-0.02em] text-[var(--ink)]">AI &amp; Detection</h2>
+                <p className="mt-2 text-[15px] leading-relaxed text-[var(--muted)]">Tune model confidence and choose which PPE rules are active.</p>
               </div>
-              <div className="px-[32px] py-[32px] space-y-[40px]">
-                {/* Person Detection Sensitivity */}
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <label className="text-[14px] font-semibold text-[#0f172a] m-0">Person Detection Sensitivity</label>
-                    <span className="px-[12px] py-[4px] bg-[#eff6ff] text-[#2563eb] font-bold rounded-lg text-[13px] border border-[#dbeafe]">
+              <div className="grid gap-8 p-6 sm:p-8 lg:grid-cols-2">
+                <div className="rounded-[18px] border border-[var(--line)] bg-[#f5f5f7] p-6">
+                  <div className="mb-5 flex items-center justify-between gap-4">
+                    <label htmlFor="person-confidence" className="text-[17px] font-semibold text-[var(--ink)]">Person confidence</label>
+                    <output htmlFor="person-confidence" className="rounded-full bg-white px-3 py-1.5 text-[14px] font-semibold text-[var(--blue)]">
                       {settings.confidence_threshold}%
-                    </span>
+                    </output>
                   </div>
                   <input
+                    id="person-confidence"
                     type="range"
                     min="10"
                     max="90"
                     step="5"
                     value={settings.confidence_threshold}
-                    onChange={(e) => setSettings({ ...settings, confidence_threshold: parseInt(e.target.value) })}
-                    className="w-full h-[8px] bg-[#e2e8f0] rounded-full appearance-none cursor-pointer accent-[#2563eb]"
+                    onChange={(event) => setSettings({ ...settings, confidence_threshold: parseInt(event.target.value) })}
+                    disabled={isSaving}
+                    className="h-11 w-full cursor-pointer accent-[var(--blue)]"
                   />
-                  <p className="text-[12px] text-[#94a3b8] m-0 mt-3">Determines how strict the AI is when detecting people in the frame.</p>
+                  <p className="mt-4 text-[14px] leading-relaxed text-[var(--muted)]">Lower values detect more difficult angles but can increase false positives.</p>
                 </div>
 
-                {/* PPE Detection Sensitivity */}
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <label className="text-[14px] font-semibold text-[#0f172a] m-0">PPE Detection Sensitivity</label>
-                    <span className="px-[12px] py-[4px] bg-[#eff6ff] text-[#2563eb] font-bold rounded-lg text-[13px] border border-[#dbeafe]">
+                <div className="rounded-[18px] border border-[var(--line)] bg-[#f5f5f7] p-6">
+                  <div className="mb-5 flex items-center justify-between gap-4">
+                    <label htmlFor="ppe-sensitivity" className="text-[17px] font-semibold text-[var(--ink)]">PPE sensitivity</label>
+                    <output htmlFor="ppe-sensitivity" className="rounded-full bg-white px-3 py-1.5 text-[14px] font-semibold text-[var(--blue)]">
                       {settings.ppe_detection_sensitivity}%
-                    </span>
+                    </output>
                   </div>
                   <input
+                    id="ppe-sensitivity"
                     type="range"
                     min="10"
                     max="90"
                     step="5"
                     value={settings.ppe_detection_sensitivity}
-                    onChange={(e) => setSettings({ ...settings, ppe_detection_sensitivity: parseInt(e.target.value) })}
-                    className="w-full h-[8px] bg-[#e2e8f0] rounded-full appearance-none cursor-pointer accent-[#2563eb]"
+                    onChange={(event) => setSettings({ ...settings, ppe_detection_sensitivity: parseInt(event.target.value) })}
+                    disabled={isSaving}
+                    className="h-11 w-full cursor-pointer accent-[var(--blue)]"
                   />
-                  <p className="text-[12px] text-[#94a3b8] m-0 mt-3">Determines how strict the AI is when classifying PPE equipment like hard hats or vests.</p>
+                  <p className="mt-4 text-[14px] leading-relaxed text-[var(--muted)]">Temporal confirmation continues to filter one-frame noise before creating an alert.</p>
                 </div>
 
-                {/* Active PPE Rules */}
-                <div className="pt-2">
-                  <label className="text-[12px] font-bold text-[#94a3b8] uppercase tracking-[0.06em] mb-4 block m-0">
-                    Active PPE Rules
-                  </label>
+                <div className="lg:col-span-2">
+                  <p className="mb-4 text-[14px] font-semibold text-[var(--ink)]">Active PPE rules</p>
                   <div className="flex flex-wrap gap-3">
                     {PPE_RULES.map((rule) => {
-                      const isActive = (settings.active_ppe_rules || {})[rule.key]
+                      const isActive = Boolean((settings.active_ppe_rules || {})[rule.key])
                       return (
                         <button
                           key={rule.key}
+                          type="button"
                           onClick={() => toggleRule(rule.key)}
-                          className={`flex items-center gap-[8px] px-[16px] py-[10px] rounded-full text-[13px] font-semibold border transition-all cursor-pointer shadow-sm ${
+                          disabled={isSaving}
+                          aria-pressed={isActive}
+                          className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-5 text-[14px] font-semibold transition-colors active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${
                             isActive
-                              ? 'bg-[#eff6ff] border-[#bfdbfe] text-[#2563eb]'
-                              : 'bg-white border-[#e2e8f0] text-[#64748b] hover:bg-[#f8fafc] hover:border-[#cbd5e1]'
+                              ? 'border-[var(--blue)] bg-[var(--blue)] text-white'
+                              : 'border-[var(--line)] bg-white text-[var(--blue)] hover:bg-[#f5f5f7]'
                           }`}
                         >
-                          {isActive && <div className="w-[6px] h-[6px] rounded-full bg-[#2563eb]" />}
+                          <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-white' : 'bg-[var(--blue)]'}`} aria-hidden="true" />
                           {rule.label}
                         </button>
                       )
@@ -253,77 +265,81 @@ export function SettingsPage() {
                   </div>
                 </div>
               </div>
-            </div>
+            </section>
 
-            {/* Zone PPE Requirements */}
-            <div className="bg-white border border-[#e5eaf0] rounded-[20px] overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-              <div className="px-[32px] py-[24px] border-b border-[#f1f5f9] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <section id="zones" className="surface-card scroll-mt-28 overflow-hidden" aria-labelledby="zones-title">
+              <div className="flex flex-col gap-5 border-b border-[var(--line)] px-6 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-8">
                 <div>
-                  <h2 className="text-[16px] font-bold text-[#0f172a] m-0">Zone PPE Requirements</h2>
-                  <p className="text-[13px] text-[#64748b] mt-1 m-0">
-                    Define required PPE per zone (affects violation detection when selecting a zone).
+                  <h2 id="zones-title" className="text-[24px] font-semibold tracking-[-0.02em] text-[var(--ink)]">Zone PPE requirements</h2>
+                  <p className="mt-2 text-[15px] leading-relaxed text-[var(--muted)]">
+                    {isAdmin ? 'Define the PPE expected for each monitored area.' : 'ข้อกำหนดของโซนนี้จัดการโดยผู้ดูแลระบบ'}
                   </p>
                 </div>
-                <div className="relative shrink-0">
+                <label className="text-[13px] font-semibold text-[var(--muted)]">
+                  <span className="sr-only">Select zone</span>
                   <select
                     value={selectedZoneId}
-                    onChange={(e) => setSelectedZoneId(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
-                    className="appearance-none pl-[16px] pr-[36px] py-[10px] rounded-xl bg-white border border-[#e2e8f0] text-[#0f172a] text-[13px] font-semibold outline-none cursor-pointer focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb] min-w-[160px] shadow-sm"
+                    onChange={(event) => setSelectedZoneId(event.target.value === 'all' ? 'all' : parseInt(event.target.value))}
+                    className="min-h-11 min-w-44 appearance-none rounded-full border border-[var(--line)] bg-white px-5 text-[14px] font-semibold text-[var(--ink)] outline-none focus:border-[var(--blue)]"
                   >
                     {zones.length === 0 ? (
                       <option value="all">ไม่มีโซน</option>
                     ) : (
-                      zones.map((z) => (
-                        <option key={z.id} value={z.id}>{z.name}</option>
-                      ))
+                      zones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)
                     )}
                   </select>
-                  <div className="absolute right-[12px] top-1/2 -translate-y-1/2 pointer-events-none text-[#64748b]">
-                    ▼
-                  </div>
-                </div>
+                </label>
               </div>
 
-              <div className="px-[32px] py-[32px]">
+              <div className="p-6 sm:p-8">
                 {!selectedZone ? (
-                  <div className="text-[#64748b] text-[13px] bg-[#f8fafc] rounded-xl p-6 text-center border border-[#e5eaf0] border-dashed">
-                    No zones found. Create one via API `POST /api/v1/zones/` then refresh.
+                  <div className="rounded-[18px] border border-[var(--line)] bg-[#f5f5f7] p-10 text-center">
+                    <Shield size={26} className="mx-auto text-[var(--muted)]" strokeWidth={1.5} aria-hidden="true" />
+                    <p className="mt-4 text-[17px] font-semibold text-[var(--ink)]">No zones found</p>
+                    <p className="mt-2 text-[14px] leading-relaxed text-[var(--muted)]">Create a zone before assigning PPE requirements.</p>
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-6">
-                    <div className="flex items-center justify-between bg-[#f8fafc] p-[20px] rounded-2xl border border-[#f1f5f9]">
-                      <div>
-                        <p className="text-[15px] text-[#0f172a] font-bold m-0">{selectedZone.name}</p>
-                        <p className="text-[#64748b] text-[13px] mt-1 m-0">{selectedZone.description || 'No description assigned'}</p>
-                      </div>
-                      <div className="flex flex-col items-end">
-                        <span className="text-[12px] font-bold text-[#94a3b8] uppercase tracking-[0.05em] mb-1 m-0">Required Items</span>
-                        <span className="text-[13px] font-semibold text-[#0f172a] m-0">
-                          {(selectedZone.required_ppe || []).length ? selectedZone.required_ppe.length + ' Rules' : 'None'}
-                        </span>
-                      </div>
+                  <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.7fr)]">
+                    <div className="rounded-[18px] border border-[var(--line)] bg-[#f5f5f7] p-6">
+                      <p className="text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">{selectedZone.name}</p>
+                      <p className="mt-2 text-[15px] leading-relaxed text-[var(--muted)]">{selectedZone.description || 'No description assigned'}</p>
+                      <p className="mt-6 text-[13px] font-semibold text-[var(--muted)]">
+                        {(selectedZone.required_ppe || []).length || 'No'} active requirement{(selectedZone.required_ppe || []).length === 1 ? '' : 's'}
+                      </p>
                     </div>
-
-                    <div className="pt-2">
-                      <label className="text-[12px] font-bold text-[#94a3b8] uppercase tracking-[0.06em] mb-4 block m-0">
-                        Select Required PPE
-                      </label>
+                    <div>
+                      <p className="mb-4 text-[14px] font-semibold text-[var(--ink)]">Required PPE</p>
                       <div className="flex flex-wrap gap-3">
                         {PPE_RULES.map((rule) => {
                           const enabled = (selectedZone.required_ppe || []).includes(rule.key)
-                          return (
+                          return isAdmin ? (
                             <button
                               key={rule.key}
-                              onClick={() => toggleZoneRequired(selectedZone.id, rule.key)}
-                              className={`flex items-center gap-[8px] px-[16px] py-[10px] rounded-full text-[13px] font-semibold border transition-all cursor-pointer shadow-sm ${
+                              type="button"
+                              onClick={() => void toggleZoneRequired(selectedZone.id, rule.key)}
+                              disabled={savingZoneId !== null}
+                              aria-pressed={enabled}
+                              className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-5 text-[14px] font-semibold transition-colors active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${
                                 enabled
-                                  ? 'bg-[#ecfdf5] border-[#a7f3d0] text-[#059669]'
-                                  : 'bg-white border-[#e2e8f0] text-[#64748b] hover:bg-[#f8fafc] hover:border-[#cbd5e1]'
+                                  ? 'border-[var(--blue)] bg-[var(--blue)] text-white'
+                                  : 'border-[var(--line)] bg-white text-[var(--blue)] hover:bg-[#f5f5f7]'
                               }`}
                             >
-                              {enabled && <div className="w-[6px] h-[6px] rounded-full bg-[#059669]" />}
+                              <span className={`h-1.5 w-1.5 rounded-full ${enabled ? 'bg-white' : 'bg-[var(--blue)]'}`} aria-hidden="true" />
                               {rule.label}
                             </button>
+                          ) : (
+                            <span
+                              key={rule.key}
+                              className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-5 text-[14px] font-semibold ${
+                                enabled
+                                  ? 'border-[#b9dfc2] bg-[#f3fbf5] text-[#15803d]'
+                                  : 'border-[var(--line)] bg-white text-[var(--muted)]'
+                              }`}
+                            >
+                              <span className={`h-1.5 w-1.5 rounded-full ${enabled ? 'bg-[#34c759]' : 'bg-[var(--muted)]'}`} aria-hidden="true" />
+                              {rule.label}
+                            </span>
                           )
                         })}
                       </div>
@@ -331,80 +347,76 @@ export function SettingsPage() {
                   </div>
                 )}
               </div>
-            </div>
+            </section>
 
-            {/* Notification Settings */}
-            <div className="bg-white border border-[#e5eaf0] rounded-[20px] overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-              <div className="px-[32px] py-[24px] border-b border-[#f1f5f9]">
-                <h2 className="text-[16px] font-bold text-[#0f172a] m-0">Notification Preferences</h2>
+            <section id="notifications" className="surface-card scroll-mt-28 overflow-hidden" aria-labelledby="notifications-title">
+              <div className="border-b border-[var(--line)] px-6 py-6 sm:px-8">
+                <h2 id="notifications-title" className="text-[24px] font-semibold tracking-[-0.02em] text-[var(--ink)]">Notification preferences</h2>
               </div>
-              <div className="px-[32px] py-[32px] flex flex-col gap-6">
-                <div className="flex items-center justify-between py-2">
-                  <div className="flex items-center gap-[16px]">
-                    <div className="w-11 h-11 rounded-xl bg-[#f8fafc] border border-[#e2e8f0] flex items-center justify-center shrink-0">
-                      <Bell size={20} className="text-[#64748b]" />
-                    </div>
+              <div className="divide-y divide-[var(--line)] px-6 sm:px-8">
+                <div className="flex min-h-28 items-center justify-between gap-5 py-6">
+                  <div className="flex items-start gap-4">
+                    <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f5f5f7] text-[var(--ink)]" aria-hidden="true">
+                      <Bell size={19} strokeWidth={1.8} />
+                    </span>
                     <div>
-                      <p className="font-semibold text-[14px] text-[#0f172a] m-0 mb-1">เสียงเตือนแบบเรียลไทม์</p>
-                      <p className="text-[13px] text-[#64748b] m-0">เปิดเสียงเตือนตี้ดๆ เมื่อตรวจพบการฝ่าฝืนหน้ากล้อง</p>
+                      <p className="text-[17px] font-semibold text-[var(--ink)]">เสียงเตือนแบบเรียลไทม์</p>
+                      <p className="mt-1 max-w-xl text-[14px] leading-relaxed text-[var(--muted)]">เปิดเสียงเตือนเมื่อตรวจพบการฝ่าฝืนหน้ากล้อง</p>
                     </div>
                   </div>
                   <ToggleSwitch
                     checked={settings.alert_sound}
+                    label="เสียงเตือนแบบเรียลไทม์"
                     onChange={() => setSettings({ ...settings, alert_sound: !settings.alert_sound })}
+                    disabled={isSaving}
                   />
                 </div>
 
-                <div className="border-t border-[#f1f5f9]" />
-
-                <div className="flex items-center justify-between py-2">
-                  <div className="flex items-center gap-[16px]">
-                    <div className="w-11 h-11 rounded-xl bg-[#f8fafc] border border-[#e2e8f0] flex items-center justify-center shrink-0">
-                      <HardDrive size={20} className="text-[#64748b]" />
-                    </div>
+                <div className="flex min-h-28 items-center justify-between gap-5 py-6">
+                  <div className="flex items-start gap-4">
+                    <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f5f5f7] text-[var(--ink)]" aria-hidden="true">
+                      <HardDrive size={19} strokeWidth={1.8} />
+                    </span>
                     <div>
-                      <p className="font-semibold text-[14px] text-[#0f172a] m-0 mb-1">บันทึกภาพเป็นหลักฐาน</p>
-                      <p className="text-[13px] text-[#64748b] m-0">บันทึกรูปภาพเหตุการณ์ลงพื้นที่จัดเก็บของเซิร์ฟเวอร์</p>
+                      <p className="text-[17px] font-semibold text-[var(--ink)]">บันทึกภาพเป็นหลักฐาน</p>
+                      <p className="mt-1 max-w-xl text-[14px] leading-relaxed text-[var(--muted)]">บันทึกรูปภาพเหตุการณ์ลงพื้นที่จัดเก็บของเซิร์ฟเวอร์</p>
                     </div>
                   </div>
                   <ToggleSwitch
                     checked={settings.save_evidence}
+                    label="บันทึกภาพเป็นหลักฐาน"
                     onChange={() => setSettings({ ...settings, save_evidence: !settings.save_evidence })}
+                    disabled={isSaving}
                   />
                 </div>
               </div>
-            </div>
+            </section>
 
-            {/* System Health */}
-            <div className="bg-white border border-[#e5eaf0] rounded-[20px] overflow-hidden shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-              <div className="px-[32px] py-[24px] border-b border-[#f1f5f9]">
-                <h2 className="text-[16px] font-bold text-[#0f172a] m-0">System Health</h2>
+            <section id="system-health" className="scroll-mt-28 overflow-hidden rounded-[18px] bg-[#272729] text-white" aria-labelledby="system-health-title">
+              <div className="border-b border-white/10 px-6 py-6 sm:px-8">
+                <h2 id="system-health-title" className="text-[24px] font-semibold tracking-[-0.02em]">System health</h2>
+                <p className="mt-2 text-[15px] leading-relaxed text-[#cccccc]">Current pilot runtime and model information.</p>
               </div>
-              <div className="px-[32px] py-[32px]">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-[20px]">
-                  <div className="bg-[#f8fafc] border border-[#e2e8f0] rounded-2xl p-[24px]">
-                    <p className="text-[12px] font-bold text-[#64748b] uppercase tracking-[0.05em] m-0 mb-3">Server Status</p>
-                    <div className="flex items-center gap-[8px]">
-                      <span className="relative flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-[12px] w-[12px] rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-[12px] w-[12px] bg-emerald-500"></span>
-                      </span>
-                      <span className="text-[16px] text-[#0f172a] font-bold m-0">Healthy</span>
-                    </div>
-                  </div>
-                  <div className="bg-[#f8fafc] border border-[#e2e8f0] rounded-2xl p-[24px]">
-                    <p className="text-[12px] font-bold text-[#64748b] uppercase tracking-[0.05em] m-0 mb-3">Software Version</p>
-                    <p className="text-[16px] text-[#0f172a] font-bold m-0">v2.0.0 (Latest)</p>
-                  </div>
-                  <div className="bg-[#f8fafc] border border-[#e2e8f0] rounded-2xl p-[24px]">
-                    <p className="text-[12px] font-bold text-[#64748b] uppercase tracking-[0.05em] m-0 mb-3">AI Model</p>
-                    <p className="text-[16px] text-[#2563eb] font-bold m-0 flex items-center gap-[6px]">YOLO (SH17) <span className="px-[8px] py-[2px] bg-[#dbeafe] text-[#1d4ed8] text-[11px] font-bold rounded-full border border-[#bfdbfe]">Active</span></p>
+              <div className="grid gap-px bg-white/10 sm:grid-cols-3">
+                <div className="bg-[#272729] p-6 sm:p-8">
+                  <p className="text-[13px] text-[#cccccc]">Server status</p>
+                  <div className="mt-3 flex items-center gap-2 text-[21px] font-semibold">
+                    <span className="h-2.5 w-2.5 rounded-full bg-[#34c759]" aria-hidden="true" />
+                    Healthy
                   </div>
                 </div>
+                <div className="bg-[#272729] p-6 sm:p-8">
+                  <p className="text-[13px] text-[#cccccc]">Software version</p>
+                  <p className="mt-3 text-[21px] font-semibold">v2.0.0 pilot</p>
+                </div>
+                <div className="bg-[#272729] p-6 sm:p-8">
+                  <p className="text-[13px] text-[#cccccc]">AI model</p>
+                  <p className="mt-3 text-[21px] font-semibold leading-tight">YOLOv8m + YOLO11n</p>
+                  <span className="mt-3 inline-flex rounded-full border border-white/15 px-3 py-1 text-[12px] text-[#cccccc]">Hybrid</span>
+                </div>
               </div>
-            </div>
+            </section>
           </div>
-        </div>
         )}
       </div>
     </Layout>

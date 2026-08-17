@@ -2,7 +2,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_roles
 from app.models import User, Zone
 from app.schemas import ZoneResponse, ZoneCreate, ZoneUpdate
 
@@ -22,7 +22,7 @@ async def get_zones(
 async def create_zone(
     zone_data: ZoneCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_roles("admin"))
 ):
     zone = Zone(**zone_data.model_dump())
     db.add(zone)
@@ -48,7 +48,7 @@ async def update_zone(
     zone_id: int,
     zone_data: ZoneUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_roles("admin"))
 ):
     zone = db.query(Zone).filter(Zone.id == zone_id).first()
     if zone is None:
@@ -67,7 +67,7 @@ async def update_zone(
 async def delete_zone(
     zone_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_roles("admin"))
 ):
     zone = db.query(Zone).filter(Zone.id == zone_id).first()
     if zone is None:

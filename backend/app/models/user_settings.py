@@ -14,7 +14,7 @@ class UserSettings(Base):
     save_evidence = Column(Boolean, default=True)
 
     # Detection tuning (stored as percent for the UI; backend may map to internal thresholds later)
-    confidence_threshold = Column(Integer, default=50)  # 10..90
+    confidence_threshold = Column(Integer, default=25)  # 10..90
     ppe_detection_sensitivity = Column(Integer, default=60)  # 10..90
 
     # PPE rules toggles (keys like "helmet", "safety-vest", "glasses"...)

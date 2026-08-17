@@ -1,186 +1,132 @@
-# PPE Detection System
+# PPE Guard AI
 
-Automatic Personal Protective Equipment (PPE) detection system for industrial safety monitoring.
+Edge-first PPE monitoring for factories. The pilot detects people, helmets, and safety vests from uploaded media or 2–4 USB cameras, confirms violations across multiple frames, records privacy-filtered evidence, and supports alert review and reporting.
 
-This project provides:
-- Real-time and file-based PPE detection
-- Violation tracking and alert management
-- Dashboard analytics (daily/hourly trends)
-- Detection history and report export
-- User authentication with register and password reset flow
-
-## Tech Stack
-
-### Frontend
-- React + TypeScript
-- Vite
-- Tailwind CSS
-- Recharts
-
-### Backend
-- FastAPI
-- SQLAlchemy
-- PostgreSQL
-- Ultralytics YOLO (PPE detection)
-
-## Project Structure
+## Architecture
 
 ```text
-ppe-detection-system/
-  backend/
-    app/
-      api/
-      core/
-      models/
-      schemas/
-      services/
-      ml/
-    requirements.txt
-    seed_admin.py
-  frontend/
-    src/
-    package.json
-  docs/
+React/Vite UI ─────── FastAPI ─────── PostgreSQL
+       │                 │
+       └── WebSocket ────┤
+                         └── Camera runtime ── YOLO SH17 ── temporal confirmation
+                                              │
+                                              └── blurred snapshot + event clip
 ```
+
+The camera runtime currently runs in the API process for a single-edge pilot. Before adding multiple API replicas, move runtime coordination and rate-limit state to a dedicated worker with Redis.
+
+## Pilot capabilities
+
+- JWT authentication with `admin`, `safety_officer`, and `viewer` roles
+- Image, video-frame, and file-based detection
+- Registered USB cameras with test/start/stop/health controls
+- Per-zone helmet and safety-vest rules
+- Violation confirmation when a tracked person is non-compliant in 4 of 5 analyzed frames
+- Duplicate-event cooldown, real-time WebSocket alerts, SMTP delivery with retry
+- Face/head blurring before snapshot or clip persistence
+- 5-second pre-event and 10-second post-event evidence clips
+- 30-day evidence cleanup, protected media endpoints, audit-ready event statuses
+- Dashboard analytics, history, PDF/CSV reporting, user and settings management
+- Alembic migrations, backend tests, frontend lint/type checks, and Docker health checks
 
 ## Prerequisites
 
-- Python 3.10+ (recommended 3.10 or 3.11)
-- Node.js 18+ and npm
-- PostgreSQL 14+
+- Python 3.10–3.12
+- Node.js 20+
+- PostgreSQL 15+
+- NVIDIA GPU with 8 GB+ recommended for 2–4 cameras
+- Two to four USB cameras for the pilot
+
+Do not collect factory images until written approval, privacy notice, access control, and retention rules are complete. See `docs/pilot/DATA_APPROVAL_CHECKLIST.md`.
 
 ## Configuration
 
-Backend settings are loaded from `backend/app/core/config.py` and optional `.env` file in `backend/`.
+Copy `.env.example` to `.env` and replace every placeholder secret. For local backend development, change `DATABASE_URL` host from `db` to `localhost`.
 
-Default database URL:
+Production startup rejects the development secret and requires `AUTO_CREATE_TABLES=false`. The first administrator is created only when both `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` are explicitly configured. Remove the bootstrap password after the account is created.
 
-```env
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ppe_detection
-```
+## Local development
 
-Create the database before running:
-
-```sql
-CREATE DATABASE ppe_detection;
-```
-
-## Installation and Run
-
-### 1) Backend
+Backend:
 
 ```powershell
 cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+# Windows + NVIDIA GPU (tested on RTX 4070 / CUDA 12.8):
+pip install -r requirements-gpu.txt
+alembic upgrade head
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Backend endpoints:
-- API docs: `http://localhost:8000/docs`
-- Health check: `http://localhost:8000/health`
-
-### 2) Frontend
-
-Open another terminal:
+Frontend:
 
 ```powershell
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-Frontend URL:
-- `http://localhost:5173`
+`requirements-gpu.txt` pins the reviewed Windows CUDA 12.8 build. Skip that second install on CPU-only hosts; the detector falls back to CPU and automatically disables person-crop refinement to protect latency. Confirm the selected runtime with `python -c "import torch; print(torch.cuda.is_available())"` before a camera pilot.
 
-## Initial Admin Account
+- UI: `http://localhost:5173`
+- API docs in development: `http://localhost:8000/docs`
+- Liveness: `http://localhost:8000/health`
+- Readiness: `http://localhost:8000/ready`
+- Prometheus-format pilot metrics: `http://localhost:8000/metrics`
 
-If no admin account exists, create one with either:
+On Windows, run the backend natively when accessing USB cameras. Passing USB devices into Docker Desktop is platform-specific. Docker Compose remains suitable for database, API validation, and deployments where camera devices are exposed to the container host.
 
-### Option A: seed script
+## Docker deployment
+
+```powershell
+Copy-Item .env.example .env
+# Edit .env and replace database password, JWT secret, and bootstrap credentials.
+docker compose up --build
+```
+
+The backend container applies `alembic upgrade head` before starting. Never expose PostgreSQL, metrics, or camera streams directly to an untrusted network.
+
+## Verification
 
 ```powershell
 cd backend
-.\.venv\Scripts\Activate.ps1
-python seed_admin.py
+python -m pytest -q
+
+cd ..\frontend
+npm run lint
+npx tsc -b --pretty false
+npm run build
 ```
 
-### Option B: API
+## Model training and evaluation
+
+The repository contains SH17 checkpoints. The runtime currently uses `yolo8m.pt` for PPE, `yolo11n.pt` for person assistance, person-crop refinement on CUDA, and conditional low-light enhancement. This hybrid remains a research baseline until evaluated on an approved target dataset. Private datasets and experiment outputs are ignored by Git.
 
 ```powershell
-Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/v1/auth/init-admin"
+cd backend
+Copy-Item mlops\ppe_factory.example.yaml mlops\ppe_factory.yaml
+python -m app.ml.train_ppe --data mlops/ppe_factory.yaml --model yolo8s.pt --name factory-yolo8s-v1
+python -m app.ml.evaluate_ppe --data mlops/ppe_factory.yaml --model experiments/factory-yolo8s-v1/weights/best.pt --split test --output experiments/factory-yolo8s-v1/test_metrics.json
 ```
 
-Default admin credentials:
-- Email: `admin@ppe-system.com`
-- Password: `admin123`
+Dataset splitting, annotation review, baselines, and required metrics are defined in `backend/mlops/README.md`. Do not claim production accuracy from training metrics or adjacent video frames randomly split across train and test.
 
-## Authentication and Security Notes
+The bundled SH17 checkpoints are research baselines and are blocked from production by default. Before setting `MODEL_LICENSE_APPROVED=true`, replace them with a model trained from commercially permitted data and complete `docs/pilot/COMMERCIALIZATION_GATE.md`. This flag is a deployment assertion, not a substitute for legal review.
 
-- Login is token-based (Bearer token)
-- Register flow is available from the login page
-- Forgot password uses a reset-code confirmation flow:
-  1. Request reset code
-  2. Confirm code and set new password
-- Reset code currently appears in backend log for development; integrate email provider for production
+## Main API groups
 
-## Core Features
+- `/api/v1/auth` — login, profile, controlled bootstrap
+- `/api/v1/admin/users` — role and account management
+- `/api/v1/cameras` — camera registration and runtime control
+- `/api/v1/events` — confirmed violation events and protected evidence
+- `/api/v1/detection` — upload, history, statistics, and analytics
+- `/api/v1/alerts` — dashboard notification workflow
+- `/api/v1/zones` and `/api/v1/settings` — safety rules and tuning
+- `/api/v1/models/active` — deployed model and temporal configuration
+- `/api/v1/ws/events` — authenticated camera and alert updates
 
-- Detection upload:
-  - Image detection
-  - Video detection
-- Dashboard:
-  - Total detections, violations, compliance rate
-  - Daily compliance chart
-  - Weekly violations chart
-  - Export selected charts to PDF
-- Alerts:
-  - List alerts by detection
-  - View details, acknowledge, resolve
-- Reports:
-  - Detection history table
-  - Modal detail view
-  - Download detection report as PDF with violation summary
+## Current boundary
 
-## API Overview
-
-Base URL:
-
-```text
-http://localhost:8000/api/v1
-```
-
-Main endpoint groups:
-- `/auth`
-- `/detection`
-- `/alerts`
-- `/zones`
-- `/settings`
-
-See full API schema in Swagger:
-- `http://localhost:8000/docs`
-
-## Notes on Data Isolation
-
-Detection, analytics, and alert APIs are filtered by authenticated user to keep user data separated.
-
-If testing with old shared data, restart backend and re-login to ensure latest server logic is applied.
-
-## Troubleshooting
-
-### Backend starts but login fails
-- Check database connection and credentials
-- Verify admin user exists via `seed_admin.py` or `/auth/init-admin`
-
-### Frontend cannot call backend
-- Ensure backend runs on port `8000`
-- Check browser console/network for CORS or connection errors
-
-### YOLO model not loading
-- Ensure model files exist in `backend/` (for current model loader order)
-- Check backend terminal logs for model load messages
-
-## License
-
-This repository is for project and educational use unless another license is specified by the repository owner.
+This is a pilot-ready academic system, not a certified safety control. It does not perform face recognition, identify employees, trigger disciplinary action, guarantee that every violation is detected, or replace human safety supervision. Real RTSP validation, SSO, external security testing, multi-site isolation, high availability, formal PDPA review, and customer SLA are commercialization-phase requirements.

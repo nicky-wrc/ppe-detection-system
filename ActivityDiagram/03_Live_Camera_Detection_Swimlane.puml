@@ -1,0 +1,113 @@
+@startuml
+title Activity Diagram - ตรวจจับ PPE ด้วยการเปิดกล้อง (Swimlane)
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam swimlaneWidth 145
+skinparam ArrowColor #404040
+skinparam nodesep 4
+skinparam ranksep 7
+skinparam defaultFontSize 10
+skinparam titleFontSize 16
+skinparam titleFontStyle bold
+skinparam titleFontColor #202020
+skinparam partitionFontSize 11
+skinparam activity {
+  BackgroundColor white
+  BorderColor #555555
+  FontColor #202020
+  FontSize 10
+  StartColor black
+  EndColor black
+  BarColor #555555
+}
+
+|ผู้ใช้|
+start
+:เข้าสู่หน้า Detection;
+:เลือกแท็บ Camera;
+:กดปุ่ม Open Camera & Detect;
+
+|ระบบ (Web/App)|
+:ขอสิทธิ์ใช้งานกล้อง
+จากเบราว์เซอร์;
+
+if ("ผู้ใช้อนุญาตให้ใช้กล้อง?") then (อนุญาต)
+  :เปิดกล้องด้วย getUserMedia;
+  :แสดงภาพจากกล้องแบบสด;
+
+  repeat
+    :จับภาพจากกล้องทุก 1 วินาที;
+    :แปลงเฟรมเป็นไฟล์ JPEG;
+    :ส่งเฟรมพร้อม JWT
+    POST /detection/frame;
+
+    |API / Detection Service|
+    :ตรวจสอบสิทธิ์และขนาดเฟรม;
+    :ถอดรหัสเฟรมด้วย OpenCV;
+    :เรียกโมเดล YOLO ตรวจจับบุคคล
+    หมวกนิรภัย และเสื้อสะท้อนแสง;
+    :ส่งผลชั่วคราวกลับ
+    โดยไม่บันทึกทุกเฟรม;
+
+    |ระบบ (Web/App)|
+    :วาดกรอบตรวจจับบนภาพสด;
+    :แสดงจำนวนบุคคลและสถานะ PPE;
+
+    if ("พบการฝ่าฝืน?") then (พบ)
+      :นับการพบ violation signature เดิม;
+
+      if ("พบต่อเนื่อง 2 เฟรม\nและพ้น cooldown 60 วินาที?") then (ยืนยัน)
+        :ส่งเฟรมยืนยันพร้อม JWT
+        POST /detection/image;
+
+        |API / Detection Service|
+        :ตรวจจับเฟรมยืนยันอีกครั้ง;
+        :สร้างภาพผลลัพธ์;
+
+        |API / Detection Service|
+        :บันทึก Detection และหลักฐาน;
+
+        if ("เฟรมยืนยันยังพบการฝ่าฝืน?") then (พบ)
+          :สร้าง Alert ตามประเภทการฝ่าฝืน;
+          :ส่ง Alert ผ่าน WebSocket;
+
+          |ระบบ (Web/App)|
+          :แสดงข้อความบันทึกเหตุการณ์;
+          :เล่นเสียงเตือน
+          เมื่อเปิด Alert Sound;
+        else (ไม่พบ)
+          :ไม่สร้าง Alert;
+        endif
+      else (ยังไม่ยืนยัน)
+        :รอผลจากเฟรมถัดไป;
+      endif
+    else (ไม่พบ)
+      :นับเฟรมที่ไม่พบการฝ่าฝืน;
+      :รีเซ็ตเหตุการณ์เมื่อไม่พบ
+      ติดต่อกันครบ 2 เฟรม;
+    endif
+
+    |ผู้ใช้|
+  repeat while ("ยังเปิดกล้องอยู่?") is (ใช่)
+  ->ไม่;
+
+  :กดปุ่ม Stop Camera;
+
+  |ระบบ (Web/App)|
+  :หยุด MediaStream;
+  :ยกเลิก timer และการตรวจจับเฟรม;
+
+  |ผู้ใช้|
+  :ดูผลการตรวจจับล่าสุด;
+else (ไม่อนุญาต)
+  |ระบบ (Web/App)|
+  :แจ้งว่าไม่สามารถเปิดกล้องได้;
+
+  |ผู้ใช้|
+  :อนุญาตสิทธิ์กล้อง
+  หรือเลือกวิธีตรวจจับอื่น;
+endif
+
+stop
+@enduml

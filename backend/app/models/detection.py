@@ -12,6 +12,7 @@ class Detection(Base):
     
     original_image_path = Column(String(500), nullable=False)
     result_image_path = Column(String(500), nullable=True)
+    result_video_path = Column(String(500), nullable=True)
     
     detected_objects = Column(JSON, default=list)
     persons = Column(JSON, default=list)  # รายการคนพร้อมสถานะ PPE

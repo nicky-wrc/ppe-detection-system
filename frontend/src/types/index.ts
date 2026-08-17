@@ -22,6 +22,7 @@ export interface Detection {
   zone_id?: number
   original_image_path: string
   result_image_path?: string
+  result_video_path?: string
   detected_objects: DetectedObject[]
   persons: PersonPPEStatus[]
   violations: string[]
@@ -75,6 +76,10 @@ export interface Zone {
   name: string
   description?: string
   required_ppe: string[]
+  polygon_points?: number[][]
+  risk_level?: string
+  rules_config?: Record<string, unknown>
+  total_violations?: number
   is_active: boolean
   created_at: string
 }
@@ -82,6 +87,7 @@ export interface Zone {
 export interface Alert {
   id: number
   detection_id: number
+  violation_log_id?: number
   alert_type: string
   message?: string
   status: string
@@ -96,5 +102,58 @@ export interface UserSettings {
   confidence_threshold: number
   ppe_detection_sensitivity: number
   active_ppe_rules: Record<string, boolean>
+  created_at: string
+}
+
+export interface EdgeCamera {
+  id: number
+  owner_id?: number
+  name: string
+  source_type: 'usb' | 'rtsp' | 'file'
+  device_index?: number
+  rtsp_url?: string
+  location?: string
+  zone_id?: number
+  config: Record<string, unknown>
+  is_active: boolean
+  is_online: boolean
+  last_seen?: string
+  started_at?: string
+  last_error?: string
+  measured_fps: number
+  frames_analyzed: number
+  created_at: string
+}
+
+export interface CameraTestResult {
+  ok: boolean
+  width?: number
+  height?: number
+  fps?: number
+  error?: string
+}
+
+export interface ViolationEvent {
+  id: number
+  user_id?: number
+  camera_id?: number
+  zone_id?: number
+  detection_id?: number
+  violation_type: string
+  track_id?: number
+  confidence_score: number
+  person_count: number
+  snapshot_path?: string
+  evidence_clip_path?: string
+  bbox_data?: number[]
+  model_version?: string
+  status: 'new' | 'acknowledged' | 'resolved'
+  acknowledged_by?: number
+  acknowledged_at?: string
+  resolved_by?: number
+  resolved_at?: string
+  notes?: string
+  first_seen?: string
+  last_seen?: string
   created_at: string
 }

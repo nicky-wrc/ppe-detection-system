@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, JSON, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, JSON, ForeignKey, Text, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -10,6 +10,9 @@ class Camera(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    source_type = Column(String(20), default="usb", nullable=False)  # usb, rtsp, file
+    device_index = Column(Integer, nullable=True)
     rtsp_url = Column(String(500), nullable=True)  # RTSP URL for live streaming
     location = Column(String(200), nullable=True)
     zone_id = Column(Integer, ForeignKey("zones.id"), nullable=True)
@@ -18,9 +21,13 @@ class Camera(Base):
     is_active = Column(Boolean, default=True)
     is_online = Column(Boolean, default=False)
     last_seen = Column(DateTime(timezone=True), nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    last_error = Column(Text, nullable=True)
+    measured_fps = Column(Float, default=0.0)
+    frames_analyzed = Column(Integer, default=0)
     
     # Configuration JSON (active rules, settings)
-    config = Column(JSON, default={})
+    config = Column(JSON, default=dict)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -50,24 +57,31 @@ class ViolationLog(Base):
     __tablename__ = "violation_logs"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     camera_id = Column(Integer, ForeignKey("cameras.id"), nullable=True, index=True)
     zone_id = Column(Integer, ForeignKey("zones.id"), nullable=True, index=True)
     detection_id = Column(Integer, ForeignKey("detections.id"), nullable=True, index=True)
     
     violation_type = Column(String(50), nullable=False, index=True)  # no_hardhat, no_vest
+    track_id = Column(Integer, nullable=True, index=True)
     confidence_score = Column(Integer, default=0)  # 0-100
     person_count = Column(Integer, default=1)
     
     # Evidence
     snapshot_path = Column(String(500), nullable=True)
+    evidence_clip_path = Column(String(500), nullable=True)
     bbox_data = Column(JSON, nullable=True)  # Bounding box coordinates
+    model_version = Column(String(100), nullable=True)
     
     # Status
     status = Column(String(20), default="new", index=True)  # new, acknowledged, resolved
     acknowledged_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     acknowledged_at = Column(DateTime(timezone=True), nullable=True)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
+    resolved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     notes = Column(Text, nullable=True)
+    first_seen = Column(DateTime(timezone=True), nullable=True)
+    last_seen = Column(DateTime(timezone=True), nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
@@ -97,7 +111,7 @@ class DailyStats(Base):
     compliance_rate = Column(Integer, default=100)  # 0-100%
     
     # By zone (JSON)
-    zone_stats = Column(JSON, default={})
+    zone_stats = Column(JSON, default=dict)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

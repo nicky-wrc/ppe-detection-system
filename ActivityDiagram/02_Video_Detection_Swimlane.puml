@@ -1,0 +1,106 @@
+@startuml
+title Activity Diagram - ตรวจจับ PPE จากวิดีโอ (Swimlane)
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam swimlaneWidth 145
+skinparam ArrowColor #404040
+skinparam nodesep 4
+skinparam ranksep 7
+skinparam defaultFontSize 10
+skinparam titleFontSize 16
+skinparam titleFontStyle bold
+skinparam titleFontColor #202020
+skinparam partitionFontSize 11
+skinparam activity {
+  BackgroundColor white
+  BorderColor #555555
+  FontColor #202020
+  FontSize 10
+  StartColor black
+  EndColor black
+  BarColor #555555
+}
+
+|ผู้ใช้|
+start
+:เข้าสู่หน้า Detection;
+:เลือกแท็บ Video;
+:เลือกไฟล์วิดีโอ;
+
+|ระบบ (Web/App)|
+:ตรวจสอบชนิดไฟล์เบื้องต้น;
+:แสดงวิดีโอต้นฉบับ
+พร้อมปุ่ม Play/Pause;
+
+|ผู้ใช้|
+:กดปุ่ม Process & save video;
+
+|ระบบ (Web/App)|
+:ส่งไฟล์วิดีโอพร้อม JWT
+POST /detection/video;
+
+|API / Detection Service|
+:ตรวจสอบสิทธิ์ผู้ใช้;
+:ตรวจสอบชนิดไฟล์ นามสกุล
+และขนาดไฟล์;
+:เปิดวิดีโอด้วย OpenCV;
+
+if ("ไฟล์ถูกต้องและเปิดได้?") then (ใช่)
+  :บันทึกไฟล์อัปโหลด;
+  :โหลดกฎ PPE ของผู้ใช้/โซน;
+  :กำหนด frame stride
+  และจำนวนเฟรมสูงสุด;
+
+  repeat
+    :อ่านเฟรมจากวิดีโอ;
+    :ตรวจจับบุคคลและ PPE ด้วย YOLO;
+    :จับคู่ PPE กับแต่ละบุคคล;
+    :วาดกรอบและสถานะบนเฟรม;
+    :เขียนเฟรมลงวิดีโอผลลัพธ์
+    H.264 หรือ WebM;
+    :สะสมประเภทการฝ่าฝืน
+    และเลือก best frame;
+  repeat while ("ยังมีเฟรมที่ต้องวิเคราะห์?") is (ใช่)
+  ->ไม่;
+
+  |API / Detection Service|
+  :บันทึก Detection พร้อมตำแหน่ง
+  วิดีโอผลลัพธ์และ best frame;
+
+  if ("พบการฝ่าฝืน?") then (พบ)
+    :สร้าง Alert ตามประเภทการฝ่าฝืน;
+    :ส่ง Alert ผ่าน WebSocket;
+  else (ไม่พบ)
+    :ไม่สร้าง Alert;
+  endif
+
+  |ระบบ (Web/App)|
+  :รับผลการตรวจจับจาก API;
+  :โหลดวิดีโอผลลัพธ์แบบมีสิทธิ์
+  GET /detection/{id}/video/result;
+
+  if ("เบราว์เซอร์เล่นวิดีโอผลลัพธ์ได้?") then (ได้)
+    :แสดงวิดีโอพร้อมกรอบตรวจจับ
+    และปุ่ม Play/Pause;
+  else (ไม่ได้)
+    :แสดงวิดีโอต้นฉบับแทน
+    พร้อมข้อความแจ้งปัญหา codec;
+  endif
+
+  :แสดงจำนวนบุคคล สถานะ PPE
+  และรายละเอียดการฝ่าฝืน;
+
+  |ผู้ใช้|
+  :เล่นวิดีโอและดูผลการตรวจจับ;
+else (ไม่ถูกต้อง)
+  |ระบบ (Web/App)|
+  :แจ้งว่าไฟล์ไม่ถูกต้อง
+  หรือไม่สามารถเปิดวิดีโอได้;
+
+  |ผู้ใช้|
+  :เลือกไฟล์วิดีโอใหม่;
+endif
+
+stop
+@enduml

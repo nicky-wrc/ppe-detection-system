@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from typing import Optional
 from datetime import datetime
 
@@ -10,7 +10,19 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: str
+    password: str = Field(min_length=10, max_length=128)
+
+
+class AdminUserCreate(BaseModel):
+    email: EmailStr
+    full_name: str = Field(min_length=2, max_length=255)
+    password: str = Field(min_length=10, max_length=128)
+    role: str = "viewer"
+
+
+class AdminUserUpdate(BaseModel):
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 class UserLogin(BaseModel):
@@ -25,7 +37,7 @@ class ForgotPasswordRequest(BaseModel):
 class ForgotPasswordConfirmRequest(BaseModel):
     email: EmailStr
     token: str
-    new_password: str
+    new_password: str = Field(min_length=10, max_length=128)
 
 
 class UserResponse(UserBase):
@@ -33,8 +45,7 @@ class UserResponse(UserBase):
     is_active: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Token(BaseModel):

@@ -60,6 +60,8 @@ cover/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+*.db
+*.db-journal
 
 # Flask stuff:
 instance/
@@ -197,6 +199,13 @@ cython_debug/
 # Runtime uploads (generated files)
 backend/uploads/
 backend/uploads/**
+
+# ML experiments and approved/private datasets must never be committed
+backend/experiments/
+backend/mlops/ppe_factory.yaml
+backend/datasets/
+*.engine
+*.onnx
 
 # Cursor
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to

@@ -1,6 +1,7 @@
 from typing import Optional
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
+from pathlib import Path
+from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
@@ -8,23 +9,33 @@ from app.core.security import get_current_user
 from app.models import User, Detection
 from app.schemas import DetectionResponse, DetectionStats
 from app.services import DetectionService
+from app.core.rate_limit import enforce_rate_limit
 
 router = APIRouter()
 
 
+def _validate_extension(file: UploadFile, allowed: set[str]) -> None:
+    extension = Path(file.filename or "").suffix.lower()
+    if extension not in allowed:
+        raise HTTPException(status_code=400, detail=f"Unsupported file extension: {extension or 'none'}")
+
+
 @router.post("/image", response_model=DetectionResponse)
 async def detect_from_image(
+    request: Request,
     file: UploadFile = File(...),
     zone_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """อัปโหลดรูปภาพเพื่อตรวจจับ PPE"""
-    if not file.content_type.startswith("image/"):
+    enforce_rate_limit(request, "detect-image", limit=30)
+    if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="ไฟล์ต้องเป็นรูปภาพเท่านั้น"
         )
+    _validate_extension(file, {".jpg", ".jpeg", ".png", ".webp"})
     
     service = DetectionService(db)
     
@@ -35,6 +46,8 @@ async def detect_from_image(
             zone_id=zone_id
         )
         return detection
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -44,25 +57,31 @@ async def detect_from_image(
 
 @router.post("/frame", response_model=DetectionResponse)
 async def detect_from_frame(
+    request: Request,
     file: UploadFile = File(...),
     zone_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """ตรวจจับ PPE จากเฟรมกล้องแบบ realtime โดยไม่บันทึกลงประวัติทุกเฟรม"""
-    if not file.content_type.startswith("image/"):
+    enforce_rate_limit(request, "detect-frame", limit=120)
+    if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="เฟรมต้องเป็นรูปภาพเท่านั้น"
         )
+    _validate_extension(file, {".jpg", ".jpeg", ".png", ".webp"})
 
     service = DetectionService(db)
 
     try:
         return await service.process_frame(
             file=file,
-            zone_id=zone_id
+            zone_id=zone_id,
+            user_id=current_user.id,
         )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -72,17 +91,20 @@ async def detect_from_frame(
 
 @router.post("/video", response_model=DetectionResponse)
 async def detect_from_video(
+    request: Request,
     file: UploadFile = File(...),
     zone_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """อัปโหลดวิดีโอเพื่อตรวจจับ PPE"""
-    if not file.content_type.startswith("video/"):
+    enforce_rate_limit(request, "detect-video", limit=10)
+    if not file.content_type or not file.content_type.startswith("video/"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="ไฟล์ต้องเป็นวิดีโอเท่านั้น"
         )
+    _validate_extension(file, {".mp4", ".avi", ".mov", ".webm", ".mkv"})
     
     service = DetectionService(db)
     
@@ -93,6 +115,8 @@ async def detect_from_video(
             zone_id=zone_id
         )
         return detection
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -116,7 +140,7 @@ async def get_detection_history(
     detections, total = service.get_detections(
         skip=skip,
         limit=per_page,
-        user_id=current_user.id,
+        user_id=None if current_user.role in {"admin", "safety_officer"} else current_user.id,
         zone_id=zone_id,
         has_violation=has_violation
     )
@@ -138,7 +162,10 @@ async def get_detection_stats(
 ):
     """ดูสถิติการตรวจจับ"""
     service = DetectionService(db)
-    return service.get_stats(user_id=current_user.id, zone_id=zone_id)
+    return service.get_stats(
+        user_id=None if current_user.role in {"admin", "safety_officer"} else current_user.id,
+        zone_id=zone_id,
+    )
 
 
 @router.get("/analytics/daily")
@@ -153,7 +180,7 @@ async def get_daily_analytics(
     service = DetectionService(db)
     return service.get_daily_analytics(
         days=days,
-        user_id=current_user.id,
+        user_id=None if current_user.role in {"admin", "safety_officer"} else current_user.id,
         start_date=start_date,
         end_date=end_date
     )
@@ -162,12 +189,16 @@ async def get_daily_analytics(
 @router.get("/{detection_id}/image/result")
 async def get_result_image(
     detection_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """ดูรูปภาพผลการตรวจจับ"""
     import os
 
-    detection = db.query(Detection).filter(Detection.id == detection_id).first()
+    query = db.query(Detection).filter(Detection.id == detection_id)
+    if current_user.role not in {"admin", "safety_officer"}:
+        query = query.filter(Detection.user_id == current_user.id)
+    detection = query.first()
 
     if detection is None or detection.result_image_path is None:
         raise HTTPException(
@@ -206,19 +237,23 @@ async def get_result_image(
 @router.get("/{detection_id}/video/result")
 async def get_result_video(
     detection_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """ดูวิดีโอผลการตรวจจับ"""
-    detection = db.query(Detection).filter(Detection.id == detection_id).first()
+    query = db.query(Detection).filter(Detection.id == detection_id)
+    if current_user.role not in {"admin", "safety_officer"}:
+        query = query.filter(Detection.user_id == current_user.id)
+    detection = query.first()
     
-    if detection is None or detection.result_image_path is None:
+    if detection is None or (detection.result_video_path is None and detection.result_image_path is None):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="ไม่พบสื่อข้อมูล"
         )
     
     import os
-    path = detection.result_image_path
+    path = detection.result_video_path or detection.result_image_path
     if not os.path.exists(path):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -246,7 +281,10 @@ async def get_detection(
 ):
     """ดูรายละเอียดการตรวจจับ"""
     service = DetectionService(db)
-    detection = service.get_detection(detection_id, user_id=current_user.id)
+    detection = service.get_detection(
+        detection_id,
+        user_id=None if current_user.role in {"admin", "safety_officer"} else current_user.id,
+    )
     
     if detection is None:
         raise HTTPException(

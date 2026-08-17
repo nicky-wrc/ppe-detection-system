@@ -1,10 +1,10 @@
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models import User, Alert, Detection
+from app.models import User, Alert, Detection, ViolationLog
 from app.schemas import AlertResponse, AlertResolve
 
 router = APIRouter()
@@ -18,7 +18,9 @@ async def get_alerts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    query = db.query(Alert).join(Detection, Alert.detection_id == Detection.id).filter(Detection.user_id == current_user.id)
+    query = db.query(Alert).join(Detection, Alert.detection_id == Detection.id)
+    if current_user.role not in {"admin", "safety_officer"}:
+        query = query.filter(Detection.user_id == current_user.id)
     
     if status:
         query = query.filter(Alert.status == status)
@@ -41,10 +43,12 @@ async def acknowledge_alert(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    if current_user.role not in {"admin", "safety_officer"}:
+        raise HTTPException(status_code=403, detail="Safety officer role required")
     alert = (
         db.query(Alert)
         .join(Detection, Alert.detection_id == Detection.id)
-        .filter(Alert.id == alert_id, Detection.user_id == current_user.id)
+        .filter(Alert.id == alert_id)
         .first()
     )
     if alert is None:
@@ -52,7 +56,13 @@ async def acknowledge_alert(
     
     alert.status = "acknowledged"
     alert.acknowledged_by = current_user.id
-    alert.acknowledged_at = datetime.utcnow()
+    alert.acknowledged_at = datetime.now(timezone.utc)
+    if alert.violation_log_id:
+        event = db.query(ViolationLog).filter(ViolationLog.id == alert.violation_log_id).first()
+        if event:
+            event.status = "acknowledged"
+            event.acknowledged_by = current_user.id
+            event.acknowledged_at = alert.acknowledged_at
     
     db.commit()
     db.refresh(alert)
@@ -66,10 +76,12 @@ async def resolve_alert(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    if current_user.role not in {"admin", "safety_officer"}:
+        raise HTTPException(status_code=403, detail="Safety officer role required")
     alert = (
         db.query(Alert)
         .join(Detection, Alert.detection_id == Detection.id)
-        .filter(Alert.id == alert_id, Detection.user_id == current_user.id)
+        .filter(Alert.id == alert_id)
         .first()
     )
     if alert is None:
@@ -77,8 +89,15 @@ async def resolve_alert(
     
     alert.status = "resolved"
     alert.resolved_by = current_user.id
-    alert.resolved_at = datetime.utcnow()
+    alert.resolved_at = datetime.now(timezone.utc)
     alert.resolution_note = resolve_data.resolution_note
+    if alert.violation_log_id:
+        event = db.query(ViolationLog).filter(ViolationLog.id == alert.violation_log_id).first()
+        if event:
+            event.status = "resolved"
+            event.resolved_by = current_user.id
+            event.resolved_at = alert.resolved_at
+            event.notes = resolve_data.resolution_note
     
     db.commit()
     db.refresh(alert)
