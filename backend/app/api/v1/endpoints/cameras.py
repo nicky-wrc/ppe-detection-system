@@ -1,4 +1,5 @@
 import asyncio
+import sys
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -6,11 +7,17 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_roles
-from app.models import Camera, User, Zone
-from app.schemas.camera import CameraCreate, CameraResponse, CameraTestResponse, CameraUpdate
-from app.services.camera_runtime import camera_runtime, test_camera_source
+from app.models import Camera, User, ViolationLog, Zone
+from app.schemas.camera import CameraCreate, CameraDeviceResponse, CameraResponse, CameraTestResponse, CameraUpdate
+from app.services.camera_runtime import camera_runtime, discover_local_camera_sources, test_camera_source
 
 router = APIRouter()
+
+
+async def _run_camera_probe(function, *args):
+    if sys.platform == "darwin":
+        return function(*args)
+    return await asyncio.to_thread(function, *args)
 
 
 def _camera_query(db: Session, current_user: User):
@@ -38,6 +45,13 @@ async def list_cameras(
     current_user: User = Depends(get_current_user),
 ):
     return [_response(camera) for camera in _camera_query(db, current_user).order_by(Camera.id).all()]
+
+
+@router.get("/devices", response_model=List[CameraDeviceResponse])
+async def list_camera_devices(
+    current_user: User = Depends(require_roles("admin")),
+):
+    return await _run_camera_probe(discover_local_camera_sources)
 
 
 @router.post("/", response_model=CameraResponse, status_code=status.HTTP_201_CREATED)
@@ -123,7 +137,11 @@ async def delete_camera(
         raise HTTPException(status_code=403, detail="Administrator role required")
     camera = _get_camera_or_404(db, camera_id, current_user)
     await camera_runtime.stop(camera.id)
-    camera.is_active = False
+    db.query(ViolationLog).filter(ViolationLog.camera_id == camera.id).update(
+        {ViolationLog.camera_id: None},
+        synchronize_session=False,
+    )
+    db.delete(camera)
     db.commit()
     return None
 
@@ -137,7 +155,7 @@ async def test_camera(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Administrator role required")
     camera = _get_camera_or_404(db, camera_id, current_user)
-    return await asyncio.to_thread(test_camera_source, camera)
+    return await _run_camera_probe(test_camera_source, camera)
 
 
 @router.post("/{camera_id}/start", response_model=CameraResponse)

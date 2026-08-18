@@ -1,9 +1,18 @@
 import api, { WS_ORIGIN } from './api'
 import type { CameraTestResult, EdgeCamera } from '../types'
 
+export interface CameraDeviceOption {
+  device_index: number
+  label: string
+  width?: number
+  height?: number
+  fps?: number
+  backend_name?: string
+}
+
 export interface CameraCreatePayload {
   name: string
-  source_type: 'usb' | 'rtsp'
+  source_type: 'usb' | 'rtsp' | 'file'
   device_index?: number
   rtsp_url?: string
   location?: string
@@ -19,6 +28,11 @@ export const camerasService = {
 
   async create(payload: CameraCreatePayload): Promise<EdgeCamera> {
     const response = await api.post('/cameras/', payload)
+    return response.data
+  },
+
+  async devices(): Promise<CameraDeviceOption[]> {
+    const response = await api.get('/cameras/devices')
     return response.data
   },
 

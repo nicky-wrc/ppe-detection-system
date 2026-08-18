@@ -59,6 +59,15 @@ class CameraTestResponse(BaseModel):
     error: str | None = None
 
 
+class CameraDeviceResponse(BaseModel):
+    device_index: int
+    label: str
+    width: int | None = None
+    height: int | None = None
+    fps: float | None = None
+    backend_name: str | None = None
+
+
 class ViolationEventResponse(BaseModel):
     id: int
     user_id: int | None = None

@@ -76,7 +76,7 @@ npm run dev
 - Readiness: `http://localhost:8000/ready`
 - Prometheus-format pilot metrics: `http://localhost:8000/metrics`
 
-On Windows, run the backend natively when accessing USB cameras. Passing USB devices into Docker Desktop is platform-specific. Docker Compose remains suitable for database, API validation, and deployments where camera devices are exposed to the container host.
+Run the backend natively when accessing USB cameras. Passing USB devices into Docker Desktop is platform-specific. Docker Compose remains suitable for database, API validation, and deployments where camera devices are exposed to the container host. On macOS, grant Camera permission to the app that launches the backend, such as Terminal, iTerm, VS Code, or Python. If permission was denied earlier, run `tccutil reset Camera`, restart the launcher app, start the backend again, and approve the camera prompt.
 
 ## Docker deployment
 

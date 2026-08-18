@@ -15,6 +15,7 @@ from app.services.camera_runtime import (
     _capture_attempts,
     _open_capture_with_frame,
     _release_open_result,
+    discover_local_camera_sources,
     test_camera_source as probe_camera_source,
 )
 
@@ -53,6 +54,28 @@ def test_windows_usb_capture_prefers_directshow_with_native_fallback():
         (cv2.CAP_DSHOW, False),
         (cv2.CAP_MSMF, True),
         (cv2.CAP_MSMF, False),
+        (None, True),
+        (None, False),
+    ]
+
+
+def test_macos_usb_capture_uses_avfoundation_with_native_fallback():
+    attempts = _capture_attempts(CameraCaptureSpec("usb", 0), platform_name="darwin")
+
+    assert [(attempt.backend, attempt.requested_profile) for attempt in attempts] == [
+        (cv2.CAP_AVFOUNDATION, True),
+        (cv2.CAP_AVFOUNDATION, False),
+        (None, True),
+        (None, False),
+    ]
+
+
+def test_linux_usb_capture_uses_v4l2_with_native_fallback():
+    attempts = _capture_attempts(CameraCaptureSpec("usb", 0), platform_name="linux")
+
+    assert [(attempt.backend, attempt.requested_profile) for attempt in attempts] == [
+        (cv2.CAP_V4L2, True),
+        (cv2.CAP_V4L2, False),
         (None, True),
         (None, False),
     ]
@@ -215,6 +238,56 @@ def test_camera_source_releases_capture_and_returns_safe_no_frame_error(monkeypa
 
     assert result == {"ok": False, "error": "Camera opened but returned no frame"}
     assert capture.released is True
+
+
+def test_camera_source_returns_macos_permission_hint_when_usb_cannot_open(monkeypatch):
+    monkeypatch.setattr(camera_runtime_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        camera_runtime_module,
+        "_capture_attempts",
+        lambda _spec: (CaptureAttempt(cv2.CAP_AVFOUNDATION, "AVFoundation", True),),
+    )
+    monkeypatch.setattr(camera_runtime_module.cv2, "VideoCapture", lambda _source, _backend: FakeCapture(opened=False))
+    camera = SimpleNamespace(id=1, source_type="usb", device_index=0, rtsp_url=None)
+
+    result = probe_camera_source(camera)
+
+    assert result["ok"] is False
+    assert result["error"] is not None
+    assert "macOS may be blocking backend camera access" in result["error"]
+
+
+def test_discover_local_camera_sources_returns_only_readable_devices(monkeypatch):
+    frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+    working_capture = FakeCapture(frames=[(True, frame)])
+    working_capture.properties[cv2.CAP_PROP_FPS] = 30
+    failed_capture = FakeCapture(opened=False)
+    captures = {0: working_capture, 1: failed_capture}
+
+    monkeypatch.setattr(
+        camera_runtime_module,
+        "_capture_attempts",
+        lambda _spec: (CaptureAttempt(None, "automatic native", False),),
+    )
+
+    def fake_video_capture(source):
+        return captures[source]
+
+    monkeypatch.setattr(camera_runtime_module.cv2, "VideoCapture", fake_video_capture)
+
+    devices = discover_local_camera_sources(max_index=1)
+
+    assert devices == [
+        {
+            "device_index": 0,
+            "label": "Camera 0",
+            "width": 1280,
+            "height": 720,
+            "fps": 30.0,
+            "backend_name": "automatic native",
+        }
+    ]
+    assert working_capture.released is True
 
 
 def test_runtime_waits_and_resets_fps_when_initial_frame_is_unavailable(monkeypatch):
