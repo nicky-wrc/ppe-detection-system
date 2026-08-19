@@ -244,10 +244,10 @@ def _camera_open_error(spec: CameraCaptureSpec, opened_without_frame: bool) -> s
         return "Camera opened but returned no frame"
     if spec.source_type == "usb" and sys.platform == "darwin":
         return (
-            "Could not open camera source. macOS may be blocking backend camera access; "
+            "Camera source is unavailable. macOS may be blocking backend camera access; "
             "grant Camera permission to the app running the backend, restart it, then try again"
         )
-    return "Could not open camera source"
+    return "Camera source is unavailable"
 
 
 def _read_initial_frame(
@@ -305,7 +305,7 @@ def _open_capture_with_frame(
 def test_camera_source(camera: Camera) -> dict[str, Any]:
     cap, frame, error, _ = _open_capture_with_frame(_capture_spec(camera))
     if cap is None or frame is None:
-        return {"ok": False, "error": error or "Could not open camera source"}
+        return {"ok": False, "error": error or "Camera source is unavailable"}
     try:
         return {
             "ok": True,
@@ -688,7 +688,7 @@ class CameraRuntimeManager:
                         self._preview_frames.pop(camera_id, None)
                         camera.is_online = False
                         camera.measured_fps = 0.0
-                        camera.last_error = f"{capture_error or 'Could not open camera source'}; retrying"
+                        camera.last_error = f"{capture_error or 'Camera source is unavailable'}; retrying"
                         db.commit()
                         await asyncio.sleep(retry_seconds)
                         retry_seconds = min(settings.CAMERA_RECONNECT_MAX_SECONDS, retry_seconds * 2)

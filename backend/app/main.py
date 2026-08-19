@@ -14,7 +14,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import SessionLocal, init_db
 from app.core.security import get_password_hash
-from app.models import User
+from app.models import Camera, User
 from app.services.camera_runtime import camera_runtime
 from app.services.retention_service import retention_loop
 
@@ -65,6 +65,16 @@ async def lifespan(_: FastAPI):
                 logger.info("Bootstrapped the configured administrator account")
         finally:
             db.close()
+    db = SessionLocal()
+    try:
+        active_camera_ids = [camera.id for camera in db.query(Camera).filter(Camera.is_active.is_(True)).all()]
+    finally:
+        db.close()
+    for camera_id in active_camera_ids:
+        await camera_runtime.start(camera_id)
+    if active_camera_ids:
+        logger.info("Resumed %s active camera runtime task(s)", len(active_camera_ids))
+
     retention_task = asyncio.create_task(retention_loop(), name="evidence-retention")
     yield
     retention_task.cancel()

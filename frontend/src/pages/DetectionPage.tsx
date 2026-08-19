@@ -788,7 +788,7 @@ export function DetectionPage() {
                           disabled={isCameraStarting}
                           className="btn-apple-secondary min-h-11 shrink-0 px-4"
                         >
-                          <RefreshCw size={16} aria-hidden="true" /> Refresh devices
+                          <RefreshCw size={16} aria-hidden="true" /> Reconnect Devices
                         </button>
                       </div>
                     </div>

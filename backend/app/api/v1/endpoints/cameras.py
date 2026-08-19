@@ -1,22 +1,24 @@
 import asyncio
-import sys
+import time
+from collections.abc import AsyncIterator
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
+from starlette.responses import StreamingResponse
 
 from app.core.database import get_db
-from app.core.security import get_current_user, require_roles
+from app.core.security import decode_access_token, get_current_user, require_roles
 from app.models import Camera, User, ViolationLog, Zone
 from app.schemas.camera import CameraCreate, CameraDeviceResponse, CameraResponse, CameraTestResponse, CameraUpdate
 from app.services.camera_runtime import camera_runtime, discover_local_camera_sources, test_camera_source
 
 router = APIRouter()
+MJPEG_BOUNDARY = "ppeframe"
+CAMERA_STOP_TIMEOUT_SECONDS = 2.0
 
 
 async def _run_camera_probe(function, *args):
-    if sys.platform == "darwin":
-        return function(*args)
     return await asyncio.to_thread(function, *args)
 
 
@@ -29,6 +31,15 @@ def _get_camera_or_404(db: Session, camera_id: int, current_user: User) -> Camer
     if camera is None:
         raise HTTPException(status_code=404, detail="Camera not found")
     return camera
+
+
+def _require_preview_user(token: str, db: Session) -> User:
+    user = decode_access_token(token, db)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
+    if user.role not in {"admin", "safety_officer"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to view previews")
+    return user
 
 
 def _response(camera: Camera) -> CameraResponse:
@@ -108,6 +119,49 @@ async def get_camera_preview(
     )
 
 
+async def _preview_stream(camera_id: int) -> AsyncIterator[bytes]:
+    last_captured_at = -1.0
+    interval = 1 / 12
+    while True:
+        preview = camera_runtime.get_preview(camera_id)
+        if preview is None:
+            await asyncio.sleep(interval)
+            continue
+        content, captured_at = preview
+        if captured_at <= last_captured_at:
+            await asyncio.sleep(interval)
+            continue
+        last_captured_at = captured_at
+        yield (
+            f"--{MJPEG_BOUNDARY}\r\n"
+            "Content-Type: image/jpeg\r\n"
+            f"Content-Length: {len(content)}\r\n"
+            f"X-Preview-Captured-At: {captured_at}\r\n"
+            "\r\n"
+        ).encode("ascii") + content + b"\r\n"
+        elapsed = max(0.0, time.time() - captured_at)
+        await asyncio.sleep(max(0.0, interval - elapsed))
+
+
+@router.get("/{camera_id}/preview-stream")
+async def stream_camera_preview(
+    camera_id: int,
+    token: str = Query(min_length=1),
+    db: Session = Depends(get_db),
+):
+    """Stream authorized in-memory preview frames over one MJPEG response."""
+    current_user = _require_preview_user(token, db)
+    _get_camera_or_404(db, camera_id, current_user)
+    return StreamingResponse(
+        _preview_stream(camera_id),
+        media_type=f"multipart/x-mixed-replace; boundary={MJPEG_BOUNDARY}",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+        },
+    )
+
+
 @router.put("/{camera_id}", response_model=CameraResponse)
 async def update_camera(
     camera_id: int,
@@ -136,7 +190,15 @@ async def delete_camera(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Administrator role required")
     camera = _get_camera_or_404(db, camera_id, current_user)
-    await camera_runtime.stop(camera.id)
+    camera.is_active = False
+    camera.is_online = False
+    camera.last_error = None
+    db.commit()
+    try:
+        await asyncio.wait_for(camera_runtime.stop(camera.id), timeout=CAMERA_STOP_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        # Do not block deletion if a native camera driver is slow to release.
+        pass
     db.query(ViolationLog).filter(ViolationLog.camera_id == camera.id).update(
         {ViolationLog.camera_id: None},
         synchronize_session=False,
@@ -185,6 +247,8 @@ async def stop_camera(
         raise HTTPException(status_code=403, detail="Administrator role required")
     camera = _get_camera_or_404(db, camera_id, current_user)
     camera.is_active = False
+    camera.is_online = False
+    camera.last_error = None
     db.commit()
     await camera_runtime.stop(camera.id)
     db.refresh(camera)
