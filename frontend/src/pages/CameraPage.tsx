@@ -29,10 +29,12 @@ interface CameraSocketMessage {
 type PreviewStatus = 'offline' | 'waiting' | 'live' | 'stale'
 type CameraAction = 'test' | 'start' | 'stop' | 'delete'
 type BulkCameraAction = Extract<CameraAction, 'stop'>
+type CameraSourceType = 'usb' | 'rtsp'
 type CameraDiscoverySource = 'backend' | 'browser' | 'mixed' | 'none'
 const PREVIEW_POLL_INTERVAL_MS = 1000
 const LIVE_DETECT_INTERVAL_MS = 1000
 const LIVE_ALERT_SOUND_COOLDOWN_MS = 5000
+const CAMERA_DEVICE_NOT_FOUND_MESSAGE = 'ไม่สามารถเปิดกล้องได้เนื่องจากตรวจไม่พบอุปกรณ์ โปรดทำการเชื่อมต่ออุปกรณ์อีกครั้ง'
 const BROWSER_PREVIEW_CONSTRAINTS = {
   width: { ideal: 1280 },
   height: { ideal: 720 },
@@ -168,6 +170,7 @@ const mergeCameraDeviceOptions = (
     const browserDevice = merged.get(device.device_index)
     merged.set(device.device_index, {
       ...device,
+      device_id: browserDevice?.device_id,
       label: browserDevice?.label && browserDevice.label !== `Browser camera ${device.device_index + 1}`
         ? browserDevice.label
         : device.label,
@@ -191,6 +194,15 @@ const getCameraChooseLabel = (camera: EdgeCamera, devices: CameraDeviceOption[])
   return device ? getCameraDeviceLabel(device) : `Camera ${camera.device_index ?? 0}`
 }
 
+const isRegisteredUsbDeviceMissing = (camera: EdgeCamera, devices: CameraDeviceOption[]) => (
+  camera.source_type === 'usb'
+  && !devices.some((device) => {
+    const storedDeviceId = getCameraStoredBrowserDeviceId(camera)
+    if (storedDeviceId) return device.device_id === storedDeviceId
+    return device.device_index === (camera.device_index ?? 0)
+  })
+)
+
 const isOpenCameraSourceError = (message?: string | null) => (
   Boolean(message && message.toLowerCase().includes('could not open camera source'))
 )
@@ -210,15 +222,85 @@ const getBrowserCameraDevices = async (): Promise<CameraDeviceOption[]> => {
 
   return videoInputs.map((device, index) => ({
     device_index: index,
+    device_id: device.deviceId || undefined,
     label: device.label || `Browser camera ${index + 1}`,
     backend_name: 'browser fallback',
   }))
 }
 
-const getBrowserCameraDeviceId = async (deviceIndex: number): Promise<string | undefined> => {
+const getCameraStoredBrowserDeviceId = (camera: EdgeCamera) => (
+  typeof camera.config?.browser_device_id === 'string' ? camera.config.browser_device_id : undefined
+)
+
+const getBrowserCameraDeviceId = async (
+  deviceIndex: number,
+  requireDevice = false,
+  expectedDeviceId?: string,
+): Promise<string | undefined> => {
   if (!navigator.mediaDevices?.enumerateDevices) return undefined
   const devices = await navigator.mediaDevices.enumerateDevices()
-  return devices.filter((device) => device.kind === 'videoinput')[deviceIndex]?.deviceId
+  const videoInputs = devices.filter((item) => item.kind === 'videoinput')
+  const device = expectedDeviceId
+    ? videoInputs.find((item) => item.deviceId === expectedDeviceId)
+    : videoInputs[deviceIndex]
+  if (!device && requireDevice) throw new Error(CAMERA_DEVICE_NOT_FOUND_MESSAGE)
+  return device?.deviceId
+}
+
+const testBrowserCameraAccess = async (camera: EdgeCamera) => {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error('Browser นี้ไม่รองรับการเปิดกล้อง')
+  }
+  const deviceId = await getBrowserCameraDeviceId(
+    camera.device_index ?? 0,
+    true,
+    getCameraStoredBrowserDeviceId(camera),
+  )
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: {
+      ...BROWSER_PREVIEW_CONSTRAINTS,
+      ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' }),
+    },
+    audio: false,
+  })
+  const track = stream.getVideoTracks()[0]
+  const settings = track?.getSettings()
+  stream.getTracks().forEach((item) => item.stop())
+  return {
+    width: settings?.width,
+    height: settings?.height,
+  }
+}
+
+const normalizeRtspUrl = (value: string) => {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  try {
+    const url = new URL(trimmed)
+    url.hash = ''
+    url.search = ''
+    url.protocol = url.protocol.toLowerCase()
+    url.hostname = url.hostname.toLowerCase()
+    url.pathname = url.pathname.replace(/\/+$/, '') || '/'
+    return url.toString()
+  } catch {
+    return trimmed.replace(/\/+$/, '').toLowerCase()
+  }
+}
+
+const getCameraActionErrorMessage = (error: unknown, fallback: string) => {
+  if (
+    error instanceof DOMException
+    && ['NotFoundError', 'DevicesNotFoundError', 'OverconstrainedError'].includes(error.name)
+  ) {
+    return CAMERA_DEVICE_NOT_FOUND_MESSAGE
+  }
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const response = (error as { response?: { data?: { detail?: unknown } } }).response
+    if (typeof response?.data?.detail === 'string') return response.data.detail
+  }
+  if (error instanceof Error && error.message) return error.message
+  return fallback
 }
 
 function BrowserDetectionPreview({ camera, deviceLabel }: { camera: EdgeCamera; deviceLabel: string }) {
@@ -377,7 +459,11 @@ function BrowserDetectionPreview({ camera, deviceLabel }: { camera: EdgeCamera; 
       setStatus('waiting')
       setSummary({ persons: 0, violations: 0, message: 'กำลังเปิดกล้อง...' })
       try {
-        const deviceId = await getBrowserCameraDeviceId(camera.device_index ?? 0)
+        const deviceId = await getBrowserCameraDeviceId(
+          camera.device_index ?? 0,
+          true,
+          getCameraStoredBrowserDeviceId(camera),
+        )
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             ...BROWSER_PREVIEW_CONSTRAINTS,
@@ -404,7 +490,11 @@ function BrowserDetectionPreview({ camera, deviceLabel }: { camera: EdgeCamera; 
         console.error('Browser camera live detection unavailable:', error)
         if (!mounted || sessionId !== sessionRef.current) return
         setStatus('offline')
-        setSummary({ persons: 0, violations: 0, message: 'เปิดกล้องไม่ได้ กรุณากด Allow หรือเลือกกล้องใหม่' })
+        setSummary({
+          persons: 0,
+          violations: 0,
+          message: getCameraActionErrorMessage(error, 'เปิดกล้องไม่ได้ กรุณากด Allow หรือเลือกกล้องใหม่'),
+        })
       }
     }
 
@@ -490,7 +580,11 @@ function CameraPreview({ camera, deviceLabel, forceBrowserPreview = false }: { c
 
     const openBrowserPreview = async () => {
       try {
-        const deviceId = await getBrowserCameraDeviceId(camera.device_index ?? 0)
+        const deviceId = await getBrowserCameraDeviceId(
+          camera.device_index ?? 0,
+          true,
+          getCameraStoredBrowserDeviceId(camera),
+        )
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             ...BROWSER_PREVIEW_CONSTRAINTS,
@@ -630,7 +724,9 @@ export function CameraPage() {
   const [creating, setCreating] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [name, setName] = useState('Production Camera')
+  const [sourceType, setSourceType] = useState<CameraSourceType>('usb')
   const [deviceIndex, setDeviceIndex] = useState(0)
+  const [rtspUrl, setRtspUrl] = useState('')
   const [availableCameraDevices, setAvailableCameraDevices] = useState<CameraDeviceOption[]>([])
   const [isRefreshingDevices, setIsRefreshingDevices] = useState(false)
   const [cameraDiscoverySource, setCameraDiscoverySource] = useState<CameraDiscoverySource>('none')
@@ -761,7 +857,12 @@ export function CameraPage() {
   const duplicateDeviceIndex = cameras.some((camera) => (
     camera.source_type === 'usb' && camera.device_index === deviceIndex
   ))
-  const isDeviceIndexValid = availableCameraDevices.some((device) => device.device_index === deviceIndex)
+  const normalizedRtspUrl = normalizeRtspUrl(rtspUrl)
+  const duplicateRtspUrl = Boolean(normalizedRtspUrl) && cameras.some((camera) => (
+    camera.source_type === 'rtsp' && normalizeRtspUrl(camera.rtsp_url || '') === normalizedRtspUrl
+  ))
+  const isDeviceIndexValid = sourceType !== 'usb' || availableCameraDevices.some((device) => device.device_index === deviceIndex)
+  const isRtspUrlValid = sourceType !== 'rtsp' || normalizedRtspUrl.startsWith('rtsp://')
 
   const trimmedName = name.trim()
   const isNameValid = trimmedName.length >= 2 && trimmedName.length <= 100
@@ -771,33 +872,55 @@ export function CameraPage() {
       setFormError('ชื่อกล้องต้องมีความยาว 2–100 ตัวอักษร')
       return
     }
-    if (!isDeviceIndexValid) {
+    if (sourceType === 'usb' && !isDeviceIndexValid) {
       setFormError('กรุณาเลือกกล้องที่พร้อมใช้งาน')
       return
     }
-    if (duplicateDeviceIndex) {
+    if (sourceType === 'usb' && duplicateDeviceIndex) {
       setFormError(`Device index ${deviceIndex} ถูกเพิ่มไว้แล้ว กรุณาเลือกหมายเลขอื่น`)
+      return
+    }
+    if (sourceType === 'rtsp' && !isRtspUrlValid) {
+      setFormError('กรุณากรอก RTSP URL ที่ขึ้นต้นด้วย rtsp://')
+      return
+    }
+    if (sourceType === 'rtsp' && duplicateRtspUrl) {
+      setFormError('Network camera URL นี้ถูกเพิ่มไว้แล้ว')
       return
     }
 
     setFormError(null)
     setCreating(true)
     try {
+      const selectedDevice = availableCameraDevices.find((device) => device.device_index === deviceIndex)
       const createdCamera = await camerasService.create({
         name: trimmedName,
-        source_type: 'usb',
-        device_index: deviceIndex,
+        source_type: sourceType,
+        ...(sourceType === 'usb' ? { device_index: deviceIndex } : { device_index: undefined }),
+        ...(sourceType === 'rtsp' ? { rtsp_url: rtspUrl.trim() } : {}),
         zone_id: zoneId,
-        config: {},
+        config: sourceType === 'usb'
+          ? {
+              browser_device_id: selectedDevice?.device_id,
+              browser_device_label: selectedDevice?.label,
+            }
+          : {},
       })
-      setBrowserPreviewCameraId(createdCamera.id)
-      toast.success('เพิ่มกล้องและเริ่มตรวจจับผ่าน browser แล้ว')
+      if (createdCamera.source_type === 'usb') {
+        setBrowserPreviewCameraId(createdCamera.id)
+        toast.success('เพิ่มกล้องและเริ่มตรวจจับผ่าน browser แล้ว')
+      } else {
+        setBrowserPreviewCameraId(null)
+        toast.success('เพิ่ม network camera แล้ว กด Start เพื่อเริ่มผ่าน backend stream')
+      }
       setName(`Production Camera ${cameras.length + 2}`)
+      setRtspUrl('')
       await load(true)
     } catch (error) {
       console.error(error)
-      setFormError('เพิ่มกล้องไม่สำเร็จ โปรดตรวจ device index และสิทธิ์ของผู้ดูแล')
-      toast.error('เพิ่มกล้องไม่สำเร็จ โปรดตรวจ device index และสิทธิ์ของผู้ดูแล')
+      const message = getCameraActionErrorMessage(error, 'เพิ่มกล้องไม่สำเร็จ')
+      setFormError(message)
+      toast.error(message)
     } finally {
       setCreating(false)
     }
@@ -823,6 +946,11 @@ export function CameraPage() {
     markCamerasBusy([camera.id], action)
     try {
       if (action === 'test') {
+        if (camera.source_type === 'usb') {
+          const result = await testBrowserCameraAccess(camera)
+          toast.success(`เปิดกล้องผ่าน browser สำเร็จ${result.width && result.height ? ` ${result.width}×${result.height}` : ''}`)
+          return
+        }
         const result = await camerasService.test(camera.id)
         if (!result.ok) throw new Error(result.error || 'Camera test failed')
         toast.success(`เชื่อมต่อสำเร็จ ${result.width}×${result.height}`)
@@ -832,6 +960,11 @@ export function CameraPage() {
           await Promise.allSettled(otherActiveCameras.map((item) => camerasService.stop(item.id)))
         }
         if (camera.source_type === 'usb') {
+          await getBrowserCameraDeviceId(
+            camera.device_index ?? 0,
+            true,
+            getCameraStoredBrowserDeviceId(camera),
+          )
           setBrowserPreviewCameraId(camera.id)
           setCameras((current) => current.map((item) => {
             if (item.id === camera.id) return { ...item, is_active: false, is_online: false, measured_fps: 0, last_error: undefined }
@@ -875,12 +1008,7 @@ export function CameraPage() {
       await load(true)
     } catch (error) {
       console.error(error)
-      if ((action === 'test' || action === 'start') && camera.source_type === 'usb') {
-        setBrowserPreviewCameraId(camera.id)
-        toast.error('เปิดกล้องผ่าน browser ให้ใช้งานต่อได้แล้ว')
-      } else {
-        toast.error(error instanceof Error ? error.message : 'ดำเนินการไม่สำเร็จ')
-      }
+      toast.error(getCameraActionErrorMessage(error, 'ดำเนินการไม่สำเร็จ'))
     } finally {
       clearCamerasBusy([camera.id])
     }
@@ -924,8 +1052,10 @@ export function CameraPage() {
   const previewCameraId = cameras.find((camera) => camera.is_active)?.id ?? browserPreviewCameraId ?? cameras[0]?.id
   const validationMessage = formError
     || (!isNameValid ? 'ชื่อกล้องต้องมีความยาว 2–100 ตัวอักษร' : null)
-    || (duplicateDeviceIndex ? `Device index ${deviceIndex} ถูกเพิ่มไว้แล้ว` : null)
-    || (!isDeviceIndexValid ? 'กรุณาเลือกกล้องที่พร้อมใช้งาน' : null)
+    || (sourceType === 'usb' && duplicateDeviceIndex ? `Device index ${deviceIndex} ถูกเพิ่มไว้แล้ว` : null)
+    || (sourceType === 'usb' && !isDeviceIndexValid ? 'กรุณาเลือกกล้องที่พร้อมใช้งาน' : null)
+    || (sourceType === 'rtsp' && duplicateRtspUrl ? 'Network camera URL นี้ถูกเพิ่มไว้แล้ว' : null)
+    || (sourceType === 'rtsp' && !isRtspUrlValid ? 'กรุณากรอก RTSP URL ที่ขึ้นต้นด้วย rtsp://' : null)
 
   return (
     <Layout>
@@ -975,11 +1105,11 @@ export function CameraPage() {
               </div>
               <div>
                 <h2 id="register-camera-title" className="m-0 text-[21px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">Register camera</h2>
-                <p className="mb-0 mt-1 text-[14px] leading-5 text-[#6e6e73]">เลือกจากกล้องที่ backend ตรวจพบและเปิดอ่านเฟรมได้จริง</p>
+                <p className="mb-0 mt-1 text-[14px] leading-5 text-[#6e6e73]">เลือกกล้องจาก browser/backend หรือเพิ่มกล้อง network ด้วย RTSP URL</p>
               </div>
             </div>
             <form
-              className="grid grid-cols-1 items-end gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,1fr)_minmax(0,1fr)_auto]"
+              className="grid grid-cols-1 items-end gap-4 lg:grid-cols-[minmax(0,1fr)_180px_minmax(260px,1fr)_minmax(0,1fr)_auto]"
               onSubmit={(event) => { event.preventDefault(); void createCamera() }}
               aria-describedby={validationMessage ? 'camera-form-error' : 'camera-device-help'}
             >
@@ -998,28 +1128,54 @@ export function CameraPage() {
                 />
               </label>
               <label className="text-[13px] font-semibold text-[#424245]">
-                Choose camera
+                Source
                 <select
-                  value={deviceIndex}
-                  onChange={(event) => { setDeviceIndex(Number(event.target.value)); setFormError(null) }}
+                  value={sourceType}
+                  onChange={(event) => { setSourceType(event.target.value as CameraSourceType); setFormError(null) }}
+                  disabled={loading || Boolean(loadError) || creating}
                   className="mt-2 min-h-12 w-full rounded-full border border-[#d2d2d7] bg-white px-4 text-[15px] text-[#1d1d1f]"
-                  aria-invalid={!isDeviceIndexValid || duplicateDeviceIndex}
-                  aria-describedby="camera-device-help"
-                  disabled={loading || Boolean(loadError) || availableCameraDevices.length === 0 || isRefreshingDevices}
                 >
-                  {availableCameraDevices.length === 0 ? (
-                    <option value={0}>ไม่พบกล้องที่พร้อมใช้งาน</option>
-                  ) : availableCameraDevices.map((device) => {
-                    const isRegistered = cameras.some((camera) => (
-                      camera.source_type === 'usb' && camera.device_index === device.device_index
-                    ))
-                    return (
-                      <option key={device.device_index} value={device.device_index} disabled={isRegistered}>
-                        {getCameraDeviceLabel(device)}{isRegistered ? ' — ลงทะเบียนแล้ว' : ''}
-                      </option>
-                    )
-                  })}
+                  <option value="usb">USB / Browser</option>
+                  <option value="rtsp">Network RTSP</option>
                 </select>
+              </label>
+              <label className="text-[13px] font-semibold text-[#424245]">
+                {sourceType === 'usb' ? 'Choose camera' : 'RTSP URL'}
+                {sourceType === 'usb' ? (
+                  <select
+                    value={deviceIndex}
+                    onChange={(event) => { setDeviceIndex(Number(event.target.value)); setFormError(null) }}
+                    className="mt-2 min-h-12 w-full rounded-full border border-[#d2d2d7] bg-white px-4 text-[15px] text-[#1d1d1f]"
+                    aria-invalid={!isDeviceIndexValid || duplicateDeviceIndex}
+                    aria-describedby="camera-device-help"
+                    disabled={loading || Boolean(loadError) || availableCameraDevices.length === 0 || isRefreshingDevices}
+                  >
+                    {availableCameraDevices.length === 0 ? (
+                      <option value={0}>ไม่พบกล้องที่พร้อมใช้งาน</option>
+                    ) : availableCameraDevices.map((device) => {
+                      const isRegistered = cameras.some((camera) => (
+                        camera.source_type === 'usb' && camera.device_index === device.device_index
+                      ))
+                      return (
+                        <option key={device.device_index} value={device.device_index} disabled={isRegistered}>
+                          {getCameraDeviceLabel(device)}{isRegistered ? ' — ลงทะเบียนแล้ว' : ''}
+                        </option>
+                      )
+                    })}
+                  </select>
+                ) : (
+                  <input
+                    value={rtspUrl}
+                    onChange={(event) => { setRtspUrl(event.target.value); setFormError(null) }}
+                    placeholder="rtsp://user:pass@192.168.1.10:554/stream"
+                    maxLength={500}
+                    required={sourceType === 'rtsp'}
+                    disabled={loading || Boolean(loadError) || creating}
+                    className="mt-2 min-h-12 w-full rounded-full border border-[#d2d2d7] bg-white px-4 text-[15px] text-[#1d1d1f]"
+                    aria-invalid={!isRtspUrlValid || duplicateRtspUrl}
+                    aria-describedby="camera-device-help"
+                  />
+                )}
               </label>
               <label className="text-[13px] font-semibold text-[#424245]">
                 Safety zone
@@ -1028,7 +1184,18 @@ export function CameraPage() {
                   {zones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)}
                 </select>
               </label>
-              <button type="submit" disabled={loading || Boolean(loadError) || creating || !isNameValid || !isDeviceIndexValid || duplicateDeviceIndex || isRefreshingDevices} className="btn-apple-primary min-h-12 px-6">
+              <button
+                type="submit"
+                disabled={
+                  loading
+                  || Boolean(loadError)
+                  || creating
+                  || !isNameValid
+                  || (sourceType === 'usb' && (!isDeviceIndexValid || duplicateDeviceIndex || isRefreshingDevices))
+                  || (sourceType === 'rtsp' && (!isRtspUrlValid || duplicateRtspUrl))
+                }
+                className="btn-apple-primary min-h-12 px-6"
+              >
                 {creating ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Plus size={16} aria-hidden="true" />} Add camera
               </button>
             </form>
@@ -1091,6 +1258,7 @@ export function CameraPage() {
               const isBusy = busyAction !== undefined
               const isBrowserPreviewActive = browserPreviewCameraId === camera.id && !camera.is_active
               const chooseCameraLabel = getCameraChooseLabel(camera, availableCameraDevices)
+              const isUsbDeviceMissing = isRegisteredUsbDeviceMissing(camera, availableCameraDevices)
               const shouldShowBackendError = Boolean(camera.last_error) && !isBrowserPreviewActive && !isOpenCameraSourceError(camera.last_error)
               return (
                 <article key={camera.id} className="surface-card p-5 sm:p-6" aria-busy={isBusy}>
@@ -1109,7 +1277,7 @@ export function CameraPage() {
                     </div>
                     <span className={`inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-[11px] font-semibold ${camera.is_online ? 'bg-[#edf8ef] text-[#15803d]' : camera.is_active ? 'bg-[#fff7e8] text-[#9a5b00]' : 'bg-[#f0f0f2] text-[#6e6e73]'}`}>
                       {isBusy ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <CircleDot size={12} aria-hidden="true" />}
-                      {isBusy ? 'UPDATING' : camera.is_online ? 'ONLINE' : camera.is_active && camera.last_error && !isOpenCameraSourceError(camera.last_error) ? 'RECONNECTING' : camera.is_active ? 'STARTING' : 'OFFLINE'}
+                      {isBusy ? 'UPDATING' : isUsbDeviceMissing ? 'DISCONNECTED' : camera.is_online ? 'ONLINE' : camera.is_active && camera.last_error && !isOpenCameraSourceError(camera.last_error) ? 'RECONNECTING' : camera.is_active ? 'STARTING' : 'OFFLINE'}
                     </span>
                   </div>
 
@@ -1135,6 +1303,11 @@ export function CameraPage() {
                     <div className="min-w-0 rounded-[18px] bg-[#f5f5f7] p-3 sm:p-4"><dt className="text-[11px] font-semibold text-[var(--muted)]">Zone</dt><dd className="mb-0 mt-1 truncate text-[15px] font-semibold text-[#1d1d1f]">{zones.find((zone) => zone.id === camera.zone_id)?.name || 'Default'}</dd></div>
                   </dl>
 
+                  {isUsbDeviceMissing && (
+                    <p className="mb-0 mt-4 rounded-[18px] border border-[#ffd599] bg-[#fff9ed] px-4 py-3 text-[13px] leading-5 text-[#9a5b00]" role="alert">
+                      {CAMERA_DEVICE_NOT_FOUND_MESSAGE}
+                    </p>
+                  )}
                   {shouldShowBackendError && <p className="mb-0 mt-4 rounded-[18px] border border-[#f0c3c8] bg-[#fff8f8] px-4 py-3 text-[13px] leading-5 text-[#b4232f]" role="alert">{camera.last_error}</p>}
 
                   {isAdmin && (

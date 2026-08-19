@@ -3,6 +3,7 @@ import type { CameraTestResult, EdgeCamera } from '../types'
 
 export interface CameraDeviceOption {
   device_index: number
+  device_id?: string
   label: string
   width?: number
   height?: number
