@@ -1,16 +1,27 @@
 import asyncio
+import time
+from collections.abc import AsyncIterator
 from typing import List
+from urllib.parse import urlsplit, urlunsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from starlette.responses import StreamingResponse
 
 from app.core.database import get_db
-from app.core.security import get_current_user, require_roles
-from app.models import Camera, User, Zone
-from app.schemas.camera import CameraCreate, CameraResponse, CameraTestResponse, CameraUpdate
-from app.services.camera_runtime import camera_runtime, test_camera_source
+from app.core.security import decode_access_token, get_current_user, require_roles
+from app.models import Camera, User, ViolationLog, Zone
+from app.schemas.camera import CameraCreate, CameraDeviceResponse, CameraResponse, CameraTestResponse, CameraUpdate
+from app.services.camera_runtime import camera_runtime, discover_local_camera_sources, test_camera_source
 
 router = APIRouter()
+MJPEG_BOUNDARY = "ppeframe"
+CAMERA_STOP_TIMEOUT_SECONDS = 2.0
+
+
+async def _run_camera_probe(function, *args):
+    return await asyncio.to_thread(function, *args)
 
 
 def _camera_query(db: Session, current_user: User):
@@ -24,6 +35,15 @@ def _get_camera_or_404(db: Session, camera_id: int, current_user: User) -> Camer
     return camera
 
 
+def _require_preview_user(token: str, db: Session) -> User:
+    user = decode_access_token(token, db)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
+    if user.role not in {"admin", "safety_officer"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to view previews")
+    return user
+
+
 def _response(camera: Camera) -> CameraResponse:
     data = CameraResponse.model_validate(camera)
     # Never return stream credentials to the browser after creation.
@@ -32,12 +52,71 @@ def _response(camera: Camera) -> CameraResponse:
     return data
 
 
+def _normalize_rtsp_url(url: str | None) -> str | None:
+    if not url:
+        return None
+    parsed = urlsplit(url.strip())
+    hostname = (parsed.hostname or "").lower()
+    if not hostname:
+        return url.strip()
+    netloc = hostname
+    if parsed.port:
+        netloc = f"{netloc}:{parsed.port}"
+    if parsed.username:
+        credentials = parsed.username
+        if parsed.password:
+            credentials = f"{credentials}:{parsed.password}"
+        netloc = f"{credentials}@{netloc}"
+    return urlunsplit((parsed.scheme.lower(), netloc, parsed.path.rstrip("/") or "/", "", ""))
+
+
+def _duplicate_camera_query(db: Session, payload: CameraCreate | CameraUpdate, exclude_camera_id: int | None = None):
+    source_type = getattr(payload, "source_type", None)
+    if source_type == "usb":
+        query = db.query(Camera).filter(Camera.source_type == "usb", Camera.device_index == payload.device_index)
+    elif source_type == "rtsp":
+        normalized_url = _normalize_rtsp_url(payload.rtsp_url)
+        if not normalized_url:
+            return None
+        query = db.query(Camera).filter(Camera.source_type == "rtsp")
+        matches = [
+            camera for camera in query.all()
+            if _normalize_rtsp_url(camera.rtsp_url) == normalized_url
+            and (exclude_camera_id is None or camera.id != exclude_camera_id)
+        ]
+        return matches[0] if matches else None
+    else:
+        return None
+
+    if exclude_camera_id is not None:
+        query = query.filter(Camera.id != exclude_camera_id)
+    return query.first()
+
+
+def _raise_if_duplicate_camera(db: Session, payload: CameraCreate | CameraUpdate, exclude_camera_id: int | None = None) -> None:
+    duplicate = _duplicate_camera_query(db, payload, exclude_camera_id=exclude_camera_id)
+    if duplicate is None:
+        return
+    if getattr(payload, "source_type", None) == "rtsp":
+        detail = f"This network camera is already registered as {duplicate.name}"
+    else:
+        detail = f"USB camera device index {payload.device_index} is already registered as {duplicate.name}"
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
 @router.get("/", response_model=List[CameraResponse])
 async def list_cameras(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     return [_response(camera) for camera in _camera_query(db, current_user).order_by(Camera.id).all()]
+
+
+@router.get("/devices", response_model=List[CameraDeviceResponse])
+async def list_camera_devices(
+    current_user: User = Depends(require_roles("admin")),
+):
+    return await _run_camera_probe(discover_local_camera_sources)
 
 
 @router.post("/", response_model=CameraResponse, status_code=status.HTTP_201_CREATED)
@@ -52,6 +131,7 @@ async def create_camera(
         zone = db.query(Zone).filter(Zone.id == payload.zone_id, Zone.is_active.is_(True)).first()
         if zone is None:
             raise HTTPException(status_code=400, detail="Active zone not found")
+    _raise_if_duplicate_camera(db, payload)
     camera = Camera(owner_id=current_user.id, **payload.model_dump())
     db.add(camera)
     db.commit()
@@ -94,6 +174,49 @@ async def get_camera_preview(
     )
 
 
+async def _preview_stream(camera_id: int) -> AsyncIterator[bytes]:
+    last_captured_at = -1.0
+    interval = 1 / 12
+    while True:
+        preview = camera_runtime.get_preview(camera_id)
+        if preview is None:
+            await asyncio.sleep(interval)
+            continue
+        content, captured_at = preview
+        if captured_at <= last_captured_at:
+            await asyncio.sleep(interval)
+            continue
+        last_captured_at = captured_at
+        yield (
+            f"--{MJPEG_BOUNDARY}\r\n"
+            "Content-Type: image/jpeg\r\n"
+            f"Content-Length: {len(content)}\r\n"
+            f"X-Preview-Captured-At: {captured_at}\r\n"
+            "\r\n"
+        ).encode("ascii") + content + b"\r\n"
+        elapsed = max(0.0, time.time() - captured_at)
+        await asyncio.sleep(max(0.0, interval - elapsed))
+
+
+@router.get("/{camera_id}/preview-stream")
+async def stream_camera_preview(
+    camera_id: int,
+    token: str = Query(min_length=1),
+    db: Session = Depends(get_db),
+):
+    """Stream authorized in-memory preview frames over one MJPEG response."""
+    current_user = _require_preview_user(token, db)
+    _get_camera_or_404(db, camera_id, current_user)
+    return StreamingResponse(
+        _preview_stream(camera_id),
+        media_type=f"multipart/x-mixed-replace; boundary={MJPEG_BOUNDARY}",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+        },
+    )
+
+
 @router.put("/{camera_id}", response_model=CameraResponse)
 async def update_camera(
     camera_id: int,
@@ -106,7 +229,19 @@ async def update_camera(
     camera = _get_camera_or_404(db, camera_id, current_user)
     if camera_runtime.is_running(camera_id):
         raise HTTPException(status_code=409, detail="Stop the camera before changing its configuration")
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    if "device_index" in changes or "rtsp_url" in changes:
+        duplicate_payload = CameraCreate(
+            name=changes.get("name", camera.name),
+            source_type=camera.source_type,
+            device_index=changes.get("device_index", camera.device_index),
+            rtsp_url=changes.get("rtsp_url", camera.rtsp_url),
+            location=changes.get("location", camera.location),
+            zone_id=changes.get("zone_id", camera.zone_id),
+            config=changes.get("config", camera.config or {}),
+        )
+        _raise_if_duplicate_camera(db, duplicate_payload, exclude_camera_id=camera.id)
+    for key, value in changes.items():
         setattr(camera, key, value)
     db.commit()
     db.refresh(camera)
@@ -122,9 +257,26 @@ async def delete_camera(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Administrator role required")
     camera = _get_camera_or_404(db, camera_id, current_user)
-    await camera_runtime.stop(camera.id)
     camera.is_active = False
+    camera.is_online = False
+    camera.last_error = None
     db.commit()
+    if camera_runtime.is_running(camera.id):
+        try:
+            await asyncio.wait_for(camera_runtime.stop(camera.id), timeout=CAMERA_STOP_TIMEOUT_SECONDS)
+        except Exception:
+            # Do not block deletion if a native camera driver is slow to release.
+            pass
+    try:
+        db.query(ViolationLog).filter(ViolationLog.camera_id == camera.id).update(
+            {ViolationLog.camera_id: None},
+            synchronize_session=False,
+        )
+        db.delete(camera)
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Camera could not be deleted because related data is still attached") from exc
     return None
 
 
@@ -137,7 +289,7 @@ async def test_camera(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Administrator role required")
     camera = _get_camera_or_404(db, camera_id, current_user)
-    return await asyncio.to_thread(test_camera_source, camera)
+    return await _run_camera_probe(test_camera_source, camera)
 
 
 @router.post("/{camera_id}/start", response_model=CameraResponse)
@@ -167,6 +319,8 @@ async def stop_camera(
         raise HTTPException(status_code=403, detail="Administrator role required")
     camera = _get_camera_or_404(db, camera_id, current_user)
     camera.is_active = False
+    camera.is_online = False
+    camera.last_error = None
     db.commit()
     await camera_runtime.stop(camera.id)
     db.refresh(camera)

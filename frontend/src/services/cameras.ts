@@ -1,9 +1,19 @@
-import api, { WS_ORIGIN } from './api'
+import api, { API_URL, WS_ORIGIN } from './api'
 import type { CameraTestResult, EdgeCamera } from '../types'
+
+export interface CameraDeviceOption {
+  device_index: number
+  device_id?: string
+  label: string
+  width?: number
+  height?: number
+  fps?: number
+  backend_name?: string
+}
 
 export interface CameraCreatePayload {
   name: string
-  source_type: 'usb' | 'rtsp'
+  source_type: 'usb' | 'rtsp' | 'file'
   device_index?: number
   rtsp_url?: string
   location?: string
@@ -19,6 +29,11 @@ export const camerasService = {
 
   async create(payload: CameraCreatePayload): Promise<EdgeCamera> {
     const response = await api.post('/cameras/', payload)
+    return response.data
+  },
+
+  async devices(): Promise<CameraDeviceOption[]> {
+    const response = await api.get('/cameras/devices')
     return response.data
   },
 
@@ -44,6 +59,12 @@ export const camerasService = {
     })
     const blob = response.data as Blob
     return response.status === 204 || blob.size === 0 ? null : blob
+  },
+
+  previewStreamUrl(id: number): string | null {
+    const token = localStorage.getItem('token')
+    if (!token) return null
+    return `${API_URL}/cameras/${id}/preview-stream?token=${encodeURIComponent(token)}`
   },
 
   async remove(id: number): Promise<void> {

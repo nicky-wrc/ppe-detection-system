@@ -17,7 +17,6 @@ import numpy as np
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.ml.detector import get_detector, ppe_sensitivity_to_confidence
 from app.models import Alert, AlertDelivery, Camera, Detection, UserSettings, ViolationLog, Zone
 from app.services.email_notifier import email_notifier
 from app.services.evidence_recorder import EvidenceRecorder, blur_person_heads
@@ -29,6 +28,19 @@ logger = logging.getLogger(__name__)
 USB_INITIAL_READ_ATTEMPTS = 12
 USB_INITIAL_READ_DELAY_SECONDS = 0.1
 CAPTURE_CANCEL_GRACE_SECONDS = 1.0
+LOCAL_CAMERA_DISCOVERY_MAX_INDEX = 10
+
+
+def _get_detector():
+    from app.ml.detector import get_detector
+
+    return get_detector()
+
+
+def _ppe_sensitivity_to_confidence(sensitivity: float) -> float:
+    from app.ml.detector import ppe_sensitivity_to_confidence
+
+    return ppe_sensitivity_to_confidence(sensitivity)
 
 
 @dataclass(frozen=True)
@@ -185,17 +197,37 @@ def _configure_capture(cap: cv2.VideoCapture, camera: Camera) -> None:
 
 
 def _capture_attempts(spec: CameraCaptureSpec, platform_name: str | None = None) -> tuple[CaptureAttempt, ...]:
-    if spec.source_type != "usb" or (platform_name or sys.platform) != "win32":
+    if spec.source_type != "usb":
         return (CaptureAttempt(None, "automatic", True),)
 
-    # Acer and other OEM camera transforms can reject a requested MSMF media type.
-    # DirectShow bypasses that transform; native-profile attempts cover devices that
-    # do not support the requested MJPEG 1280x720 mode.
+    platform = platform_name or sys.platform
+    if platform == "win32":
+        # Acer and other OEM camera transforms can reject a requested MSMF media type.
+        # DirectShow bypasses that transform; native-profile attempts cover devices that
+        # do not support the requested MJPEG 1280x720 mode.
+        return (
+            CaptureAttempt(cv2.CAP_DSHOW, "DirectShow", True),
+            CaptureAttempt(cv2.CAP_DSHOW, "DirectShow native", False),
+            CaptureAttempt(cv2.CAP_MSMF, "Media Foundation", True),
+            CaptureAttempt(cv2.CAP_MSMF, "Media Foundation native", False),
+            CaptureAttempt(None, "automatic", True),
+            CaptureAttempt(None, "automatic native", False),
+        )
+    if platform == "darwin":
+        return (
+            CaptureAttempt(cv2.CAP_AVFOUNDATION, "AVFoundation", True),
+            CaptureAttempt(cv2.CAP_AVFOUNDATION, "AVFoundation native", False),
+            CaptureAttempt(None, "automatic", True),
+            CaptureAttempt(None, "automatic native", False),
+        )
+    if platform.startswith("linux"):
+        return (
+            CaptureAttempt(cv2.CAP_V4L2, "V4L2", True),
+            CaptureAttempt(cv2.CAP_V4L2, "V4L2 native", False),
+            CaptureAttempt(None, "automatic", True),
+            CaptureAttempt(None, "automatic native", False),
+        )
     return (
-        CaptureAttempt(cv2.CAP_DSHOW, "DirectShow", True),
-        CaptureAttempt(cv2.CAP_DSHOW, "DirectShow native", False),
-        CaptureAttempt(cv2.CAP_MSMF, "Media Foundation", True),
-        CaptureAttempt(cv2.CAP_MSMF, "Media Foundation native", False),
         CaptureAttempt(None, "automatic", True),
         CaptureAttempt(None, "automatic native", False),
     )
@@ -205,6 +237,17 @@ def _new_capture(source: int | str, backend: int | None) -> cv2.VideoCapture:
     if backend is None:
         return cv2.VideoCapture(source)
     return cv2.VideoCapture(source, backend)
+
+
+def _camera_open_error(spec: CameraCaptureSpec, opened_without_frame: bool) -> str:
+    if opened_without_frame:
+        return "Camera opened but returned no frame"
+    if spec.source_type == "usb" and sys.platform == "darwin":
+        return (
+            "Camera source is unavailable. macOS may be blocking backend camera access; "
+            "grant Camera permission to the app running the backend, restart it, then try again"
+        )
+    return "Camera source is unavailable"
 
 
 def _read_initial_frame(
@@ -256,18 +299,13 @@ def _open_capture_with_frame(
             if cap is not None and not keep_capture:
                 _release_capture(cap)
 
-    error = (
-        "Camera opened but returned no frame"
-        if opened_without_frame
-        else "Could not open camera source"
-    )
-    return None, None, error, None
+    return None, None, _camera_open_error(spec, opened_without_frame), None
 
 
 def test_camera_source(camera: Camera) -> dict[str, Any]:
     cap, frame, error, _ = _open_capture_with_frame(_capture_spec(camera))
     if cap is None or frame is None:
-        return {"ok": False, "error": error or "Could not open camera source"}
+        return {"ok": False, "error": error or "Camera source is unavailable"}
     try:
         return {
             "ok": True,
@@ -277,6 +315,29 @@ def test_camera_source(camera: Camera) -> dict[str, Any]:
         }
     finally:
         _release_capture(cap)
+
+
+def discover_local_camera_sources(max_index: int = LOCAL_CAMERA_DISCOVERY_MAX_INDEX) -> list[dict[str, Any]]:
+    devices: list[dict[str, Any]] = []
+    for index in range(max(0, max_index) + 1):
+        spec = CameraCaptureSpec("usb", index)
+        cap, frame, error, backend_name = _open_capture_with_frame(spec)
+        if cap is None or frame is None:
+            continue
+        try:
+            devices.append(
+                {
+                    "device_index": index,
+                    "label": f"Camera {index}",
+                    "width": int(frame.shape[1]),
+                    "height": int(frame.shape[0]),
+                    "fps": float(cap.get(cv2.CAP_PROP_FPS) or 0),
+                    "backend_name": backend_name or "automatic",
+                }
+            )
+        finally:
+            _release_capture(cap)
+    return devices
 
 
 class CameraRuntimeManager:
@@ -434,7 +495,7 @@ class CameraRuntimeManager:
             user_settings = db.query(UserSettings).filter(UserSettings.user_id == camera.owner_id).first()
             if user_settings:
                 person_confidence = max(0.1, min(0.9, user_settings.confidence_threshold / 100))
-                confidence = ppe_sensitivity_to_confidence(user_settings.ppe_detection_sensitivity)
+                confidence = _ppe_sensitivity_to_confidence(user_settings.ppe_detection_sensitivity)
                 save_evidence = user_settings.save_evidence
         return required, confidence, person_confidence, save_evidence
 
@@ -593,9 +654,6 @@ class CameraRuntimeManager:
             camera.frames_analyzed = 0
             db.commit()
 
-            if self.detector is None:
-                self.detector = get_detector()
-
             tracker = TemporalViolationTracker(
                 window_size=settings.TEMPORAL_WINDOW_SIZE,
                 confirm_count=settings.TEMPORAL_CONFIRM_COUNT,
@@ -630,7 +688,7 @@ class CameraRuntimeManager:
                         self._preview_frames.pop(camera_id, None)
                         camera.is_online = False
                         camera.measured_fps = 0.0
-                        camera.last_error = f"{capture_error or 'Could not open camera source'}; retrying"
+                        camera.last_error = f"{capture_error or 'Camera source is unavailable'}; retrying"
                         db.commit()
                         await asyncio.sleep(retry_seconds)
                         retry_seconds = min(settings.CAMERA_RECONNECT_MAX_SECONDS, retry_seconds * 2)
@@ -676,10 +734,26 @@ class CameraRuntimeManager:
                     retry_seconds = min(settings.CAMERA_RECONNECT_MAX_SECONDS, retry_seconds * 2)
                     continue
 
+                if camera.source_type == "usb":
+                    frame = cv2.flip(frame, 1)
+
                 retry_seconds = 1
+
+                preview_now = time.monotonic()
+                if self.detector is None and preview_now - preview_generated_at >= preview_interval:
+                    encoded_preview = self._encode_preview(frame)
+                    if encoded_preview is not None:
+                        self._preview_frames[camera_id] = (encoded_preview, time.time())
+                        preview_generated_at = preview_now
+                        camera.is_online = True
+                        camera.last_seen = datetime.now(timezone.utc)
+                        camera.last_error = None
+                        db.commit()
 
                 required, confidence, person_confidence, save_evidence = self._detection_options(db, camera)
                 async with self._inference_lock:
+                    if self.detector is None:
+                        self.detector = await asyncio.to_thread(_get_detector)
                     result = await asyncio.to_thread(
                         self.detector.detect,
                         frame,

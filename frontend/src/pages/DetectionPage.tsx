@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   Video,
   Camera,
+  RefreshCw,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -25,6 +26,10 @@ const LIVE_CONFIRM_FRAMES = 2
 const LIVE_CLEAR_FRAMES = 2
 const LIVE_EVENT_COOLDOWN_MS = 60_000
 const LIVE_PERSIST_RETRY_MS = 10_000
+
+const getCameraDeviceLabel = (device: MediaDeviceInfo, index: number) => (
+  device.label || `Camera ${index + 1}`
+)
 
 const getViolationSignature = (detection: Detection): string => {
   const violations = [...(detection.violations || [])].filter(Boolean).sort()
@@ -196,6 +201,38 @@ export function DetectionPage() {
   const [isCameraOn, setIsCameraOn] = useState(false)
   const [isCameraStarting, setIsCameraStarting] = useState(false)
   const [liveFrameCount, setLiveFrameCount] = useState(0)
+  const [availableCameraDevices, setAvailableCameraDevices] = useState<MediaDeviceInfo[]>([])
+  const [selectedCameraDeviceId, setSelectedCameraDeviceId] = useState('')
+
+  const refreshAvailableCameraDevices = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) {
+      setAvailableCameraDevices([])
+      return
+    }
+
+    try {
+      let devices = await navigator.mediaDevices.enumerateDevices()
+      let videoInputs = devices.filter((device) => device.kind === 'videoinput')
+
+      if (videoInputs.length > 0 && videoInputs.every((device) => !device.label) && navigator.mediaDevices.getUserMedia) {
+        const probeStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        probeStream.getTracks().forEach((track) => track.stop())
+        devices = await navigator.mediaDevices.enumerateDevices()
+        videoInputs = devices.filter((device) => device.kind === 'videoinput')
+      }
+
+      setAvailableCameraDevices(videoInputs)
+      setSelectedCameraDeviceId((current) => (
+        current && videoInputs.some((device) => device.deviceId === current)
+          ? current
+          : videoInputs[0]?.deviceId || ''
+      ))
+    } catch (error) {
+      console.error('Camera device enumeration failed:', error)
+      setAvailableCameraDevices([])
+      setSelectedCameraDeviceId('')
+    }
+  }, [])
 
   const renderLoop = useCallback(() => {
     const video = videoRef.current
@@ -380,7 +417,7 @@ export function DetectionPage() {
     setIsCameraStarting(false)
   }, [stopLiveDetection])
 
-  const startCamera = useCallback(async () => {
+  const startCamera = useCallback(async (preferredDeviceId?: string) => {
     if (!navigator.mediaDevices?.getUserMedia) {
       const message = 'เบราว์เซอร์นี้ไม่รองรับการเปิดกล้อง'
       setOperationError(message)
@@ -393,8 +430,16 @@ export function DetectionPage() {
     setOperationError(null)
     setIsCameraStarting(true)
     try {
+      if (availableCameraDevices.length === 0) {
+        await refreshAvailableCameraDevices()
+      }
+      const deviceId = preferredDeviceId || selectedCameraDeviceId || availableCameraDevices[0]?.deviceId
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'environment' },
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' }),
+        },
         audio: false,
       })
 
@@ -424,7 +469,8 @@ export function DetectionPage() {
       setResult(null)
       setLiveFrameCount(0)
       startLiveDetection()
-      toast.success('เปิดกล้องและเริ่มตรวจจับแล้ว')
+      const trackLabel = stream.getVideoTracks()[0]?.label
+      toast.success(`เปิดกล้อง${trackLabel ? ` ${trackLabel}` : ''}และเริ่มตรวจจับแล้ว`)
     } catch (error) {
       if (cameraRequestRef.current !== requestId) return
       console.error(error)
@@ -435,7 +481,16 @@ export function DetectionPage() {
     } finally {
       if (cameraRequestRef.current === requestId) setIsCameraStarting(false)
     }
-  }, [startLiveDetection, stopCamera])
+  }, [availableCameraDevices, refreshAvailableCameraDevices, selectedCameraDeviceId, startLiveDetection, stopCamera])
+
+  useEffect(() => {
+    if (activeTab !== 'camera') return
+    void refreshAvailableCameraDevices()
+    navigator.mediaDevices?.addEventListener?.('devicechange', refreshAvailableCameraDevices)
+    return () => {
+      navigator.mediaDevices?.removeEventListener?.('devicechange', refreshAvailableCameraDevices)
+    }
+  }, [activeTab, refreshAvailableCameraDevices])
 
   useEffect(() => () => stopCamera(), [stopCamera])
 
@@ -702,6 +757,40 @@ export function DetectionPage() {
                       <p className="mb-0 mt-4 inline-flex min-h-8 items-center rounded-full border border-[#e0e0e0] bg-white px-4 text-[13px] font-semibold text-[#6e6e73]">
                         {isCameraOn ? 'Camera: live device connected' : 'Camera: waiting for permission'}
                       </p>
+                      <div className="mx-auto mt-4 flex max-w-xl flex-col gap-3 rounded-[18px] border border-[#e0e0e0] bg-white p-4 text-left sm:flex-row sm:items-end">
+                        <label className="min-w-0 flex-1 text-[13px] font-semibold text-[#424245]">
+                          เลือกอุปกรณ์กล้อง
+                          <select
+                            value={selectedCameraDeviceId}
+                            onChange={(event) => {
+                              const nextDeviceId = event.target.value
+                              setSelectedCameraDeviceId(nextDeviceId)
+                              if (isCameraOn) {
+                                stopCamera()
+                                window.setTimeout(() => void startCamera(nextDeviceId), 0)
+                              }
+                            }}
+                            disabled={isCameraStarting || availableCameraDevices.length === 0}
+                            className="mt-2 min-h-11 w-full rounded-full border border-[#d2d2d7] bg-white px-4 text-[14px] text-[#1d1d1f]"
+                          >
+                            {availableCameraDevices.length === 0 ? (
+                              <option value="">ไม่พบกล้องที่พร้อมใช้งาน</option>
+                            ) : availableCameraDevices.map((device, index) => (
+                              <option key={device.deviceId || index} value={device.deviceId}>
+                                {getCameraDeviceLabel(device, index)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => void refreshAvailableCameraDevices()}
+                          disabled={isCameraStarting}
+                          className="btn-apple-secondary min-h-11 shrink-0 px-4"
+                        >
+                          <RefreshCw size={16} aria-hidden="true" /> Reconnect Devices
+                        </button>
+                      </div>
                     </div>
                   ) : preview ? (
                     <div className="w-full">
