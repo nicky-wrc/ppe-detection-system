@@ -157,7 +157,7 @@ function buildReportHtml(
 
   return `
   <div class="report-root">
-    <div class="brand">PPE Guard AI</div>
+    <div class="brand">PPE Detection System</div>
     <h1>รายงานผลการตรวจสอบอุปกรณ์ป้องกันส่วนบุคคล (PPE)</h1>
     <p class="subtitle">เอกสารออกโดยระบบตรวจสอบอัตโนมัติเพื่อประกอบบันทึกความปลอดภัยในงาน (Occupational safety record)</p>
     <div class="rule"></div>

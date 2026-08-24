@@ -625,7 +625,6 @@ class CameraRuntimeManager:
                         "violation_type": event.violation_type,
                         "created_at": now.isoformat(),
                     },
-                    user_id=camera.owner_id,
                 )
             if camera.zone_id:
                 zone = db.query(Zone).filter(Zone.id == camera.zone_id).first()
@@ -812,7 +811,6 @@ class CameraRuntimeManager:
                         "frames_analyzed": analyzed,
                         "last_seen": camera.last_seen.isoformat(),
                     },
-                    user_id=camera.owner_id,
                 )
                 await asyncio.sleep(max(0.0, interval - (time.perf_counter() - loop_started)))
         except asyncio.CancelledError:

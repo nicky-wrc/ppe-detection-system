@@ -418,6 +418,7 @@ def test_runtime_releases_capture_and_backs_off_after_read_failure(monkeypatch):
     manager = CameraRuntimeManager()
     manager.detector = FakeDetector()
     sleep_calls = []
+    camera_broadcasts = []
 
     monkeypatch.setattr(camera_runtime_module, "SessionLocal", FakeSession)
     monkeypatch.setattr(camera_runtime_module, "EvidenceRecorder", lambda *_args, **_kwargs: FakeRecorder())
@@ -427,8 +428,8 @@ def test_runtime_releases_capture_and_backs_off_after_read_failure(monkeypatch):
         lambda _spec: (capture, initial_frame, None, "fake"),
     )
 
-    async def fake_broadcast_camera(*_args, **_kwargs):
-        return None
+    async def fake_broadcast_camera(payload, user_id=None):
+        camera_broadcasts.append((payload, user_id))
 
     async def fake_sleep(seconds):
         sleep_calls.append(seconds)
@@ -445,3 +446,5 @@ def test_runtime_releases_capture_and_backs_off_after_read_failure(monkeypatch):
     assert camera.is_online is False
     assert camera.measured_fps == 0.0
     assert camera.last_error == "Camera returned no frame; reconnecting"
+    assert camera_broadcasts
+    assert all(user_id is None for _, user_id in camera_broadcasts)

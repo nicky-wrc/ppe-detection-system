@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
-import { LogOut, Shield, Home, Upload, History, Bell } from 'lucide-react'
+import { LogOut, Shield, Home, /* Upload, */ History, Bell } from 'lucide-react'
 
 export function Navbar() {
   const { user, logout } = useAuthStore()
@@ -17,7 +17,7 @@ export function Navbar() {
         <div className="flex min-h-11 items-center justify-between gap-6">
           <Link to="/" className="flex min-h-11 items-center gap-2 text-white no-underline">
             <Shield className="h-5 w-5" />
-            <span className="text-[14px] font-semibold tracking-[-0.02em]">PPE Guard AI</span>
+            <span className="text-[14px] font-semibold tracking-[-0.02em]">PPE Detection System</span>
           </Link>
 
           <div className="flex items-center gap-5 text-[12px]">
@@ -25,10 +25,11 @@ export function Navbar() {
               <Home className="h-4 w-4" />
               <span>หน้าหลัก</span>
             </Link>
-            <Link to="/detection" className="flex min-h-11 items-center gap-1.5 text-[#d1d1d6] no-underline">
+            {/* Detect page is temporarily hidden; keep this link for easy restoration. */}
+            {/* <Link to="/detection" className="flex min-h-11 items-center gap-1.5 text-[#d1d1d6] no-underline">
               <Upload className="h-4 w-4" />
               <span>ตรวจจับ</span>
-            </Link>
+            </Link> */}
             <Link to="/reports" className="flex min-h-11 items-center gap-1.5 text-[#d1d1d6] no-underline">
               <History className="h-4 w-4" />
               <span>ประวัติ</span>

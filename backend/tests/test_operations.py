@@ -10,6 +10,12 @@ from app.core.config import Settings
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
+def test_health_exposes_shared_read_policy(client):
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["data_access_policy"] == "organization-shared-read-v1"
+
+
 def test_alembic_upgrade_is_idempotent(client):
     config = Config(str(BACKEND_DIR / "alembic.ini"))
     config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))

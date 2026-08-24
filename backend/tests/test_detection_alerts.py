@@ -6,7 +6,7 @@ from app.services.detection_service import DetectionService
 from app.services.websocket_manager import ws_manager
 
 
-def test_detection_alerts_are_persisted_and_broadcast_to_owner(client, monkeypatch):
+def test_detection_alerts_are_persisted_and_broadcast_as_shared_data(client, monkeypatch):
     db = SessionLocal()
     detection: Detection | None = None
     broadcasts: list[tuple[dict, int | None]] = []
@@ -47,7 +47,7 @@ def test_detection_alerts_are_persisted_and_broadcast_to_owner(client, monkeypat
         ]
         assert all(payload["detection_id"] == detection.id for payload, _ in broadcasts)
         assert all(payload["camera_name"] == "Detection" for payload, _ in broadcasts)
-        assert all(user_id == owner.id for _, user_id in broadcasts)
+        assert all(user_id is None for _, user_id in broadcasts)
     finally:
         if detection is not None and detection.id is not None:
             db.query(Alert).filter(Alert.detection_id == detection.id).delete()

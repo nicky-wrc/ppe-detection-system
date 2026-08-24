@@ -19,8 +19,6 @@ async def get_alerts(
     current_user: User = Depends(get_current_user)
 ):
     query = db.query(Alert).join(Detection, Alert.detection_id == Detection.id)
-    if current_user.role not in {"admin", "safety_officer"}:
-        query = query.filter(Detection.user_id == current_user.id)
     
     if status:
         query = query.filter(Alert.status == status)

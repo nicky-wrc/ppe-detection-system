@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_roles
 from app.models import User, UserSettings
 from app.schemas.settings import UserSettingsResponse, UserSettingsUpdate
 
@@ -38,7 +38,7 @@ async def get_my_settings(
 async def update_my_settings(
     payload: UserSettingsUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("admin", "safety_officer")),
 ):
     s = _get_or_create(db, current_user.id)
     data = payload.model_dump(exclude_unset=True)

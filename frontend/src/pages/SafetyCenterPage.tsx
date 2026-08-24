@@ -2,6 +2,7 @@ import { Bell, FileText, ShieldCheck } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { Layout } from '../components/layout/Layout'
+import { useAuthStore } from '../stores/authStore'
 import { AlertsPage } from './AlertsPage'
 import { HistoryPage } from './HistoryPage'
 
@@ -22,6 +23,9 @@ const views = [
 
 export function SafetyCenterPage() {
   const location = useLocation()
+  const canManageAlerts = useAuthStore((state) => (
+    state.user?.role === 'admin' || state.user?.role === 'safety_officer'
+  ))
   const activePath = location.pathname.startsWith('/alerts') ? '/alerts' : '/reports'
 
   return (
@@ -33,7 +37,9 @@ export function SafetyCenterPage() {
           </div>
           <h1>Reports &amp; Alerts</h1>
           <p className="max-w-3xl !mt-3 !text-[17px] !leading-[1.47]">
-            ตรวจสอบประวัติผลการตรวจจับและจัดการเหตุการณ์ความปลอดภัยได้จากหน้าเดียว
+            {canManageAlerts
+              ? 'ตรวจสอบประวัติผลการตรวจจับและจัดการเหตุการณ์ความปลอดภัยได้จากหน้าเดียว'
+              : 'ตรวจสอบประวัติ เหตุการณ์ รายละเอียด และหลักฐานส่วนกลางได้ในโหมดอ่านอย่างเดียว'}
           </p>
         </header>
 
@@ -56,7 +62,11 @@ export function SafetyCenterPage() {
                 </span>
                 <span className="min-w-0">
                   <strong className="block text-[15px] font-semibold">{view.label}</strong>
-                  <small className="mt-1 block text-[13px] leading-snug text-[var(--muted)]">{view.description}</small>
+                  <small className="mt-1 block text-[13px] leading-snug text-[var(--muted)]">
+                    {!canManageAlerts && view.path === '/alerts'
+                      ? 'ดูสถานะ รายละเอียด และหลักฐานเหตุการณ์แบบอ่านอย่างเดียว'
+                      : view.description}
+                  </small>
                 </span>
               </Link>
             )

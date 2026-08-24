@@ -15,10 +15,7 @@ router = APIRouter()
 
 
 def _event_query(db: Session, current_user: User):
-    query = db.query(ViolationLog)
-    if current_user.role not in {"admin", "safety_officer"}:
-        query = query.filter(ViolationLog.user_id == current_user.id)
-    return query
+    return db.query(ViolationLog)
 
 
 def _event_or_404(db: Session, event_id: int, current_user: User) -> ViolationLog:

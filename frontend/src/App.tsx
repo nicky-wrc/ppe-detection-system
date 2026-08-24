@@ -5,9 +5,11 @@ import { Shield } from 'lucide-react'
 import { useAuthStore } from './stores/authStore'
 import { authService } from './services/auth'
 import { LoginPage } from './pages/LoginPage'
+import type { UserRole } from './types'
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })))
-const DetectionPage = lazy(() => import('./pages/DetectionPage').then((module) => ({ default: module.DetectionPage })))
+// Detect page is temporarily hidden from the web application.
+// const DetectionPage = lazy(() => import('./pages/DetectionPage').then((module) => ({ default: module.DetectionPage })))
 const CameraPage = lazy(() => import('./pages/CameraPage').then((module) => ({ default: module.CameraPage })))
 const SafetyCenterPage = lazy(() => import('./pages/SafetyCenterPage').then((module) => ({ default: module.SafetyCenterPage })))
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((module) => ({ default: module.SettingsPage })))
@@ -59,11 +61,19 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-function AdminRoute({ children }: { children: React.ReactNode }) {
+function RoleRoute({
+  children,
+  allowedRoles,
+}: {
+  children: React.ReactNode
+  allowedRoles: readonly UserRole[]
+}) {
   const user = useAuthStore((state) => state.user)
-  if (user?.role !== 'admin') return <Navigate to="/" replace />
+  if (!user || !allowedRoles.includes(user.role)) return <Navigate to="/" replace />
   return <>{children}</>
 }
+
+const operationalRoles: readonly UserRole[] = ['admin', 'safety_officer']
 
 function App() {
   return (
@@ -72,12 +82,16 @@ function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
-          <Route path="/detection" element={<PrivateRoute><DetectionPage /></PrivateRoute>} />
-          <Route path="/camera" element={<PrivateRoute><CameraPage /></PrivateRoute>} />
+          {/* Detect page is temporarily disabled; keep this route for easy restoration. */}
+          {/* <Route path="/detection" element={<PrivateRoute><DetectionPage /></PrivateRoute>} /> */}
+          {/* Previous camera route kept as a comment for easy restoration. */}
+          {/* <Route path="/camera" element={<PrivateRoute><CameraPage /></PrivateRoute>} /> */}
+          <Route path="/detect" element={<PrivateRoute><RoleRoute allowedRoles={operationalRoles}><CameraPage /></RoleRoute></PrivateRoute>} />
+          <Route path="/camera" element={<Navigate to="/detect" replace />} />
           <Route path="/reports" element={<PrivateRoute><SafetyCenterPage /></PrivateRoute>} />
           <Route path="/alerts" element={<PrivateRoute><SafetyCenterPage /></PrivateRoute>} />
-          <Route path="/settings" element={<PrivateRoute><SettingsPage /></PrivateRoute>} />
-          <Route path="/admin/users" element={<PrivateRoute><AdminRoute><AdminUsersPage /></AdminRoute></PrivateRoute>} />
+          <Route path="/settings" element={<PrivateRoute><RoleRoute allowedRoles={operationalRoles}><SettingsPage /></RoleRoute></PrivateRoute>} />
+          <Route path="/admin/users" element={<PrivateRoute><RoleRoute allowedRoles={['admin']}><AdminUsersPage /></RoleRoute></PrivateRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>

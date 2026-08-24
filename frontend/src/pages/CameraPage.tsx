@@ -791,7 +791,8 @@ function CameraPreview({ camera, deviceLabel, forceBrowserPreview = false }: { c
 export function CameraPage() {
   const user = useAuthStore((state) => state.user)
   const isAdmin = user?.role === 'admin'
-  const canViewPreview = user?.role === 'admin' || user?.role === 'safety_officer'
+  const canOperateCameras = user?.role === 'admin' || user?.role === 'safety_officer'
+  const canViewPreview = canOperateCameras
   const [cameras, setCameras] = useState<EdgeCamera[]>([])
   const [zones, setZones] = useState<Zone[]>([])
   const [loading, setLoading] = useState(true)
@@ -825,10 +826,12 @@ export function CameraPage() {
     try {
       setCameraPermissionError(null)
       const [backendDevices, browserDevices] = await Promise.all([
-        camerasService.devices().catch((error) => {
-          console.error('Backend camera device discovery failed:', error)
-          return [] as CameraDeviceOption[]
-        }),
+        isAdmin
+          ? camerasService.devices().catch((error) => {
+              console.error('Backend camera device discovery failed:', error)
+              return [] as CameraDeviceOption[]
+            })
+          : Promise.resolve([] as CameraDeviceOption[]),
         getBrowserCameraDevices().catch((error) => {
           console.error('Browser camera device discovery failed:', error)
           return [] as CameraDeviceOption[]
@@ -850,7 +853,7 @@ export function CameraPage() {
     } finally {
       setIsRefreshingDevices(false)
     }
-  }, [applyCameraDevices])
+  }, [applyCameraDevices, isAdmin])
 
   const load = useCallback(async (silent = false) => {
     const requestId = loadRequestRef.current + 1
@@ -1119,10 +1122,14 @@ export function CameraPage() {
         <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="page-heading max-w-3xl">
             <h1>กล้องตรวจจับหน้างาน</h1>
-            <p className="max-w-2xl text-[17px] leading-7">จัดการกล้องหน้างานที่เชื่อมต่อกับอุปกรณ์ backend พร้อม live preview ที่ยืนยันตัวตนและเก็บภาพไว้ในหน่วยความจำเท่านั้น</p>
+            <p className="max-w-2xl text-[17px] leading-7">
+              {isAdmin
+                ? 'ลงทะเบียนและควบคุมกล้องหน้างาน พร้อม live preview ที่ยืนยันตัวตนและเก็บภาพไว้ในหน่วยความจำเท่านั้น'
+                : 'ตรวจสอบ ทดสอบ เริ่ม และหยุดการตรวจจับจากกล้องที่ผู้ดูแลระบบลงทะเบียนไว้'}
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {isAdmin && cameras.length > 0 && (
+            {canOperateCameras && cameras.length > 0 && (
               <button
                 type="button"
                 onClick={() => void runBulkAction('stop')}
@@ -1350,7 +1357,7 @@ export function CameraPage() {
 
                   {shouldShowBackendError && <p className="mb-0 mt-4 rounded-[18px] border border-[#f0c3c8] bg-[#fff8f8] px-4 py-3 text-[13px] leading-5 text-[#b4232f]" role="alert">{camera.last_error}</p>}
 
-                  {isAdmin && (
+                  {canOperateCameras && (
                     <div className="mt-5 border-t border-[#e0e0e0] pt-5">
                       <div className="flex flex-wrap items-center gap-2">
                         {camera.is_active || isBrowserPreviewActive ? (
@@ -1362,15 +1369,17 @@ export function CameraPage() {
                             {busyAction === 'start' ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Play size={15} aria-hidden="true" />} Test & Start
                           </button>
                         )}
-                        <button
-                          type="button"
-                          title="ลบกล้องนี้ออกจากระบบ"
-                          onClick={() => void deleteCamera(camera)}
-                          disabled={isBusy || bulkAction !== null}
-                          className="ml-auto inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-[#f0c3c8] bg-white px-4 text-[14px] font-semibold text-[#b4232f] transition hover:bg-[#fff8f8] disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {busyAction === 'delete' ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Trash2 size={15} aria-hidden="true" />} Delete
-                        </button>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            title="ลบกล้องนี้ออกจากระบบ"
+                            onClick={() => void deleteCamera(camera)}
+                            disabled={isBusy || bulkAction !== null}
+                            className="ml-auto inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-[#f0c3c8] bg-white px-4 text-[14px] font-semibold text-[#b4232f] transition hover:bg-[#fff8f8] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {busyAction === 'delete' ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Trash2 size={15} aria-hidden="true" />} Delete
+                          </button>
+                        )}
                       </div>
                       {isUsbDeviceMissing && (
                         <p className="mb-0 mt-3 rounded-[18px] border border-[#ffd599] bg-[#fff9ed] px-4 py-3 text-[13px] leading-5 text-[#9a5b00]" role="alert">

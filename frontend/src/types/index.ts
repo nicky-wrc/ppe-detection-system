@@ -1,8 +1,10 @@
+export type UserRole = 'admin' | 'safety_officer' | 'viewer'
+
 export interface User {
   id: number
   email: string
   full_name: string
-  role: string
+  role: UserRole
   is_active: boolean
   created_at: string
 }
