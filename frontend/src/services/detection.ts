@@ -24,6 +24,14 @@ export interface AnalyticsData {
   period: { start: string; end: string; days: number }
 }
 
+export interface DetectionHistoryResponse {
+  items: Detection[]
+  total: number
+  page: number
+  per_page: number
+  total_pages: number
+}
+
 export const detectionService = {
   async uploadImage(file: File, zoneId?: number): Promise<Detection> {
     const formData = new FormData()
@@ -59,8 +67,13 @@ export const detectionService = {
   },
 
 
-  async getHistory(page = 1, perPage = 20) {
-    const response = await api.get(`/detection/history?page=${page}&per_page=${perPage}`)
+  async getHistory(page = 1, perPage = 20, hasViolation?: boolean): Promise<DetectionHistoryResponse> {
+    const params = new URLSearchParams({
+      page: String(page),
+      per_page: String(perPage),
+    })
+    if (hasViolation !== undefined) params.set('has_violation', String(hasViolation))
+    const response = await api.get(`/detection/history?${params.toString()}`)
     return response.data
   },
 

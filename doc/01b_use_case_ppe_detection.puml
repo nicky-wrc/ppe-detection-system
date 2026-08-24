@@ -1,0 +1,51 @@
+@startuml
+
+' รูปแบบเดียวกับตัวอย่าง: กระบวนการตรวจจับหลักและความสัมพันธ์ include/extend
+scale max 750*500
+left to right direction
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam defaultFontSize 11
+skinparam ArrowColor #555555
+skinparam rectangle {
+  BackgroundColor #FFFFFF
+  BorderColor #555555
+  FontColor #202020
+}
+skinparam usecase {
+  BackgroundColor #F8F8F8
+  BorderColor #777777
+  FontColor #202020
+  FontSize 10
+}
+
+actor "ผู้ใช้ระบบ" as User
+
+rectangle "ระบบตรวจจับ PPE\nPPE Dectection System" {
+  usecase "อัปโหลดรูปภาพ\nเพื่อตรวจจับ" as UC_IMAGE
+  usecase "อัปโหลดวิดีโอ\nเพื่อตรวจจับ" as UC_VIDEO
+  usecase "เปิดกล้องตรวจจับ\nแบบสด" as UC_CAMERA
+  usecase "ดูผลการตรวจจับ" as UC_RESULT
+
+  usecase "วิเคราะห์ Person, Helmet\nและ Safety Vest" as UC_ANALYZE
+  usecase "บันทึกผลการตรวจจับ" as UC_SAVE
+  usecase "สร้าง Alert" as UC_ALERT
+}
+
+User -- UC_IMAGE
+User -- UC_VIDEO
+User -- UC_CAMERA
+User -- UC_RESULT
+
+UC_IMAGE .. UC_ANALYZE : <<include>>
+UC_VIDEO .. UC_ANALYZE : <<include>>
+UC_CAMERA .. UC_ANALYZE : <<include>>
+UC_ANALYZE .. UC_RESULT : <<include>>
+
+UC_IMAGE .. UC_SAVE : <<include>>
+UC_VIDEO .. UC_SAVE : <<include>>
+UC_SAVE .. UC_CAMERA : <<extend>>\n[ยืนยันการฝ่าฝืน]
+UC_ALERT .. UC_SAVE : <<extend>>\n[พบการฝ่าฝืน]
+
+@enduml

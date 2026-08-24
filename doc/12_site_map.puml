@@ -1,0 +1,42 @@
+@startmindmap
+title Site Map — PPE Dectection System
+
+' Balanced left/right layout for inserting into a Word page.
+scale max 850*700
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontSize 11
+skinparam titleFontSize 14
+skinparam ArrowColor #64748B
+
+*[#FFFFFF] <b>PPE Dectection System</b>\nระบบตรวจจับความปลอดภัย PPE
+
+left side
+**[#FFEDD5] การเข้าถึงระบบ
+***[#FFF7ED] เข้าสู่ระบบ\n<b>/login</b>
+***[#FFF7ED] ตรวจสอบ JWT\nก่อนเข้าหน้าระบบ
+
+**[#DBEAFE] หน้าหลัก
+***[#EFF6FF] Dashboard\n<b>/</b>
+****[#F8FAFC] สถิติ กราฟ และ\nRecent Violations
+***[#EFF6FF] ตรวจจับ PPE\n<b>/detection</b>
+****[#F8FAFC] Image • Video • Camera
+***[#EFF6FF] Logs และรายงาน\n<b>/reports</b>
+****[#F8FAFC] ประวัติ รายละเอียด\nและดาวน์โหลด PDF
+
+right side
+**[#DCFCE7] งานปฏิบัติการ
+***[#F0FDF4] กล้อง Edge\n<b>/camera</b>
+****[#F8FAFC] Register • Test • Start\nStop • Live Preview
+***[#F0FDF4] การแจ้งเตือน\n<b>/alerts</b>
+****[#F8FAFC] Review • Acknowledge\nResolve
+
+**[#F3E8FF] การจัดการระบบ
+***[#FAF5FF] ตั้งค่าระบบ\n<b>/settings</b>
+***[#FAF5FF] จัดการผู้ใช้\n<b>/admin/users</b>\n(Admin เท่านั้น)
+
+**[#FCE7F3] บัญชีผู้ใช้
+***[#FDF2F8] แสดง Profile\nในแถบเมนู
+***[#FDF2F8] ออกจากระบบ\nกลับ <b>/login</b>
+
+@endmindmap

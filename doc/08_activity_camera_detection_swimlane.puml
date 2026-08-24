@@ -1,0 +1,70 @@
+@startuml
+title Activity Diagram — เปิดกล้องตรวจจับ PPE
+
+' Compact layout for inserting into a portrait Word page.
+scale max 820*820
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam swimlaneWidth 140
+skinparam nodesep 4
+skinparam ranksep 6
+skinparam defaultFontSize 11
+skinparam titleFontSize 14
+skinparam ArrowColor #475569
+skinparam activity {
+  BackgroundColor #FFFFFF
+  BorderColor #64748B
+  FontColor #0F172A
+  FontSize 10
+  StartColor #0F172A
+  EndColor #0F172A
+  BarColor #64748B
+}
+
+|ผู้ใช้|
+start
+:เปิดหน้า Detection;
+:เลือก Camera และกด Open;
+
+|Web App / Browser|
+:ขอสิทธิ์ใช้งานกล้อง;
+if ("เปิดกล้องสำเร็จหรือไม่?") then (สำเร็จ)
+  :แสดงภาพสด;
+
+  repeat
+    :จับเฟรมทุก 1 วินาที;
+    :ส่ง POST /detection/frame;
+
+    |Backend / AI|
+    :ตรวจ JWT และไฟล์;
+    :ใช้ OpenCV + Hybrid YOLO\nตรวจ Person และ PPE;
+    :ส่งผลชั่วคราวกลับ;
+
+    |Web App / Browser|
+    :วาดกรอบและแสดงสถานะ PPE;
+    if ("Violation เดิมครบ 2 เฟรม\nและพ้น Cooldown 60 วินาที?") then (ยืนยัน)
+      :ส่งเฟรมยืนยัน\nPOST /detection/image;
+
+      |Backend / AI|
+      :บันทึก Detection และ Alert;
+      :ส่ง Alert ผ่าน WebSocket;
+
+      |Web App / Browser|
+      :แสดงข้อความและเสียงเตือน;
+    else (ยังไม่ยืนยัน)
+    endif
+
+    |ผู้ใช้|
+  repeat while ("ยังเปิดกล้องอยู่?") is (ใช่)
+  ->ไม่;
+
+  :กด Stop Camera;
+
+  |Web App / Browser|
+  :หยุด Stream และ Timer;
+else (ไม่สำเร็จ)
+  :แจ้งให้อนุญาตสิทธิ์\nหรือตรวจสอบกล้อง;
+endif
+
+stop
+@enduml

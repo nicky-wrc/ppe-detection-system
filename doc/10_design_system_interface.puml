@@ -1,0 +1,132 @@
+@startuml
+title Design System Interface Diagram — PPE Dectection System
+
+left to right direction
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam defaultFontSize 10
+skinparam ArrowColor #475569
+skinparam package {
+  BorderColor #64748B
+  FontColor #0F172A
+}
+skinparam component {
+  BackgroundColor #F8FAFC
+  BorderColor #64748B
+  FontColor #0F172A
+}
+skinparam database {
+  BackgroundColor #F5F3FF
+  BorderColor #7C3AED
+}
+
+actor "ผู้ใช้ระบบ" as User
+
+package "Client Layer — React / TypeScript" #EFF6FF {
+  node "Web Browser" as Browser {
+    component "LoginPage\n/login" as LoginPage #FFF7ED
+    component "DashboardPage\n/" as DashboardPage #EFF6FF
+    component "DetectionPage\n/detection (Camera tab)" as DetectionPage #F0FDF4
+    component "HistoryPage\n/reports" as HistoryPage #F5F3FF
+    component "Other Pages\n/camera /alerts /settings /admin" as OtherPages
+
+    component "React Router + PrivateRoute" as Router
+    component "Layout + Shared UI\nCards, buttons, protected image" as UI
+    component "Zustand Auth Store\nJWT in localStorage" as AuthStore
+    component "Typed Service Layer\nAxios + WebSocket" as ClientServices
+    component "Browser Media APIs\ngetUserMedia + Canvas" as MediaAPI
+    component "Client Reporting\nhtml2canvas + jsPDF" as Reporting
+  }
+}
+
+package "Server Layer — FastAPI /api/v1" #F8FAFC {
+  component "Auth Routes\n/auth/login, /auth/me" as AuthRoutes #FFF7ED
+  component "Detection Routes\n/frame, /image, /history, /stats, /analytics" as DetectionRoutes #F0FDF4
+  component "Camera / Alert Routes\n/cameras, /alerts" as OpsRoutes
+  component "Protected Media Routes" as MediaRoutes
+  component "WebSocket\n/ws/events" as WebSocket
+
+  component "Security\nJWT + role checks + rate limit" as Security
+  component "Detection Service" as DetectionService
+  component "Camera Runtime\nregistered USB / RTSP" as CameraRuntime
+  component "Evidence / Alert Services" as EvidenceAlert
+}
+
+package "AI / Computer Vision Engine" #F0FDF4 {
+  component "OpenCV\nDecode, frame and video handling" as OpenCV
+  component "Hybrid Detector\nYOLOv8m (PPE) + YOLO11n (Person)" as YOLO
+  component "PPE Association +\nTemporal Confirmation" as Temporal
+}
+
+package "Data Access Layer" #F5F3FF {
+  component "SQLAlchemy ORM" as ORM
+}
+
+database "PostgreSQL\nusers, settings, detections, alerts,\ncameras, zones, violation_logs" as DB
+folder "Protected Upload / Evidence Storage" as Storage
+
+User --> Browser
+Router --> LoginPage
+Router --> DashboardPage
+Router --> DetectionPage
+Router --> HistoryPage
+Router --> OtherPages
+
+LoginPage --> AuthStore
+DashboardPage --> ClientServices
+DetectionPage --> MediaAPI
+DetectionPage --> ClientServices
+HistoryPage --> ClientServices
+HistoryPage --> Reporting
+OtherPages --> ClientServices
+DashboardPage ..> UI : "uses"
+DetectionPage ..> UI : "uses"
+HistoryPage ..> UI : "uses"
+AuthStore --> ClientServices : "Bearer JWT"
+
+ClientServices --> AuthRoutes : "HTTPS / form + JSON"
+ClientServices --> DetectionRoutes : "HTTPS / JSON + multipart"
+ClientServices --> OpsRoutes : "HTTPS / JSON"
+ClientServices --> MediaRoutes : "HTTPS / Blob"
+WebSocket --> ClientServices : "authenticated realtime events"
+
+AuthRoutes --> Security
+DetectionRoutes --> Security
+OpsRoutes --> Security
+MediaRoutes --> Security
+
+DetectionRoutes --> DetectionService
+OpsRoutes --> CameraRuntime
+DetectionService --> OpenCV
+DetectionService --> YOLO
+CameraRuntime --> OpenCV
+CameraRuntime --> YOLO
+YOLO --> Temporal
+DetectionService --> EvidenceAlert
+CameraRuntime --> EvidenceAlert
+EvidenceAlert --> WebSocket
+
+AuthRoutes --> ORM
+DetectionRoutes --> ORM
+OpsRoutes --> ORM
+DetectionService --> ORM
+CameraRuntime --> ORM
+EvidenceAlert --> ORM
+ORM --> DB : "read / write"
+DetectionService --> Storage : "uploads / result media"
+EvidenceAlert --> Storage : "snapshot / evidence clip"
+MediaRoutes --> Storage : "authorized read"
+
+note bottom of MediaAPI
+Browser camera flow ส่งเฟรมไป /detection/frame
+และบันทึกเฉพาะเหตุการณ์ยืนยันผ่าน /detection/image
+end note
+
+note bottom of DB
+ระบบเป็น academic/pilot safety-support system
+ไม่ใช่ระบบรับรองความปลอดภัยแทนมนุษย์
+end note
+
+@enduml

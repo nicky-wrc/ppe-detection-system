@@ -1,0 +1,29 @@
+@startuml
+title Use Case Text — การใช้งานหน้า Dashboard
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontSize 11
+skinparam ArrowColor #475569
+skinparam usecase {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+  FontColor #0F172A
+}
+
+actor "ผู้ใช้ที่เข้าสู่ระบบแล้ว" as User
+usecase "ดู Dashboard" as Dashboard
+User --> Dashboard
+
+legend bottom
+|= หัวข้อ |= รายละเอียด |
+| <b>Use case name</b> | ดู Dashboard และสถิติความปลอดภัย |
+| <b>Description</b> | ผู้ใช้ดูยอดสรุป กราฟตามช่วงเวลา สถานะกล้อง และรายการละเมิดล่าสุดจากหน้าแรกของระบบ |
+| <b>Actor</b> | Admin, Safety Officer, Viewer |
+| <b>Preconditions</b> | 1. มี JWT ที่ยังใช้ได้<br>2. PrivateRoute โหลดโปรไฟล์ผู้ใช้สำเร็จ |
+| <b>Postconditions</b> | แสดงข้อมูล Dashboard ตามสิทธิ์ของผู้ใช้ โดยไม่แก้ไขข้อมูลในฐานข้อมูล; อาจมีไฟล์ PDF ถูกดาวน์โหลดเมื่อผู้ใช้สั่งส่งออก |
+| <b>Main Success Scenario</b> | 1. ผู้ใช้เปิดหน้า /<br>2. Web App ส่งคำขอ /detection/stats, /alerts และ /cameras พร้อมกัน<br>3. Web App ขอ /detection/analytics/daily สำหรับช่วง Today และข้อมูลเปรียบเทียบวันก่อน<br>4. API ตรวจสอบ JWT และดึงข้อมูลตามขอบเขต role<br>5. Web App แสดง Total Detections, Total Violations, Compliance Rate และ Active Cameras<br>6. Web App แสดงกราฟ Compliance, Violations และรายการละเมิดล่าสุด<br>7. ผู้ใช้เลือก Today, 7 days, 30 days หรือ Custom<br>8. Web App โหลด analytics ใหม่และอัปเดตกราฟ |
+| <b>Alternate / Exception</b> | 1. ผู้ใช้เลือกดูรายละเอียด: โหลด GET /detection/{id} และสื่อที่มีสิทธิ์เข้าถึง แล้วแสดง modal<br>2. ผู้ใช้เลือก Export PDF: เลือกกราฟและสร้าง PDF ที่ฝั่ง browser<br>3. ไม่มีข้อมูล: แสดงค่า/รายการว่างโดยไม่สร้างข้อมูลจำลอง<br>4. API บางส่วนล้มเหลว: แสดงข้อมูลส่วนที่โหลดได้และบันทึก error ที่ฝั่ง client<br>5. JWT หมดอายุ: ล้าง token และกลับหน้า Login |
+endlegend
+
+@enduml

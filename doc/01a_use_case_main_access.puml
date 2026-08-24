@@ -1,0 +1,44 @@
+@startuml
+
+' รูปแบบเดียวกับตัวอย่าง: Actor ด้านซ้ายและ Use Case เรียงในกรอบระบบ
+scale max 500*650
+left to right direction
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam defaultFontSize 11
+skinparam ArrowColor #555555
+skinparam rectangle {
+  BackgroundColor #FFFFFF
+  BorderColor #555555
+  FontColor #202020
+}
+skinparam usecase {
+  BackgroundColor #F8F8F8
+  BorderColor #777777
+  FontColor #202020
+  FontSize 10
+}
+
+actor "ผู้ใช้ระบบ" as User
+
+rectangle "ระบบหลักและการเข้าถึงหน้าระบบ\nPPE Dectection System" {
+  usecase "เข้าสู่ระบบ" as UC_LOGIN
+  usecase "เข้าสู่หน้า Dashboard" as UC_DASHBOARD
+  usecase "เข้าสู่หน้า Detection" as UC_DETECTION
+  usecase "เข้าสู่หน้า Reports" as UC_REPORTS
+  usecase "ออกจากระบบ" as UC_LOGOUT
+
+  UC_LOGIN -[hidden]down- UC_DASHBOARD
+  UC_DASHBOARD -[hidden]down- UC_DETECTION
+  UC_DETECTION -[hidden]down- UC_REPORTS
+  UC_REPORTS -[hidden]down- UC_LOGOUT
+}
+
+User -- UC_LOGIN
+User -- UC_DASHBOARD
+User -- UC_DETECTION
+User -- UC_REPORTS
+User -- UC_LOGOUT
+
+@enduml

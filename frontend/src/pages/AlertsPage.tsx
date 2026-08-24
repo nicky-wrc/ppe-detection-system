@@ -47,7 +47,11 @@ const statusPresentation = {
   },
 }
 
-export function AlertsPage() {
+interface AlertsPageProps {
+  embedded?: boolean
+}
+
+export function AlertsPage({ embedded = false }: AlertsPageProps = {}) {
   const canManageAlerts = useAuthStore((state) => (
     state.user?.role === 'admin' || state.user?.role === 'safety_officer'
   ))
@@ -202,10 +206,10 @@ export function AlertsPage() {
     setActiveStatus(status)
   }
 
-  return (
-    <Layout>
-      <div className="mx-auto flex max-w-[1240px] flex-col gap-8 sm:gap-10">
-        <header className="page-heading flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+  const content = (
+    <>
+      <div className={`${embedded ? '' : 'mx-auto max-w-[1240px] '}flex flex-col gap-8 sm:gap-10`}>
+        {!embedded && <header className="page-heading flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--ink)] text-white" aria-hidden="true">
               <Bell size={20} strokeWidth={1.8} />
@@ -219,7 +223,7 @@ export function AlertsPage() {
               พบ {newAlertsCount} แจ้งเตือนใหม่
             </div>
           )}
-        </header>
+        </header>}
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6" aria-label="Alert summary">
           {[
@@ -501,6 +505,8 @@ export function AlertsPage() {
           </section>
         </div>
       )}
-    </Layout>
+    </>
   )
+
+  return embedded ? content : <Layout>{content}</Layout>
 }

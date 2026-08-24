@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Bell,
   Camera,
   FileText,
   LayoutDashboard,
@@ -28,8 +27,7 @@ const navItems = [
   { path: '/', icon: LayoutDashboard, label: 'Overview', description: 'Safety intelligence' },
   { path: '/detection', icon: Camera, label: 'Detect', description: 'Analyze PPE media' },
   { path: '/camera', icon: ScanLine, label: 'Cameras', description: 'Live edge monitoring' },
-  { path: '/reports', icon: FileText, label: 'Reports', description: 'Evidence and history' },
-  { path: '/alerts', icon: Bell, label: 'Alerts', description: 'Review safety events' },
+  { path: '/reports', icon: FileText, label: 'Reports & Alerts', description: 'Evidence, history and safety review' },
   { path: '/settings', icon: Settings, label: 'Settings', description: 'Detection preferences' },
 ]
 
@@ -43,8 +41,13 @@ export function Layout({ children }: LayoutProps) {
   const visibleNavItems = user?.role === 'admin'
     ? [...navItems, { path: '/admin/users', icon: Users, label: 'Users', description: 'Access management' }]
     : navItems
+  const isNavItemActive = (path: string) => (
+    location.pathname === path
+    || (path !== '/' && location.pathname.startsWith(path))
+    || (path === '/reports' && location.pathname.startsWith('/alerts'))
+  )
   const activeNavItem = visibleNavItems.find((item) => (
-    location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))
+    isNavItemActive(item.path)
   )) ?? visibleNavItems[0]
 
   useEffect(() => {
@@ -120,7 +123,7 @@ export function Layout({ children }: LayoutProps) {
 
         <nav id="primary-navigation" className={`app-nav${isMobileNavOpen ? ' is-open' : ''}`} aria-label="Primary navigation">
           {visibleNavItems.map((item) => {
-            const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))
+            const isActive = isNavItemActive(item.path)
             return (
               <Link
                 key={item.path}

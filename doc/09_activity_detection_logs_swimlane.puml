@@ -1,0 +1,62 @@
+@startuml
+title Activity Diagram — หน้า Logs ผลการตรวจ
+
+' Compact layout for inserting into a portrait Word page.
+scale max 800*800
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam swimlaneWidth 135
+skinparam nodesep 5
+skinparam ranksep 7
+skinparam defaultFontSize 11
+skinparam titleFontSize 14
+skinparam ArrowColor #475569
+skinparam activity {
+  BackgroundColor #FFFFFF
+  BorderColor #64748B
+  FontColor #0F172A
+  FontSize 10
+  StartColor #0F172A
+  EndColor #0F172A
+  BarColor #64748B
+}
+
+|ผู้ใช้|
+start
+:เปิดหน้า Reports / Logs;
+
+|Web App|
+:ส่ง GET /detection/history\nพร้อมเลขหน้าและ JWT;
+
+|Backend / Database|
+:ตรวจ JWT และ Role;
+:อ่าน Detection ตามสิทธิ์\nและเรียงจากใหม่ไปเก่า;
+:ส่งรายการและจำนวนหน้ากลับ;
+
+|Web App|
+if ("มีรายการหรือไม่?") then (มี)
+  :แสดงสรุปและตาราง Logs;
+else (ไม่มี)
+  :แสดงว่าไม่มีข้อมูล;
+endif
+
+|ผู้ใช้|
+if ("ต้องการดูข้อมูลเพิ่มเติม?") then (ต้องการ)
+  :เลือกเปลี่ยนหน้า ดูรายละเอียด\nหรือดาวน์โหลด PDF;
+
+  |Web App|
+  :ขอข้อมูลหรือสื่อของรายการ;
+
+  |Backend / Database|
+  :ตรวจสิทธิ์และคืนข้อมูล;
+
+  |Web App|
+  :อัปเดตตาราง แสดง Modal\nหรือสร้าง PDF;
+
+  |ผู้ใช้|
+  :ดูผลหรือรับไฟล์ PDF;
+else (ไม่ต้องการ)
+endif
+
+stop
+@enduml

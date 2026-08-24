@@ -1,0 +1,29 @@
+@startuml
+title Use Case Text — ดู Logs ผลการตรวจ
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontSize 11
+skinparam ArrowColor #475569
+skinparam usecase {
+  BackgroundColor #F5F3FF
+  BorderColor #7C3AED
+  FontColor #0F172A
+}
+
+actor "ผู้ใช้ที่เข้าสู่ระบบแล้ว" as User
+usecase "ดู Logs ผลการตรวจ" as Logs
+User --> Logs
+
+legend bottom
+|= หัวข้อ |= รายละเอียด |
+| <b>Use case name</b> | ดูประวัติและรายละเอียดผลการตรวจจับ |
+| <b>Description</b> | ผู้ใช้เรียกดู Detection records แบบแบ่งหน้า เปิดภาพ/รายละเอียด และดาวน์โหลดรายงาน PDF ของรายการที่เลือก |
+| <b>Actor</b> | Admin, Safety Officer, Viewer |
+| <b>Preconditions</b> | 1. ผู้ใช้เข้าสู่ระบบและมี JWT ที่ใช้ได้<br>2. ผู้ใช้เปิดหน้า /reports |
+| <b>Postconditions</b> | แสดงรายการ/รายละเอียดตามสิทธิ์ โดยไม่แก้ไขข้อมูล; อาจมีรายงาน PDF ถูกดาวน์โหลดไปยังอุปกรณ์ผู้ใช้ |
+| <b>Main Success Scenario</b> | 1. Web App ส่ง GET /detection/history?page=1&per_page=12<br>2. API ตรวจสอบ JWT และกำหนดขอบเขตข้อมูลตาม role<br>3. Admin และ Safety Officer เห็นทุก Detection; Viewer เห็นเฉพาะของตนเอง<br>4. ฐานข้อมูลคืนรายการจากใหม่ไปเก่าและจำนวนหน้าทั้งหมด<br>5. Web App แสดงการ์ดสรุป ตาราง thumbnail วันที่ จำนวนคน violation สถานะ และ action<br>6. ผู้ใช้เลือก Previous หรือ Next เพื่อโหลดหน้าที่ต้องการ<br>7. ผู้ใช้เลือก View Detail เพื่อดูภาพ สรุป และสถานะ PPE รายบุคคล |
+| <b>Alternate / Exception</b> | 1. ผู้ใช้กด Download PDF: โหลด GET /detection/{id} และ protected result media แล้วสร้าง PDF ที่ browser<br>2. ไม่มีรายการ: แสดง empty state<br>3. ไม่มีไฟล์หลักฐานของรายการเก่า: แสดง fallback/error และไม่อ้างว่ามีหลักฐาน<br>4. สร้าง PDF หรือโหลด media ไม่สำเร็จ: แจ้งให้ลองใหม่<br>5. JWT หมดอายุหรือรายการอยู่นอกขอบเขตผู้ใช้: กลับหน้า Login หรือ API คืน 404 |
+endlegend
+
+@enduml

@@ -9,9 +9,8 @@ import { LoginPage } from './pages/LoginPage'
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })))
 const DetectionPage = lazy(() => import('./pages/DetectionPage').then((module) => ({ default: module.DetectionPage })))
 const CameraPage = lazy(() => import('./pages/CameraPage').then((module) => ({ default: module.CameraPage })))
-const HistoryPage = lazy(() => import('./pages/HistoryPage').then((module) => ({ default: module.HistoryPage })))
+const SafetyCenterPage = lazy(() => import('./pages/SafetyCenterPage').then((module) => ({ default: module.SafetyCenterPage })))
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((module) => ({ default: module.SettingsPage })))
-const AlertsPage = lazy(() => import('./pages/AlertsPage').then((module) => ({ default: module.AlertsPage })))
 const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage').then((module) => ({ default: module.AdminUsersPage })))
 
 function AppLoading({ label = 'Loading workspace…' }: { label?: string }) {
@@ -75,8 +74,8 @@ function App() {
           <Route path="/" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
           <Route path="/detection" element={<PrivateRoute><DetectionPage /></PrivateRoute>} />
           <Route path="/camera" element={<PrivateRoute><CameraPage /></PrivateRoute>} />
-          <Route path="/reports" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
-          <Route path="/alerts" element={<PrivateRoute><AlertsPage /></PrivateRoute>} />
+          <Route path="/reports" element={<PrivateRoute><SafetyCenterPage /></PrivateRoute>} />
+          <Route path="/alerts" element={<PrivateRoute><SafetyCenterPage /></PrivateRoute>} />
           <Route path="/settings" element={<PrivateRoute><SettingsPage /></PrivateRoute>} />
           <Route path="/admin/users" element={<PrivateRoute><AdminRoute><AdminUsersPage /></AdminRoute></PrivateRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
