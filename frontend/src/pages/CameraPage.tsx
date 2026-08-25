@@ -105,6 +105,7 @@ const drawDetectionOverlay = (
   naturalWidth: number,
   naturalHeight: number,
   det: Detection | null,
+  mirrored = false,
 ) => {
   if (!det?.persons || det.persons.length === 0) return
 
@@ -113,9 +114,12 @@ const drawDetectionOverlay = (
 
   det.persons.forEach((person) => {
     if (!person.bbox) return
-    const [x1, y1, x2, y2] = person.bbox.map((value: number, index: number) => (
-      index % 2 === 0 ? value * scaleX : value * scaleY
-    ))
+    const rawX1 = person.bbox[0] * scaleX
+    const y1 = person.bbox[1] * scaleY
+    const rawX2 = person.bbox[2] * scaleX
+    const y2 = person.bbox[3] * scaleY
+    const x1 = mirrored ? canvasWidth - rawX2 : rawX1
+    const x2 = mirrored ? canvasWidth - rawX1 : rawX2
     const color = person.is_compliant ? '#22c55e' : '#ef4444'
     const lineWidth = Math.max(2, canvasWidth / 300)
 
@@ -161,6 +165,25 @@ const drawDetectionOverlay = (
   ctx.fillStyle = '#fff'
   ctx.font = `600 ${Math.max(11, bannerHeight * 0.5)}px system-ui, -apple-system, sans-serif`
   ctx.fillText(message, 12, bannerHeight * 0.72)
+}
+
+const drawCameraFrame = (
+  ctx: CanvasRenderingContext2D,
+  video: HTMLVideoElement,
+  width: number,
+  height: number,
+  mirrored = false,
+) => {
+  if (!mirrored) {
+    ctx.drawImage(video, 0, 0, width, height)
+    return
+  }
+
+  ctx.save()
+  ctx.translate(width, 0)
+  ctx.scale(-1, 1)
+  ctx.drawImage(video, 0, 0, width, height)
+  ctx.restore()
 }
 
 const getCameraDeviceLabel = (device: CameraDeviceOption) => {
@@ -367,8 +390,8 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
     if (canvas.height !== height) canvas.height = height
 
     if (video.videoWidth && video.videoHeight) {
-      ctx.drawImage(video, 0, 0, width, height)
-      drawDetectionOverlay(ctx, width, height, video.videoWidth, video.videoHeight, lastDetectionRef.current)
+      drawCameraFrame(ctx, video, width, height, true)
+      drawDetectionOverlay(ctx, width, height, video.videoWidth, video.videoHeight, lastDetectionRef.current, true)
 
       const badgeY = lastDetectionRef.current?.persons?.length ? 38 : 10
       ctx.fillStyle = 'rgba(220,38,38,0.88)'
@@ -747,12 +770,13 @@ function CameraPreview({ camera, deviceLabel, forceBrowserPreview = false }: { c
     : preview.status === 'stale'
       ? 'RECONNECTING'
       : preview.status.toUpperCase()
+  const shouldMirrorPreview = camera.source_type === 'usb'
 
   return (
     <div className="relative mt-5 aspect-video overflow-hidden rounded-[18px] border border-[#333336] bg-black">
       <video
         ref={videoRef}
-        className={`h-full w-full object-contain ${useBrowserPreview ? 'block' : 'hidden'}`}
+        className={`h-full w-full object-contain ${useBrowserPreview ? 'block' : 'hidden'} ${shouldMirrorPreview ? '-scale-x-100' : ''}`}
         playsInline
         muted
       />
@@ -760,12 +784,12 @@ function CameraPreview({ camera, deviceLabel, forceBrowserPreview = false }: { c
         <img
           src={streamUrl}
           alt={`Live preview from ${camera.name}`}
-          className="h-full w-full object-contain"
+          className={`h-full w-full object-contain ${shouldMirrorPreview ? '-scale-x-100' : ''}`}
           onLoad={() => setPreview({ url: null, status: 'live' })}
           onError={() => setStreamFailed(true)}
         />
       ) : !useBrowserPreview && preview.url ? (
-        <img src={preview.url} alt={`Live preview from ${camera.name}`} className="h-full w-full object-contain" />
+        <img src={preview.url} alt={`Live preview from ${camera.name}`} className={`h-full w-full object-contain ${shouldMirrorPreview ? '-scale-x-100' : ''}`} />
       ) : !useBrowserPreview ? (
         <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center text-[#cccccc]">
           {preview.status === 'waiting' ? <Loader2 size={26} className="animate-spin" aria-hidden="true" /> : <Camera size={28} aria-hidden="true" />}
