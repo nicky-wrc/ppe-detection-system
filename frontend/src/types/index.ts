@@ -96,6 +96,17 @@ export interface Alert {
   created_at: string
 }
 
+export interface ActiveModelInfo {
+  version: string
+  filename: string
+  available: boolean
+  models: {
+    ppe: { filename: string; available: boolean }
+    person: { filename: string; available: boolean }
+  }
+  inference_device: string
+}
+
 export interface UserSettings {
   id: number
   user_id: number

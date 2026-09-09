@@ -65,17 +65,10 @@ export function Layout({ children }: LayoutProps) {
 
   useEffect(() => {
     if (!user) return
-    void settingsService.getMe().then((value) => setAlertSound(value.alert_sound)).catch(() => undefined)
+    return settingsService.subscribe(user.id, (value) => setAlertSound(value.alert_sound), () => {
+      toast.error('โหลดค่าเสียงเตือนไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อ', { id: 'settings-sync-error' })
+    })
   }, [user])
-
-  useEffect(() => {
-    const handleSettingsUpdate = (event: Event) => {
-      const detail = (event as CustomEvent<{ alertSound?: boolean }>).detail
-      if (typeof detail?.alertSound === 'boolean') setAlertSound(detail.alertSound)
-    }
-    window.addEventListener('ppe:settings-updated', handleSettingsUpdate)
-    return () => window.removeEventListener('ppe:settings-updated', handleSettingsUpdate)
-  }, [])
 
   useEffect(() => {
     if (!user) return

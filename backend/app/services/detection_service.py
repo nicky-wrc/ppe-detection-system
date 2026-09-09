@@ -10,8 +10,9 @@ from sqlalchemy import func, cast, Date
 from datetime import timedelta, date as date_type
 from fastapi import UploadFile
 from app.core.config import settings
-from app.models import Detection, Alert, Zone, UserSettings
-from app.ml.detector import get_detector, ppe_sensitivity_to_confidence
+from app.models import Detection, Alert
+from app.ml.detector import get_detector
+from app.services.detection_preferences import resolve_detection_preferences
 from app.services.websocket_manager import ws_manager
 
 
@@ -44,28 +45,9 @@ class DetectionService:
         user_id: Optional[int],
         zone_id: Optional[int],
     ) -> tuple[list[str] | None, float | None, float | None]:
-        required_ppe: list[str] | None = None
-        if zone_id is not None:
-            zone = self.db.query(Zone).filter(Zone.id == zone_id, Zone.is_active.is_(True)).first()
-            if zone and isinstance(zone.required_ppe, list) and zone.required_ppe:
-                required_ppe = [item for item in zone.required_ppe if item in {"helmet", "safety-vest"}]
-
-        confidence: float | None = None
-        person_confidence: float | None = None
-        if user_id is not None:
-            user_settings = self.db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
-            if user_settings:
-                person_confidence = max(0.1, min(0.9, user_settings.confidence_threshold / 100))
-                confidence = ppe_sensitivity_to_confidence(user_settings.ppe_detection_sensitivity)
-                if required_ppe is None and user_settings.active_ppe_rules:
-                    active = [
-                        item
-                        for item in ("helmet", "safety-vest")
-                        if user_settings.active_ppe_rules.get(item, False)
-                    ]
-                    if active:
-                        required_ppe = active
-
+        required_ppe, confidence, person_confidence, _ = resolve_detection_preferences(
+            self.db, user_id, zone_id,
+        )
         return required_ppe, confidence, person_confidence
 
     async def process_image(

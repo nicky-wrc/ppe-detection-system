@@ -4,13 +4,14 @@ import toast from 'react-hot-toast'
 
 import { Layout } from '../components/layout/Layout'
 import { settingsService } from '../services/settings'
+import { modelsService } from '../services/models'
 import { useAuthStore } from '../stores/authStore'
 import { zonesService } from '../services/zones'
-import type { UserSettings, Zone } from '../types'
+import type { ActiveModelInfo, UserSettings, Zone } from '../types'
 
 const PPE_RULES = [
-  { key: 'helmet', label: 'Hard Hat / Helmet' },
-  { key: 'safety-vest', label: 'High-Vis Vest' },
+  { key: 'helmet', label: 'หมวกนิรภัย' },
+  { key: 'safety-vest', label: 'เสื้อสะท้อนแสง' },
 ]
 
 interface ToggleSwitchProps {
@@ -38,12 +39,53 @@ const ToggleSwitch = ({ checked, label, onChange, disabled = false }: ToggleSwit
 export function SettingsPage() {
   const isAdmin = useAuthStore((state) => state.user?.role === 'admin')
   const [settings, setSettings] = useState<UserSettings | null>(null)
+  const [savedSettings, setSavedSettings] = useState<UserSettings | null>(null)
+  const [model, setModel] = useState<ActiveModelInfo | null>(null)
+  const [modelLoading, setModelLoading] = useState(true)
+  const [modelError, setModelError] = useState(false)
+  const [zonesError, setZonesError] = useState(false)
   const [zones, setZones] = useState<Zone[]>([])
   const [selectedZoneId, setSelectedZoneId] = useState<number | 'all'>('all')
   const [isSaving, setIsSaving] = useState(false)
   const [savingZoneId, setSavingZoneId] = useState<number | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
+  const isDirty = settings !== null && JSON.stringify(settings) !== JSON.stringify(savedSettings)
+
+  const loadModel = useCallback(async () => {
+    setModelLoading(true)
+    setModelError(false)
+    try {
+      setModel(await modelsService.getActive())
+    } catch {
+      setModelError(true)
+    } finally {
+      setModelLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { void loadModel() }, [loadModel])
+
+  useEffect(() => {
+    if (!isDirty) return
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warnBeforeLeaving)
+    return () => window.removeEventListener('beforeunload', warnBeforeLeaving)
+  }, [isDirty])
+
+  const loadZones = useCallback(async () => {
+    setZonesError(false)
+    try {
+      const loaded = await zonesService.list()
+      setZones(loaded)
+      setSelectedZoneId((current) => loaded.some((zone) => zone.id === current) ? current : loaded[0]?.id ?? 'all')
+    } catch {
+      setZonesError(true)
+    }
+  }, [])
 
   const selectedZone = useMemo(
     () => zones.find((zone) => zone.id === selectedZoneId) || null,
@@ -54,13 +96,12 @@ export function SettingsPage() {
     setIsLoading(true)
     setLoadError(false)
     try {
-      const [loadedSettings, loadedZones] = await Promise.all([
+      const [loadedSettings] = await Promise.all([
         settingsService.getMe(),
-        zonesService.list().catch(() => [] as Zone[]),
+        loadZones(),
       ])
       setSettings(loadedSettings)
-      setZones(loadedZones)
-      if (loadedZones.length > 0) setSelectedZoneId(loadedZones[0].id)
+      setSavedSettings(loadedSettings)
     } catch (error) {
       console.error(error)
       setLoadError(true)
@@ -68,14 +109,14 @@ export function SettingsPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [loadZones])
 
   useEffect(() => {
     void loadAll()
   }, [loadAll])
 
   const handleSave = () => {
-    if (!settings) return
+    if (!settings || !isDirty || isSaving) return
     setIsSaving(true)
     settingsService
       .updateMe({
@@ -87,10 +128,8 @@ export function SettingsPage() {
       })
       .then((updatedSettings) => {
         setSettings(updatedSettings)
-        window.dispatchEvent(new CustomEvent('ppe:settings-updated', {
-          detail: { alertSound: updatedSettings.alert_sound },
-        }))
-        toast.success('บันทึกการตั้งค่าเรียบร้อยแล้ว')
+        setSavedSettings(updatedSettings)
+        toast.success('บันทึกแล้ว การตรวจจับครั้งถัดไปจะใช้ค่าใหม่ตามบัญชีและโซน')
       })
       .catch((error) => {
         console.error(error)
@@ -140,19 +179,19 @@ export function SettingsPage() {
             <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--ink)] text-white" aria-hidden="true">
               <SlidersHorizontal size={20} strokeWidth={1.8} />
             </div>
-            <h1>System Settings</h1>
+            <h1>Settings</h1>
             <p className="max-w-3xl !mt-3 !text-[17px] !leading-[1.47]">
-              Configure AI detection, notification preferences, and zone PPE requirements.
+              ตั้งค่าการตรวจจับและการแจ้งเตือนของบัญชีคุณ ปรับค่าแล้วกดบันทึกเพื่อนำไปใช้
             </p>
           </div>
           <button
             type="button"
             onClick={handleSave}
-            disabled={isSaving || isLoading || !settings}
+            disabled={isSaving || isLoading || !settings || !isDirty}
             className="btn-apple-primary !min-h-11 min-w-44 px-6 active:scale-95"
           >
             {isSaving ? <Loader2 size={18} className="animate-spin" aria-hidden="true" /> : <Save size={18} aria-hidden="true" />}
-            {isSaving ? 'Saving…' : 'Save changes'}
+            {isSaving ? 'กำลังบันทึก…' : 'บันทึกการเปลี่ยนแปลง'}
           </button>
         </header>
 
@@ -169,21 +208,22 @@ export function SettingsPage() {
           </div>
         ) : (
           <div className="space-y-8">
+            <div className="rounded-[18px] border border-[var(--line)] bg-[#f5f5f7] p-6 text-[14px] leading-relaxed text-[var(--muted)]">
+              <p className="font-semibold text-[var(--ink)]">ค่าใหม่มีผลกับการตรวจจับถัดไป ไม่ต้องเปิดกล้องใหม่</p>
+              <p className="mt-2">กล้องฝั่ง Backend ใช้ค่าของ <strong>เจ้าของกล้อง</strong> ส่วนกล้องผ่านเบราว์เซอร์และการอัปโหลดใช้ค่าของบัญชีที่กำลังใช้งาน หากเลือกโซน ระบบใช้กฎ PPE ของโซนนั้นก่อนกฎรายบุคคล</p>
+              <p className="mt-2">การปรับค่าจะไม่เปลี่ยนผลตรวจย้อนหลัง และไม่ลบข้อมูลหรือหลักฐานที่บันทึกไว้แล้ว</p>
+            </div>
             <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="Settings sections">
               {[
                 { href: '#ai-detection', icon: Cpu, label: 'AI & Detection' },
                 { href: '#zones', icon: Shield, label: 'Zone rules' },
                 { href: '#notifications', icon: Bell, label: 'Notifications' },
                 { href: '#system-health', icon: Database, label: 'System health' },
-              ].map((item, index) => (
+              ].map((item) => (
                 <a
                   key={item.href}
                   href={item.href}
-                  className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-4 text-[14px] font-semibold no-underline transition-colors ${
-                    index === 0
-                      ? 'border-[var(--blue)] bg-[var(--blue)] text-white'
-                      : 'border-[var(--line)] bg-white text-[var(--blue)] hover:bg-[#f5f5f7]'
-                  }`}
+                  className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-[var(--line)] bg-white px-4 text-[14px] font-semibold text-[var(--blue)] no-underline hover:bg-[#f5f5f7]"
                 >
                   <item.icon size={16} aria-hidden="true" />
                   {item.label}
@@ -194,12 +234,12 @@ export function SettingsPage() {
             <section id="ai-detection" className="surface-card scroll-mt-28 overflow-hidden" aria-labelledby="ai-detection-title">
               <div className="border-b border-[var(--line)] px-6 py-6 sm:px-8">
                 <h2 id="ai-detection-title" className="text-[24px] font-semibold tracking-[-0.02em] text-[var(--ink)]">AI &amp; Detection</h2>
-                <p className="mt-2 text-[15px] leading-relaxed text-[var(--muted)]">Tune model confidence and choose which PPE rules are active.</p>
+                <p className="mt-2 text-[15px] leading-relaxed text-[var(--muted)]">ปรับเกณฑ์การตรวจพบ ไม่ใช่การเทรนโมเดลใหม่ ค่าที่เลื่อนยังไม่มีผลจนกดบันทึก</p>
               </div>
               <div className="grid gap-8 p-6 sm:p-8 lg:grid-cols-2">
                 <div className="rounded-[18px] border border-[var(--line)] bg-[#f5f5f7] p-6">
                   <div className="mb-5 flex items-center justify-between gap-4">
-                    <label htmlFor="person-confidence" className="text-[17px] font-semibold text-[var(--ink)]">Person confidence</label>
+                    <label htmlFor="person-confidence" className="text-[17px] font-semibold text-[var(--ink)]">ความมั่นใจขั้นต่ำในการตรวจพบคน</label>
                     <output htmlFor="person-confidence" className="rounded-full bg-white px-3 py-1.5 text-[14px] font-semibold text-[var(--blue)]">
                       {settings.confidence_threshold}%
                     </output>
@@ -215,12 +255,12 @@ export function SettingsPage() {
                     disabled={isSaving}
                     className="h-11 w-full cursor-pointer accent-[var(--blue)]"
                   />
-                  <p className="mt-4 text-[14px] leading-relaxed text-[var(--muted)]">Lower values detect more difficult angles but can increase false positives.</p>
+                  <p className="mt-4 text-[14px] leading-relaxed text-[var(--muted)]">ลดค่าเพื่อรับผลตรวจคนที่โมเดลมั่นใจน้อยลง แต่อาจตรวจผิดมากขึ้น เพิ่มค่าเพื่อกรองผลที่ไม่มั่นใจ แต่อาจพลาดคนที่อยู่ไกลหรือมุมยาก</p>
                 </div>
 
                 <div className="rounded-[18px] border border-[var(--line)] bg-[#f5f5f7] p-6">
                   <div className="mb-5 flex items-center justify-between gap-4">
-                    <label htmlFor="ppe-sensitivity" className="text-[17px] font-semibold text-[var(--ink)]">PPE sensitivity</label>
+                    <label htmlFor="ppe-sensitivity" className="text-[17px] font-semibold text-[var(--ink)]">ความไวในการตรวจพบ PPE</label>
                     <output htmlFor="ppe-sensitivity" className="rounded-full bg-white px-3 py-1.5 text-[14px] font-semibold text-[var(--blue)]">
                       {settings.ppe_detection_sensitivity}%
                     </output>
@@ -228,19 +268,21 @@ export function SettingsPage() {
                   <input
                     id="ppe-sensitivity"
                     type="range"
-                    min="10"
-                    max="90"
+                    min="0"
+                    max="100"
                     step="5"
                     value={settings.ppe_detection_sensitivity}
                     onChange={(event) => setSettings({ ...settings, ppe_detection_sensitivity: parseInt(event.target.value) })}
                     disabled={isSaving}
                     className="h-11 w-full cursor-pointer accent-[var(--blue)]"
                   />
-                  <p className="mt-4 text-[14px] leading-relaxed text-[var(--muted)]">Temporal confirmation continues to filter one-frame noise before creating an alert.</p>
+                  <p className="mt-4 text-[14px] leading-relaxed text-[var(--muted)]">เพิ่มค่าเพื่อให้รับผลตรวจหมวกและเสื้อได้ง่ายขึ้น แต่อาจนับสิ่งที่ไม่ใช่ PPE เป็น PPE ได้ ไม่ใช่การเพิ่มความเข้มงวดของการแจ้งเตือน</p>
+                  <p className="mt-2 text-[13px] font-semibold text-[var(--blue)]">เกณฑ์ความมั่นใจ PPE หลัก: {Number((Math.max(0.1, 0.45 - settings.ppe_detection_sensitivity * 0.0035) * 100).toFixed(1))}%</p>
                 </div>
 
                 <div className="lg:col-span-2">
-                  <p className="mb-4 text-[14px] font-semibold text-[var(--ink)]">Active PPE rules</p>
+                  <p className="mb-2 text-[14px] font-semibold text-[var(--ink)]">กฎ PPE ส่วนบุคคล (เมื่อไม่ได้ใช้กฎโซน)</p>
+                  <p className="mb-4 text-[14px] text-[var(--muted)]">ปิดรายการใดจะไม่แจ้งการขาด PPE ชนิดนั้น การปิดทั้งสองรายการยังนับคน แต่ไม่ตรวจการฝ่าฝืน PPE</p>
                   <div className="flex flex-wrap gap-3">
                     {PPE_RULES.map((rule) => {
                       const isActive = Boolean((settings.active_ppe_rules || {})[rule.key])
@@ -272,7 +314,7 @@ export function SettingsPage() {
                 <div>
                   <h2 id="zones-title" className="text-[24px] font-semibold tracking-[-0.02em] text-[var(--ink)]">Zone PPE requirements</h2>
                   <p className="mt-2 text-[15px] leading-relaxed text-[var(--muted)]">
-                    {isAdmin ? 'Define the PPE expected for each monitored area.' : 'ข้อกำหนดของโซนนี้จัดการโดยผู้ดูแลระบบ'}
+                    {isAdmin ? 'กฎร่วมของกล้องทุกตัวในโซนนี้ กดแล้วบันทึกทันที แยกจากปุ่มบันทึกค่าบัญชี' : 'ข้อกำหนดของโซนนี้จัดการโดยผู้ดูแลระบบ และใช้แทนกฎ PPE ส่วนบุคคล'}
                   </p>
                 </div>
                 <label className="text-[13px] font-semibold text-[var(--muted)]">
@@ -292,7 +334,12 @@ export function SettingsPage() {
               </div>
 
               <div className="p-6 sm:p-8">
-                {!selectedZone ? (
+                {zonesError ? (
+                  <div role="alert" className="text-center text-[var(--muted)]">
+                    <p>โหลดโซนไม่สำเร็จ ยังไม่สามารถยืนยันกฎของโซนได้</p>
+                    <button type="button" className="btn-apple-secondary mt-4" onClick={() => void loadZones()}>ลองโหลดโซนอีกครั้ง</button>
+                  </div>
+                ) : !selectedZone ? (
                   <div className="rounded-[18px] border border-[var(--line)] bg-[#f5f5f7] p-10 text-center">
                     <Shield size={26} className="mx-auto text-[var(--muted)]" strokeWidth={1.5} aria-hidden="true" />
                     <p className="mt-4 text-[17px] font-semibold text-[var(--ink)]">No zones found</p>
@@ -309,6 +356,8 @@ export function SettingsPage() {
                     </div>
                     <div>
                       <p className="mb-4 text-[14px] font-semibold text-[var(--ink)]">Required PPE</p>
+                      {selectedZone.required_ppe.length === 0 && <p className="mb-4 text-[14px] text-amber-700">โซนนี้ไม่ตรวจการฝ่าฝืน PPE เพราะปิดกฎทั้งสองรายการ</p>}
+                      {savingZoneId !== null && <p role="status" className="mb-3 text-[14px] text-[var(--blue)]">กำลังบันทึกกฎโซน…</p>}
                       <div className="flex flex-wrap gap-3">
                         {PPE_RULES.map((rule) => {
                           const enabled = (selectedZone.required_ppe || []).includes(rule.key)
@@ -361,7 +410,7 @@ export function SettingsPage() {
                     </span>
                     <div>
                       <p className="text-[17px] font-semibold text-[var(--ink)]">เสียงเตือนแบบเรียลไทม์</p>
-                      <p className="mt-1 max-w-xl text-[14px] leading-relaxed text-[var(--muted)]">เปิดเสียงเตือนเมื่อตรวจพบการฝ่าฝืนหน้ากล้อง</p>
+                      <p className="mt-1 max-w-xl text-[14px] leading-relaxed text-[var(--muted)]">เสียงเตือนของบัญชีนี้บนเว็บ ปิดเสียงแล้วยังแสดงข้อความแจ้งเตือน หลังบันทึกจะซิงก์กับแท็บอื่นในเบราว์เซอร์เดียวกัน เบราว์เซอร์อาจต้องให้คุณคลิกหน้าเว็บก่อนจึงเล่นเสียงได้</p>
                     </div>
                   </div>
                   <ToggleSwitch
@@ -378,8 +427,9 @@ export function SettingsPage() {
                       <HardDrive size={19} strokeWidth={1.8} />
                     </span>
                     <div>
-                      <p className="text-[17px] font-semibold text-[var(--ink)]">บันทึกภาพเป็นหลักฐาน</p>
-                      <p className="mt-1 max-w-xl text-[14px] leading-relaxed text-[var(--muted)]">บันทึกรูปภาพเหตุการณ์ลงพื้นที่จัดเก็บของเซิร์ฟเวอร์</p>
+                      <p className="text-[17px] font-semibold text-[var(--ink)]">บันทึกหลักฐานจากกล้องฝั่ง Backend</p>
+                      <p className="mt-1 max-w-xl text-[14px] leading-relaxed text-[var(--muted)]">ภาพและคลิปเหตุการณ์จากกล้องที่คุณเป็นเจ้าของ ปิดแล้วระบบยังเก็บรายการเหตุการณ์และสถิติ แต่ไม่เก็บภาพหรือคลิปใหม่ หลักฐานเดิมไม่ถูกลบ</p>
+                      <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-amber-700">ไม่ครอบคลุมการอัปโหลดภาพ/วิดีโอและโหมดกล้องผ่านเบราว์เซอร์ ซึ่งใช้ช่องทางอัปโหลดในการบันทึกผล</p>
                     </div>
                   </div>
                   <ToggleSwitch
@@ -394,28 +444,35 @@ export function SettingsPage() {
 
             <section id="system-health" className="scroll-mt-28 overflow-hidden rounded-[18px] bg-[#272729] text-white" aria-labelledby="system-health-title">
               <div className="border-b border-white/10 px-6 py-6 sm:px-8">
-                <h2 id="system-health-title" className="text-[24px] font-semibold tracking-[-0.02em]">System health</h2>
-                <p className="mt-2 text-[15px] leading-relaxed text-[#cccccc]">Current pilot runtime and model information.</p>
+                <h2 id="system-health-title" className="text-[24px] font-semibold tracking-[-0.02em]">ข้อมูลโมเดลจาก Backend</h2>
+                <p className="mt-2 text-[15px] leading-relaxed text-[#cccccc]">แสดงการตั้งค่าโมเดลและสถานะไฟล์ ไม่ใช่การยืนยันว่าโหลดโมเดลหรือทดสอบกล้องสำเร็จแล้ว</p>
+                <button type="button" onClick={() => void loadModel()} disabled={modelLoading} className="mt-4 min-h-11 rounded-full border border-white/30 px-4 text-[14px] disabled:opacity-50">{modelLoading ? 'กำลังตรวจสอบ…' : 'ตรวจสอบอีกครั้ง'}</button>
               </div>
               <div className="grid gap-px bg-white/10 sm:grid-cols-3">
                 <div className="bg-[#272729] p-6 sm:p-8">
-                  <p className="text-[13px] text-[#cccccc]">Server status</p>
+                  <p className="text-[13px] text-[#cccccc]">การเชื่อมต่อ API ล่าสุด</p>
                   <div className="mt-3 flex items-center gap-2 text-[21px] font-semibold">
-                    <span className="h-2.5 w-2.5 rounded-full bg-[#34c759]" aria-hidden="true" />
-                    Healthy
+                    {modelLoading ? 'กำลังตรวจสอบ…' : modelError ? 'ตรวจสอบไม่สำเร็จ' : 'เชื่อมต่อได้'}
                   </div>
                 </div>
                 <div className="bg-[#272729] p-6 sm:p-8">
-                  <p className="text-[13px] text-[#cccccc]">Software version</p>
-                  <p className="mt-3 text-[21px] font-semibold">v2.0.0 pilot</p>
+                  <p className="text-[13px] text-[#cccccc]">Model version</p>
+                  <p className="mt-3 break-all text-[17px] font-semibold">{modelLoading || modelError ? '—' : model?.version || 'ไม่ระบุ'}</p>
                 </div>
                 <div className="bg-[#272729] p-6 sm:p-8">
                   <p className="text-[13px] text-[#cccccc]">AI model</p>
-                  <p className="mt-3 text-[21px] font-semibold leading-tight">YOLOv8m + YOLO11n</p>
-                  <span className="mt-3 inline-flex rounded-full border border-white/15 px-3 py-1 text-[12px] text-[#cccccc]">Hybrid</span>
+                  <p className="mt-3 break-all text-[17px] font-semibold leading-tight">{modelLoading || modelError ? '—' : `${model?.models.ppe.filename} + ${model?.models.person.filename}`}</p>
+                  {!modelLoading && !modelError && model && <p className="mt-3 text-[13px] text-[#cccccc]">{model.models.ppe.available && model.models.person.available ? 'พบไฟล์โมเดลทั้งสองตัว' : 'พบไฟล์โมเดลไม่ครบ กรุณาตรวจสอบ Backend'}</p>}
                 </div>
               </div>
             </section>
+            <div className="sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-[var(--line)] bg-white/95 p-4 shadow-lg backdrop-blur">
+              <p role="status" className="text-[14px] font-semibold text-[var(--ink)]">{isSaving ? 'กำลังบันทึก…' : isDirty ? 'มีการเปลี่ยนแปลงที่ยังไม่บันทึก' : 'ค่าบัญชีตรงกับข้อมูลที่บันทึกแล้ว'}</p>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" className="btn-apple-secondary" disabled={!isDirty || isSaving} onClick={() => setSettings(savedSettings)}>ยกเลิกการแก้ไข</button>
+                <button type="button" className="btn-apple-primary" disabled={!isDirty || isSaving} onClick={handleSave}>{isSaving ? 'กำลังบันทึก…' : 'บันทึกค่าบัญชี'}</button>
+              </div>
+            </div>
           </div>
         )}
       </div>

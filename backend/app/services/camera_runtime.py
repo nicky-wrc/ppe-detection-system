@@ -17,7 +17,8 @@ import numpy as np
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.models import Alert, AlertDelivery, Camera, Detection, UserSettings, ViolationLog, Zone
+from app.models import Alert, AlertDelivery, Camera, Detection, ViolationLog, Zone
+from app.services.detection_preferences import resolve_detection_preferences
 from app.services.email_notifier import email_notifier
 from app.services.evidence_recorder import EvidenceRecorder, blur_person_heads
 from app.services.temporal_tracker import ConfirmedViolation, TemporalViolationTracker, bbox_match_score
@@ -35,12 +36,6 @@ def _get_detector():
     from app.ml.detector import get_detector
 
     return get_detector()
-
-
-def _ppe_sensitivity_to_confidence(sensitivity: float) -> float:
-    from app.ml.detector import ppe_sensitivity_to_confidence
-
-    return ppe_sensitivity_to_confidence(sensitivity)
 
 
 @dataclass(frozen=True)
@@ -480,24 +475,7 @@ class CameraRuntimeManager:
 
     @staticmethod
     def _detection_options(db, camera: Camera) -> tuple[list[str], float, float, bool]:
-        required = ["helmet", "safety-vest"]
-        if camera.zone_id:
-            zone = db.query(Zone).filter(Zone.id == camera.zone_id, Zone.is_active.is_(True)).first()
-            if zone and zone.required_ppe:
-                filtered = [item for item in zone.required_ppe if item in {"helmet", "safety-vest"}]
-                if filtered:
-                    required = filtered
-
-        confidence = settings.CONFIDENCE_THRESHOLD
-        person_confidence = settings.PERSON_CONFIDENCE_THRESHOLD
-        save_evidence = True
-        if camera.owner_id:
-            user_settings = db.query(UserSettings).filter(UserSettings.user_id == camera.owner_id).first()
-            if user_settings:
-                person_confidence = max(0.1, min(0.9, user_settings.confidence_threshold / 100))
-                confidence = _ppe_sensitivity_to_confidence(user_settings.ppe_detection_sensitivity)
-                save_evidence = user_settings.save_evidence
-        return required, confidence, person_confidence, save_evidence
+        return resolve_detection_preferences(db, camera.owner_id, camera.zone_id)
 
     @staticmethod
     def _filter_to_zone(result: dict[str, Any], zone: Zone | None, frame_shape) -> dict[str, Any]:
@@ -671,6 +649,7 @@ class CameraRuntimeManager:
             interval = 1 / max(0.5, settings.CAMERA_ANALYSIS_FPS)
             preview_interval = 1 / max(1.0, settings.CAMERA_PREVIEW_FPS)
             preview_generated_at = float("-inf")
+            previous_detection_options = None
 
             while True:
                 camera = db.query(Camera).filter(Camera.id == camera_id).first()
@@ -750,6 +729,13 @@ class CameraRuntimeManager:
                         db.commit()
 
                 required, confidence, person_confidence, save_evidence = self._detection_options(db, camera)
+                detection_options = (tuple(required), confidence, person_confidence)
+                if previous_detection_options != detection_options:
+                    # Never confirm an event using frames evaluated under old rules.
+                    tracker.reset()
+                    previous_detection_options = detection_options
+                if not save_evidence:
+                    recorder.reset()
                 async with self._inference_lock:
                     if self.detector is None:
                         self.detector = await asyncio.to_thread(_get_detector)
