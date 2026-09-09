@@ -332,7 +332,8 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
   const clearStreakRef = useRef(0)
   const isPersistingViolationRef = useRef(false)
   const [status, setStatus] = useState<PreviewStatus>('waiting')
-  const [alertSoundEnabled, setAlertSoundEnabled] = useState(true)
+  const alertSoundEnabledRef = useRef(false)
+  const settingsUserId = useAuthStore((state) => state.user?.id)
   const [frameCount, setFrameCount] = useState(0)
   const [summary, setSummary] = useState<{ persons: number; violations: number; message: string }>({
     persons: 0,
@@ -341,18 +342,13 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
   })
 
   useEffect(() => {
-    void settingsService.getMe()
-      .then((settings) => setAlertSoundEnabled(settings.alert_sound))
-      .catch(() => undefined)
-
-    const handleSettingsUpdate = (event: Event) => {
-      const detail = (event as CustomEvent<{ alertSound?: boolean }>).detail
-      if (typeof detail?.alertSound === 'boolean') setAlertSoundEnabled(detail.alertSound)
-    }
-
-    window.addEventListener('ppe:settings-updated', handleSettingsUpdate)
-    return () => window.removeEventListener('ppe:settings-updated', handleSettingsUpdate)
-  }, [])
+    if (!settingsUserId) return
+    return settingsService.subscribe(settingsUserId, (settings) => {
+      alertSoundEnabledRef.current = settings.alert_sound
+    }, () => {
+      toast.error('โหลดค่าเสียงเตือนไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อ', { id: 'settings-sync-error' })
+    })
+  }, [settingsUserId])
 
   const renderLoop = useCallback(() => {
     const video = videoRef.current
@@ -478,7 +474,7 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
           violations: detection.violation_count,
           message: detection.summary?.message || (detection.has_violation ? 'พบการฝ่าฝืน PPE' : 'ไม่พบการฝ่าฝืน'),
         })
-        if (alertSoundEnabled && hasTargetPpeViolation(detection)) {
+        if (alertSoundEnabledRef.current && hasTargetPpeViolation(detection)) {
           const now = Date.now()
           const signature = getTargetPpeViolationSignature(detection)
           if (
@@ -506,7 +502,7 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
         if (sessionId === sessionRef.current) isFrameBusyRef.current = false
       }
     }, 'image/jpeg', 0.8)
-  }, [alertSoundEnabled, camera.zone_id, updateLiveViolationEpisode])
+  }, [camera.zone_id, updateLiveViolationEpisode])
 
   useEffect(() => {
     let mounted = true

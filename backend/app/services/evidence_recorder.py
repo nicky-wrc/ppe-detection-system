@@ -18,6 +18,11 @@ class EvidenceRecorder:
         self.buffer: deque[bytes] = deque(maxlen=self.pre_frames)
         self.active: dict[int, dict[str, object]] = {}
 
+    def reset(self) -> None:
+        """Discard pending in-memory frames only; leave saved evidence untouched."""
+        self.buffer.clear()
+        self.active.clear()
+
     @staticmethod
     def encode(frame: np.ndarray) -> bytes | None:
         ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 78])
