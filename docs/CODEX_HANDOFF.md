@@ -1,5 +1,35 @@
 # Codex Handoff — PPE Guard AI
 
+## Follow-up — local camera activation requested (2026-09-09)
+
+- User explicitly requested switching the local website/backend to the fine-tuned model for their staged camera test.
+- Changed only `backend/.env` MODEL_PATH to `./experiments/orange-ppe-yolo8m-20260909-v2/weights/best.pt` and MODEL_VERSION to `orange-ppe-yolov8m-yolo11n-hybrid-20260909-v2`. Kept person assist, thresholds, privacy settings and MODEL_LICENSE_APPROVED=false unchanged. Original weights preserved.
+- Real in-memory hybrid smoke test loaded the exact configured candidate (no baseline fallback), retained `yolo11n.pt`, used CUDA device 0 and processed a synthetic blank frame successfully. No camera capture or evidence was created.
+- Local Python 3.12.2 hangs in `platform._wmi_query` while importing Torch and SQLAlchemy (faulthandler verified). Added `backend/run_local.py --disable-wmi`: opt-in process-local CPython non-WMI fallback before third-party imports; no Windows service or global Python changes. The launcher loads the backend `.env`, verifies the exact PPE/person model paths (refuses fallback), then starts one Uvicorn process. `--check` loads models only, without API/camera startup.
+- IMPORTANT: backend/frontend were not running. Before starting the backend, a read-only retention audit found 164 existing files eligible for immediate startup cleanup under the current 30-day policy (428 old Detection rows, 82 old Event rows). All cameras are inactive (3 registered). No files were deleted and the backend was deliberately not started.
+- User subsequently explicitly requested preserving all existing data and asked for commands to start both servers themselves. Added `EVIDENCE_RETENTION_ENABLED` (default true for existing deployments) and set only local `backend/.env` to false. Both the cleanup loop and direct purge return before any DB access/deletion when disabled. Existing age limits remain unchanged; do not re-enable cleanup without the user's approval.
+- No API/frontend server or physical camera was started by the agent. `run_local.py --disable-wmi --check` verified candidate `best.pt`, `yolo11n.pt`, `cuda:0`, and `evidence_cleanup_enabled=false`. Tests use explicit model/retention environment values so local `.env` changes do not alter test expectations.
+- The local launcher also refuses API startup if cleanup is enabled, including an overriding environment variable; check-only mode remains non-mutating. This is an extra preservation guard for the user's local trial.
+- Validation after these changes: backend `95 passed, 63 warnings` (existing python-jose UTC deprecation), launcher check-only confirmed CUDA/new model/cleanup false, and `git diff --check` passed. Original baseline SHA-256 is unchanged. No servers were started; the user will run the commands below.
+- User commands: from `backend`, `.\.venv\Scripts\python.exe run_local.py --disable-wmi`; from `frontend`, `npm.cmd run dev -- --host 127.0.0.1 --port 5173 --strictPort`. Open `http://localhost:5173/detect`; PostgreSQL must be running. Data/model originals remain untouched.
+
+## Session update — 2026-09-09 (Orange PPE fine-tuning)
+
+- Scope: improve helmet/reflective-vest detection using an isolated public-data experiment; do not change the deployed model, `.env`, model-license approval or user data.
+- Run: `backend/experiments/orange-ppe-yolo8m-20260909-v2`; guide and reproduction commands: `backend/mlops/ORANGE_PPE_TRAINING.md`.
+- Snapshot: completed 20 epochs and baseline/candidate test evaluation at 19:17:16 Asia/Bangkok. Report: `backend/mlops/ORANGE_PPE_RESULTS_20260909.md`. Job status is `completed`; no training process needs resuming.
+- The first process stopped during epoch 11 validation without a traceback. Resumed from completed epoch 10 at 18:48:59 Asia/Bangkok; original logs preserved as `training.log`, continuation in `training_resume_1.log`.
+- Dataset: HardHat-Vest v3 public source, 22,141 original images. Excluded conflicting duplicate groups and exact cross-split repeats from generated views only; source preserved. Prepared 22,070 images; selected 6,676 train images including all 3,088 vest-positive training images. Validation/test remain 2,415/2,441 images.
+- Class mapping retains SH17 IDs. There are NO person labels, despite person being declared by the source. Class-name compatibility is not evidence of preserved person capability. Do not promote the candidate automatically.
+- Training uses the CUDA `.venv`, not CPU-only `.venv312`: YOLOv8m, RTX 4070, imgsz 640, batch 16, workers 0, freeze 10, AdamW 0.0003. `workers=0` addresses the previous Windows multi-worker memory failure.
+- Added conversion/deduplication tests, focused selection and its tests, resumable experiment supervisor and tests, orange-like test slice and tests, fixed-confidence scorer and tests. Corrected selection hash to actual CRLF file bytes while retaining the old normalized-LF digest; training membership was unchanged.
+- Validation: backend `88 passed, 63 warnings` (existing python-jose UTC deprecation); compile checks and `git diff --check` passed. No frontend/runtime/API changes in this task.
+- Known limits: source splits can share related scenes; labels are not color ground truth and may be incomplete; publisher lists CC0 but the archive aggregates sources and includes no license file; initial SH17 weights remain research-only. The 772-image HSV slice is exploratory and includes background/skin colors, not an independent orange-PPE benchmark.
+- Results: public-test AP50 helmet 35.54% → 89.43%, vest 51.84% → 84.88%. At fixed confidence 0.20, vest recall rose 41.89% → 88.08%, but precision fell 73.03% → 62.64% and FP rose 144 → 489. Fixed-threshold full-test and HSV-slice reports are preserved in the job directory; these are raw frame scores, not hybrid/event metrics.
+- Candidate: `...v2/weights/best.pt`, 52,045,266 bytes, SHA-256 `582e6bedff94f5bdf2d0602bd77aa432039617bae802e4a4f9cfc5745c899d05`. Original `yolo8m.pt` hash remains `085631758e8e1993159c356b01b5d8b5628cd21e577450b4d3c399d519be4dda`.
+- Next: obtain approved target-camera labels for person/helmet/vest and negative orange clothing, calibrate thresholds on validation and check person regression plus hybrid/event behavior before considering runtime promotion. Do not tune from this reported test set or automatically change `.env`.
+- Git: source/docs only; datasets, runs and checkpoints remain ignored. No commit/push, deletion or overwrite of original weights performed.
+
 ## Follow-up — Detection Video black-screen fix (2026-07-31)
 
 - Root cause มีสองชั้น: `DetectionPage` ซ่อน `<video>` แล้วแสดง canvas เปล่าที่ไม่มีทางเริ่มเล่น และ backend เขียน annotated MP4 ด้วย `mp4v/FMP4` ซึ่งไฟล์ล่าสุดยืนยันว่า Chrome/Edge มักถอดรหัสไม่ได้ แม้ input เดิมเป็น H.264

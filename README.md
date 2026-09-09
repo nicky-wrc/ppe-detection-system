@@ -266,6 +266,7 @@ Production จะไม่เริ่มทำงานหาก `MODEL_LICENSE
 | `EVIDENCE_PRE_SECONDS`      | `5`                  | ช่วงเวลาก่อนเหตุการณ์ในคลิป                                                                       |
 | `EVIDENCE_POST_SECONDS`     | `10`                 | ช่วงเวลาหลังเหตุการณ์ในคลิป                                                                       |
 | `EVIDENCE_RETENTION_DAYS`   | `30`                 | อายุไฟล์หลักฐานก่อน cleanup                                                                               |
+| `EVIDENCE_RETENTION_ENABLED` | `true` | ตั้ง `false` เพื่อพักงานล้างไฟล์อัตโนมัติและไม่ล้าง path ในฐานข้อมูล แล้ว restart Backend |
 | `METADATA_RETENTION_DAYS`   | `365`                | ค่าที่เตรียมไว้สำหรับ metadata แต่ยังไม่ได้บังคับใช้กับแถวฐานข้อมูล |
 
 ### SMTP
@@ -323,6 +324,24 @@ python -c "import torch; print(torch.cuda.is_available())"
 ```
 
 หากไม่มี GPU ระบบจะใช้ CPU และปิด person-crop refinement อัตโนมัติเพื่อลด latency
+
+#### คำสั่งสำหรับทดสอบโมเดลใหม่บนเครื่อง Windows นี้
+
+ใน `backend/.env` ของเครื่องทดสอบเลือกโมเดล `orange-ppe-yolov8m-yolo11n-hybrid-20260909-v2`
+และตั้ง `EVIDENCE_RETENTION_ENABLED=false` ตามคำขอให้เก็บข้อมูลเดิมทั้งหมด
+อย่าคัดลอก `.env.example` ทับ `.env` เดิม เพราะจะทับการตั้งค่าเครื่องและเปิด cleanup กลับตามค่าเริ่มต้น
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe run_local.py --disable-wmi
+```
+
+ตัวเรียกนี้ใช้ `.env` จากโฟลเดอร์ backend เสมอ ตรวจว่าโหลดโมเดลตาม path ที่ตั้งไว้จริง
+และปฏิเสธการเริ่ม API หาก cleanup ยังเปิดอยู่ เพื่อรักษาข้อมูลเดิมระหว่างทดสอบ
+และรัน API ที่ `127.0.0.1:8000` แบบ process เดียวโดยไม่ใช้ reload
+`--disable-wmi` เลี่ยงอาการ Python 3.12 ค้างใน WMI เฉพาะ process นี้ ไม่แก้ Windows service หรือ Python ที่ติดตั้ง
+หากต้องการตรวจโมเดลและสถานะ cleanup โดยไม่เปิด API/กล้อง ให้เพิ่ม `--check`
+ต้องเปิด PostgreSQL ตามเดิมก่อนเริ่ม API; โมเดลนี้ยังเป็นการทดสอบ ไม่ใช่ production release
 
 ### 3. ติดตั้ง Frontend
 
