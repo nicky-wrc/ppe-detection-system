@@ -202,6 +202,7 @@ backend/uploads/**
 
 # ML experiments and approved/private datasets must never be committed
 backend/experiments/
+backend/runs/
 backend/mlops/ppe_factory.yaml
 backend/datasets/
 *.engine

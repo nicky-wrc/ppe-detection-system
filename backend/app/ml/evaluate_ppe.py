@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import ultralytics
+import yaml
 from ultralytics import YOLO
 
 
@@ -22,6 +23,8 @@ def parse_args():
     parser.add_argument("--device", default="0")
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--batch", type=int, default=8)
+    parser.add_argument("--workers", type=int, default=0)
     return parser.parse_args()
 
 
@@ -82,6 +85,11 @@ def main():
     data_path = Path(args.data).resolve()
 
     model = YOLO(args.model)
+    class_names = normalize_class_names(model.names)
+    dataset_config = yaml.safe_load(data_path.read_text(encoding="utf-8"))
+    if normalize_class_names(dataset_config["names"]) != class_names:
+        raise SystemExit("Dataset and model class IDs/names differ; use a correctly remapped dataset")
+    output = Path(args.output).resolve()
     metrics = model.val(
         data=args.data,
         split=args.split,
@@ -89,6 +97,10 @@ def main():
         imgsz=args.imgsz,
         plots=True,
         save_json=True,
+        batch=args.batch,
+        workers=args.workers,
+        project=str(output.parent),
+        name=f"{output.stem}_plots",
     )
     class_names = normalize_class_names(model.names)
     missing_classes = sorted(REQUIRED_CLASS_NAMES - set(class_names.values()))
@@ -105,6 +117,7 @@ def main():
         "split": args.split,
         "imgsz": args.imgsz,
         "device": args.device,
+        "batch": args.batch,
         "metrics": {key: float(value) for key, value in metrics.results_dict.items()},
         "per_class": build_per_class_metrics(metrics, class_names),
         "speed_ms_per_image": {
@@ -113,7 +126,6 @@ def main():
         },
         "class_names": class_names,
     }
-    output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
