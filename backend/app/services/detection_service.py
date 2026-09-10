@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional, List, Tuple
 from datetime import datetime
 from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, Date
+from sqlalchemy import func, cast, Date, String, and_, or_
 from datetime import timedelta, date as date_type
 from fastapi import UploadFile
 from app.core.config import settings
@@ -216,7 +216,11 @@ class DetectionService:
         skip: int = 0,
         limit: int = 20,
         zone_id: Optional[int] = None,
-        has_violation: Optional[bool] = None
+        has_violation: Optional[bool] = None,
+        start_date: Optional[date_type] = None,
+        end_date: Optional[date_type] = None,
+        missing_ppe: Optional[str] = None,
+        detected_ppe: Optional[str] = None,
     ) -> Tuple[List[Detection], int]:
         """Return shared detection history; account ownership never scopes reads."""
         query = self.db.query(Detection)
@@ -226,6 +230,32 @@ class DetectionService:
         
         if has_violation is not None:
             query = query.filter(Detection.has_violation == has_violation)
+
+        if start_date is not None:
+            query = query.filter(Detection.created_at >= datetime.combine(start_date, datetime.min.time()))
+
+        if end_date is not None:
+            next_day = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+            query = query.filter(Detection.created_at < next_day)
+
+        if missing_ppe is not None:
+            violations_text = cast(Detection.violations, String)
+            helmet = or_(
+                violations_text.ilike('%helmet%'),
+                violations_text.ilike('%hardhat%'),
+                violations_text.ilike('%หมวก%'),
+            )
+            vest = or_(
+                violations_text.ilike('%vest%'),
+                violations_text.ilike('%เสื้อ%'),
+            )
+            query = query.filter(and_(helmet, vest) if missing_ppe == 'both' else helmet if missing_ppe == 'helmet' else vest)
+
+        if detected_ppe is not None:
+            persons_text = cast(Detection.persons, String)
+            helmet = persons_text.ilike('%helmet%')
+            vest = persons_text.ilike('%safety-vest%')
+            query = query.filter(and_(helmet, vest) if detected_ppe == 'both' else helmet if detected_ppe == 'helmet' else vest)
         
         total = query.count()
         detections = query.order_by(Detection.created_at.desc()).offset(skip).limit(limit).all()

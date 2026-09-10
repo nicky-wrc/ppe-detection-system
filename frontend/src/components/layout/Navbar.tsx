@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
-import { LogOut, Shield, Home, /* Upload, */ History, Bell } from 'lucide-react'
+import { LogOut, Shield, Home, /* Upload, */ History /* Bell */ } from 'lucide-react'
 
 export function Navbar() {
   const { user, logout } = useAuthStore()
@@ -34,10 +34,11 @@ export function Navbar() {
               <History className="h-4 w-4" />
               <span>ประวัติ</span>
             </Link>
+            {/* Alerts navigation is temporarily hidden; retain this link for restoration.
             <Link to="/alerts" className="flex min-h-11 items-center gap-1.5 text-[#d1d1d6] no-underline">
               <Bell className="h-4 w-4" />
               <span>แจ้งเตือน</span>
-            </Link>
+            </Link> */}
           </div>
 
           <div className="flex items-center gap-3 text-[12px]">

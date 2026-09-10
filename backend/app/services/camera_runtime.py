@@ -615,6 +615,29 @@ class CameraRuntimeManager:
                     name=f"ppe-email-{delivery_id}",
                 )
 
+    @staticmethod
+    def _persist_compliant_detection(db, camera: Camera, result: dict[str, Any]) -> None:
+        """Keep periodic compliant camera results visible in the shared reports history."""
+        detection = Detection(
+            user_id=camera.owner_id,
+            zone_id=camera.zone_id,
+            original_image_path=f"camera:{camera.id}",
+            detected_objects=result.get("detected_objects", []),
+            persons=result.get("persons", []),
+            violations=[],
+            person_count=result.get("person_count", 0),
+            violation_count=0,
+            has_violation=False,
+            processing_time_ms=result.get("processing_time_ms", 0),
+            summary={
+                "status": "compliant",
+                "message": "พบผู้สวม PPE ครบตามที่กำหนด",
+                "model_version": settings.MODEL_VERSION,
+            },
+        )
+        db.add(detection)
+        db.commit()
+
     async def _run(self, camera_id: int) -> None:
         db = SessionLocal()
         cap = None
@@ -649,6 +672,7 @@ class CameraRuntimeManager:
             interval = 1 / max(0.5, settings.CAMERA_ANALYSIS_FPS)
             preview_interval = 1 / max(1.0, settings.CAMERA_PREVIEW_FPS)
             preview_generated_at = float("-inf")
+            last_compliant_report_at = float("-inf")
             previous_detection_options = None
 
             while True:
@@ -779,6 +803,15 @@ class CameraRuntimeManager:
 
                 if confirmed:
                     await self._persist_events(db, camera, frame, result, confirmed, recorder, save_evidence)
+
+                report_now = time.monotonic()
+                if (
+                    result.get("person_count", 0) > 0
+                    and not result.get("has_violation", False)
+                    and report_now - last_compliant_report_at >= settings.CAMERA_COMPLIANT_REPORT_INTERVAL_SECONDS
+                ):
+                    self._persist_compliant_detection(db, camera, result)
+                    last_compliant_report_at = report_now
 
                 analyzed += 1
                 elapsed = max(0.001, time.perf_counter() - started)

@@ -37,7 +37,7 @@ const navItems: NavItem[] = [
   // Detect page is temporarily hidden; uncomment this item to restore it.
   // { path: '/detection', icon: Camera, label: 'Detect', description: 'Analyze PPE media' },
   { path: '/detect', icon: ScanLine, label: 'Detect', description: 'Live edge monitoring', roles: ['admin', 'safety_officer'] },
-  { path: '/reports', icon: FileText, label: 'Reports & Alerts', description: 'Evidence, history and safety review' },
+  { path: '/reports', icon: FileText, label: 'Reports', description: 'Evidence, history and safety review' },
   { path: '/settings', icon: Settings, label: 'Settings', description: 'Detection preferences', roles: ['admin', 'safety_officer'] },
 ]
 

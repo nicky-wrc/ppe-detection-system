@@ -130,10 +130,20 @@ async def get_detection_history(
     per_page: int = Query(20, ge=1, le=100),
     zone_id: Optional[int] = Query(None),
     has_violation: Optional[bool] = Query(None),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    missing_ppe: Optional[str] = Query(None, pattern="^(helmet|vest|both)$"),
+    detected_ppe: Optional[str] = Query(None, pattern="^(helmet|vest|both)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """ดูประวัติการตรวจจับ"""
+    today = date.today()
+    if (start_date and start_date > today) or (end_date and end_date > today):
+        raise HTTPException(status_code=422, detail="Date filters cannot be in the future")
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=422, detail="Start date must not be after end date")
+
     service = DetectionService(db)
     
     skip = (page - 1) * per_page
@@ -141,7 +151,11 @@ async def get_detection_history(
         skip=skip,
         limit=per_page,
         zone_id=zone_id,
-        has_violation=has_violation
+        has_violation=has_violation,
+        start_date=start_date,
+        end_date=end_date,
+        missing_ppe=missing_ppe,
+        detected_ppe=detected_ppe,
     )
     
     return {
