@@ -34,7 +34,7 @@ const LIVE_DETECT_INTERVAL_MS = 1000
 const LIVE_ALERT_SOUND_COOLDOWN_MS = 5000
 const LIVE_CONFIRM_FRAMES = 2
 const LIVE_CLEAR_FRAMES = 2
-const LIVE_EVENT_COOLDOWN_MS = 60_000
+const LIVE_EVENT_COOLDOWN_MS = 30_000
 const LIVE_PERSIST_RETRY_MS = 10_000
 const LIVE_COMPLIANT_CONFIRM_FRAMES = 2
 const LIVE_COMPLIANT_REPORT_COOLDOWN_MS = 30_000
@@ -395,17 +395,6 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
       drawCameraFrame(ctx, video, width, height, true)
       drawDetectionOverlay(ctx, width, height, video.videoWidth, video.videoHeight, lastDetectionRef.current, true)
 
-      const badgeY = lastDetectionRef.current?.persons?.length ? 38 : 10
-      ctx.fillStyle = 'rgba(220,38,38,0.88)'
-      ctx.beginPath()
-      ctx.roundRect(10, badgeY, 118, 24, 12)
-      ctx.fill()
-      ctx.fillStyle = '#fff'
-      ctx.beginPath()
-      ctx.arc(28, badgeY + 12, 5, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.font = '600 11px system-ui, -apple-system, sans-serif'
-      ctx.fillText('LIVE DETECT', 40, badgeY + 16)
     }
 
     if (!video.paused && !video.ended) {
@@ -656,7 +645,7 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
     }
   }, [camera.device_index, captureAndDetect, renderLoop])
 
-  const statusLabel = status === 'live' ? 'LIVE DETECT' : status.toUpperCase()
+  const statusLabel = status === 'live' ? 'LIVE DETECTION' : status.toUpperCase()
 
   return (
     <div className="mt-5">
@@ -669,11 +658,11 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
             <p className="m-0 text-[14px] font-semibold">{summary.message}</p>
           </div>
         )}
-        <div className="absolute left-3 top-3 flex min-h-8 items-center gap-2 rounded-full bg-black/70 px-3 text-[11px] font-semibold text-white backdrop-blur-sm" role="status" aria-live="polite">
+        <div className="absolute bottom-3 right-3 flex min-h-8 items-center gap-2 rounded-full bg-black/70 px-3 text-[11px] font-semibold text-white backdrop-blur-sm" role="status" aria-live="polite">
           <span className={`h-2 w-2 rounded-full ${status === 'live' ? 'animate-pulse bg-[#34c759]' : 'bg-[#86868b]'}`} aria-hidden="true" />
           {statusLabel}
         </div>
-        <div className="absolute bottom-3 right-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-normal text-white backdrop-blur-sm">
+        <div className="absolute bottom-3 left-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-normal text-white backdrop-blur-sm">
           Browser camera · AI frame detect
         </div>
       </div>
