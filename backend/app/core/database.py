@@ -8,8 +8,8 @@ logger = logging.getLogger(__name__)
 """
 Database configuration.
 
-ค่าเริ่มต้นใน Settings ใช้ DATABASE_URL จาก environment ถ้าไม่ได้ตั้งค่า
-ให้ default เป็น SQLite (เหมาะสำหรับโปรเจคจบ/เดโม เพราะไม่ต้องตั้งค่า PostgreSQL)
+Settings อ่าน DATABASE_URL จาก environment และใช้ PostgreSQL localhost เป็นค่าเริ่มต้น
+ส่วนชุดทดสอบจะ override เป็นฐานข้อมูล SQLite ชั่วคราวแยกจากข้อมูลของระบบจริง
 """
 
 engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)

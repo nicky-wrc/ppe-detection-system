@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     EVIDENCE_DIR: str = "./uploads/evidence"
     MAX_FILE_SIZE: int = 100 * 1024 * 1024
     MAX_FRAME_SIZE: int = 10 * 1024 * 1024
+    EVIDENCE_RETENTION_ENABLED: bool = True
     EVIDENCE_RETENTION_DAYS: int = 30
     METADATA_RETENTION_DAYS: int = 365
 

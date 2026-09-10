@@ -15,6 +15,11 @@ os.environ["SECRET_KEY"] = "test-secret-key-with-at-least-32-characters"
 os.environ["BOOTSTRAP_ADMIN_EMAIL"] = "admin@example.com"
 os.environ["BOOTSTRAP_ADMIN_PASSWORD"] = "secure-admin-password"
 os.environ["ALLOW_PUBLIC_REGISTRATION"] = "true"
+# Keep API expectations independent of an operator's local model/retention trial.
+os.environ["MODEL_PATH"] = "./yolo8m.pt"
+os.environ["PERSON_MODEL_PATH"] = "./yolo11n.pt"
+os.environ["MODEL_VERSION"] = "sh17-yolov8m-yolo11n-hybrid-v1"
+os.environ["EVIDENCE_RETENTION_ENABLED"] = "true"
 
 from app.main import app  # noqa: E402
 from app.core.database import engine  # noqa: E402

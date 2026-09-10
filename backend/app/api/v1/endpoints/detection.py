@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFi
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_roles
 from app.models import User, Detection
 from app.schemas import DetectionResponse, DetectionStats
 from app.services import DetectionService
@@ -26,7 +26,7 @@ async def detect_from_image(
     file: UploadFile = File(...),
     zone_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_roles("admin", "safety_officer"))
 ):
     """อัปโหลดรูปภาพเพื่อตรวจจับ PPE"""
     enforce_rate_limit(request, "detect-image", limit=30)
@@ -61,7 +61,7 @@ async def detect_from_frame(
     file: UploadFile = File(...),
     zone_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_roles("admin", "safety_officer"))
 ):
     """ตรวจจับ PPE จากเฟรมกล้องแบบ realtime โดยไม่บันทึกลงประวัติทุกเฟรม"""
     enforce_rate_limit(request, "detect-frame", limit=120)
@@ -95,7 +95,7 @@ async def detect_from_video(
     file: UploadFile = File(...),
     zone_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_roles("admin", "safety_officer"))
 ):
     """อัปโหลดวิดีโอเพื่อตรวจจับ PPE"""
     enforce_rate_limit(request, "detect-video", limit=10)
@@ -140,7 +140,6 @@ async def get_detection_history(
     detections, total = service.get_detections(
         skip=skip,
         limit=per_page,
-        user_id=None if current_user.role in {"admin", "safety_officer"} else current_user.id,
         zone_id=zone_id,
         has_violation=has_violation
     )
@@ -162,10 +161,7 @@ async def get_detection_stats(
 ):
     """ดูสถิติการตรวจจับ"""
     service = DetectionService(db)
-    return service.get_stats(
-        user_id=None if current_user.role in {"admin", "safety_officer"} else current_user.id,
-        zone_id=zone_id,
-    )
+    return service.get_stats(zone_id=zone_id)
 
 
 @router.get("/analytics/daily")
@@ -180,7 +176,6 @@ async def get_daily_analytics(
     service = DetectionService(db)
     return service.get_daily_analytics(
         days=days,
-        user_id=None if current_user.role in {"admin", "safety_officer"} else current_user.id,
         start_date=start_date,
         end_date=end_date
     )
@@ -195,10 +190,7 @@ async def get_result_image(
     """ดูรูปภาพผลการตรวจจับ"""
     import os
 
-    query = db.query(Detection).filter(Detection.id == detection_id)
-    if current_user.role not in {"admin", "safety_officer"}:
-        query = query.filter(Detection.user_id == current_user.id)
-    detection = query.first()
+    detection = db.query(Detection).filter(Detection.id == detection_id).first()
 
     if detection is None or detection.result_image_path is None:
         raise HTTPException(
@@ -241,10 +233,7 @@ async def get_result_video(
     current_user: User = Depends(get_current_user),
 ):
     """ดูวิดีโอผลการตรวจจับ"""
-    query = db.query(Detection).filter(Detection.id == detection_id)
-    if current_user.role not in {"admin", "safety_officer"}:
-        query = query.filter(Detection.user_id == current_user.id)
-    detection = query.first()
+    detection = db.query(Detection).filter(Detection.id == detection_id).first()
     
     if detection is None or (detection.result_video_path is None and detection.result_image_path is None):
         raise HTTPException(
@@ -281,10 +270,7 @@ async def get_detection(
 ):
     """ดูรายละเอียดการตรวจจับ"""
     service = DetectionService(db)
-    detection = service.get_detection(
-        detection_id,
-        user_id=None if current_user.role in {"admin", "safety_officer"} else current_user.id,
-    )
+    detection = service.get_detection(detection_id)
     
     if detection is None:
         raise HTTPException(

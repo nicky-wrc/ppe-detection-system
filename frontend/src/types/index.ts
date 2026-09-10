@@ -1,8 +1,10 @@
+export type UserRole = 'admin' | 'safety_officer' | 'viewer'
+
 export interface User {
   id: number
   email: string
   full_name: string
-  role: string
+  role: UserRole
   is_active: boolean
   created_at: string
 }
@@ -92,6 +94,17 @@ export interface Alert {
   message?: string
   status: string
   created_at: string
+}
+
+export interface ActiveModelInfo {
+  version: string
+  filename: string
+  available: boolean
+  models: {
+    ppe: { filename: string; available: boolean }
+    person: { filename: string; available: boolean }
+  }
+  inference_device: string
 }
 
 export interface UserSettings {

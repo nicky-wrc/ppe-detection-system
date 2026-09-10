@@ -10,8 +10,9 @@ from sqlalchemy import func, cast, Date
 from datetime import timedelta, date as date_type
 from fastapi import UploadFile
 from app.core.config import settings
-from app.models import Detection, Alert, Zone, UserSettings
-from app.ml.detector import get_detector, ppe_sensitivity_to_confidence
+from app.models import Detection, Alert
+from app.ml.detector import get_detector
+from app.services.detection_preferences import resolve_detection_preferences
 from app.services.websocket_manager import ws_manager
 
 
@@ -44,28 +45,9 @@ class DetectionService:
         user_id: Optional[int],
         zone_id: Optional[int],
     ) -> tuple[list[str] | None, float | None, float | None]:
-        required_ppe: list[str] | None = None
-        if zone_id is not None:
-            zone = self.db.query(Zone).filter(Zone.id == zone_id, Zone.is_active.is_(True)).first()
-            if zone and isinstance(zone.required_ppe, list) and zone.required_ppe:
-                required_ppe = [item for item in zone.required_ppe if item in {"helmet", "safety-vest"}]
-
-        confidence: float | None = None
-        person_confidence: float | None = None
-        if user_id is not None:
-            user_settings = self.db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
-            if user_settings:
-                person_confidence = max(0.1, min(0.9, user_settings.confidence_threshold / 100))
-                confidence = ppe_sensitivity_to_confidence(user_settings.ppe_detection_sensitivity)
-                if required_ppe is None and user_settings.active_ppe_rules:
-                    active = [
-                        item
-                        for item in ("helmet", "safety-vest")
-                        if user_settings.active_ppe_rules.get(item, False)
-                    ]
-                    if active:
-                        required_ppe = active
-
+        required_ppe, confidence, person_confidence, _ = resolve_detection_preferences(
+            self.db, user_id, zone_id,
+        )
         return required_ppe, confidence, person_confidence
 
     async def process_image(
@@ -223,27 +205,22 @@ class DetectionService:
                     "violation_type": alert.alert_type,
                     "created_at": (alert.created_at or datetime.now()).isoformat(),
                 },
-                user_id=detection.user_id,
             )
 
-    def get_detection(self, detection_id: int, user_id: Optional[int] = None) -> Optional[Detection]:
-        query = self.db.query(Detection).filter(Detection.id == detection_id)
-        if user_id is not None:
-            query = query.filter(Detection.user_id == user_id)
-        return query.first()
+    def get_detection(self, detection_id: int) -> Optional[Detection]:
+        """Return a detection from the organization-wide shared dataset."""
+        return self.db.query(Detection).filter(Detection.id == detection_id).first()
 
     def get_detections(
         self,
         skip: int = 0,
         limit: int = 20,
-        user_id: Optional[int] = None,
         zone_id: Optional[int] = None,
         has_violation: Optional[bool] = None
     ) -> Tuple[List[Detection], int]:
+        """Return shared detection history; account ownership never scopes reads."""
         query = self.db.query(Detection)
-        if user_id is not None:
-            query = query.filter(Detection.user_id == user_id)
-        
+
         if zone_id is not None:
             query = query.filter(Detection.zone_id == zone_id)
         
@@ -255,11 +232,10 @@ class DetectionService:
         
         return detections, total
 
-    def get_stats(self, user_id: Optional[int] = None, zone_id: Optional[int] = None) -> dict:
+    def get_stats(self, zone_id: Optional[int] = None) -> dict:
+        """Aggregate organization-wide statistics for every authenticated role."""
         query = self.db.query(Detection)
-        if user_id is not None:
-            query = query.filter(Detection.user_id == user_id)
-        
+
         if zone_id is not None:
             query = query.filter(Detection.zone_id == zone_id)
         
@@ -294,7 +270,6 @@ class DetectionService:
     def get_daily_analytics(
         self,
         days: int = 7,
-        user_id: Optional[int] = None,
         start_date: Optional[date_type] = None,
         end_date: Optional[date_type] = None,
     ) -> dict:
@@ -332,9 +307,6 @@ class DetectionService:
                 Detection.created_at >= date_start,
                 Detection.created_at <= date_end
             )
-            if user_id is not None:
-                query = query.filter(Detection.user_id == user_id)
-            
             detections_count = query.count()
             stats = query.with_entities(
                 func.coalesce(func.sum(Detection.person_count), 0).label("persons"),
@@ -367,9 +339,6 @@ class DetectionService:
                     Detection.created_at >= hour_start,
                     Detection.created_at <= hour_end
                 )
-                if user_id is not None:
-                    q = q.filter(Detection.user_id == user_id)
-
                 detections_count = q.count()
                 stats = q.with_entities(
                     func.coalesce(func.sum(Detection.person_count), 0).label("persons"),

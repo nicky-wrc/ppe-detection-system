@@ -1,4 +1,4 @@
-# PPE Guard AI Frontend
+# PPE Detection System Frontend
 
 React 19 + TypeScript dashboard for PPE monitoring, camera operations, alert review, and safety reporting.
 

@@ -1,0 +1,60 @@
+@startuml
+title Activity Diagram — การเข้าสู่ระบบ
+
+' Compact layout for inserting into a portrait Word page.
+scale max 800*800
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam swimlaneWidth 135
+skinparam nodesep 5
+skinparam ranksep 7
+skinparam defaultFontSize 11
+skinparam titleFontSize 14
+skinparam ArrowColor #475569
+skinparam activity {
+  BackgroundColor #FFFFFF
+  BorderColor #64748B
+  FontColor #0F172A
+  FontSize 10
+  StartColor #0F172A
+  EndColor #0F172A
+  BarColor #64748B
+}
+
+|ผู้ใช้|
+start
+:เปิดหน้า Login;
+:กรอกอีเมลและรหัสผ่าน;
+:กดเข้าสู่ระบบ;
+
+|Web App|
+:ตรวจข้อมูลและส่ง\nPOST /auth/login;
+
+|Backend / Database|
+:ค้นหาผู้ใช้และตรวจรหัสผ่าน;
+if ("ข้อมูลถูกต้องหรือไม่?") then (ถูกต้อง)
+  :สร้าง JWT;
+
+  |Web App|
+  :บันทึก Token;
+  :ส่ง GET /auth/me;
+
+  |Backend / Database|
+  :ตรวจ Token และคืนโปรไฟล์;
+
+  |Web App|
+  :บันทึกข้อมูลผู้ใช้;
+  :เปิดหน้า Dashboard;
+
+  |ผู้ใช้|
+  :เริ่มใช้งานระบบ;
+else (ไม่ถูกต้อง)
+  |Web App|
+  :แสดงข้อความผิดพลาด;
+
+  |ผู้ใช้|
+  :แก้ไขข้อมูลและลองใหม่;
+endif
+
+stop
+@enduml

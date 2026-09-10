@@ -22,13 +22,20 @@ import { detectionService } from '../services/detection'
 import type { Detection } from '../types'
 import { saveDetectionPdf } from '../utils/detectionPdfReport'
 
-export function HistoryPage() {
+interface HistoryPageProps {
+  embedded?: boolean
+}
+
+type DetectionFilter = 'all' | 'violation' | 'compliant'
+
+export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
   const [detections, setDetections] = useState<Detection[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
+  const [activeFilter, setActiveFilter] = useState<DetectionFilter>('all')
   const [selectedDetection, setSelectedDetection] = useState<Detection | null>(null)
   const [downloadingId, setDownloadingId] = useState<number | null>(null)
   const historyRequestRef = useRef(0)
@@ -41,7 +48,8 @@ export function HistoryPage() {
     setLoading(true)
     setLoadError(false)
     try {
-      const data = await detectionService.getHistory(page, 12)
+      const hasViolation = activeFilter === 'all' ? undefined : activeFilter === 'violation'
+      const data = await detectionService.getHistory(page, 12, hasViolation)
       if (historyRequestRef.current !== requestId) return
       setDetections(data.items || [])
       setTotalPages(data.total_pages || 1)
@@ -53,7 +61,7 @@ export function HistoryPage() {
     } finally {
       if (historyRequestRef.current === requestId) setLoading(false)
     }
-  }, [page])
+  }, [activeFilter, page])
 
   useEffect(() => {
     void loadHistory()
@@ -64,6 +72,11 @@ export function HistoryPage() {
 
   const violationCount = detections.filter((detection) => detection.has_violation).length
   const complianceCount = detections.filter((detection) => !detection.has_violation).length
+
+  const setDetectionFilter = (filter: DetectionFilter) => {
+    setPage(1)
+    setActiveFilter(filter)
+  }
 
   const handleDownloadPdf = async (detectionId: number) => {
     setDownloadingId(detectionId)
@@ -79,16 +92,16 @@ export function HistoryPage() {
     }
   }
 
-  return (
-    <Layout>
-      <div className="mx-auto flex max-w-[1240px] flex-col gap-8 sm:gap-10">
-        <header className="page-heading">
+  const content = (
+    <>
+      <div className={`${embedded ? '' : 'mx-auto max-w-[1240px] '}flex flex-col gap-8 sm:gap-10`}>
+        {!embedded && <header className="page-heading">
           <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--ink)] text-white" aria-hidden="true">
             <ShieldCheck size={20} strokeWidth={1.8} />
           </div>
           <h1>Safety Reports &amp; Analytics</h1>
           <p className="max-w-3xl !mt-3 !text-[17px] !leading-[1.47]">Detection history and safety compliance records.</p>
-        </header>
+        </header>}
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6" aria-label="Detection summary">
           {[
@@ -107,6 +120,38 @@ export function HistoryPage() {
           ))}
         </section>
 
+        <section className="surface-card flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6" aria-label="ตัวกรองประวัติการตรวจจับ">
+          <div>
+            <h2 className="text-[18px] font-semibold tracking-[-0.01em] text-[var(--ink)]">ประวัติการตรวจจับ</h2>
+            <p className="mt-1 text-[14px] text-[var(--muted)]">เลือกดูเฉพาะรายการที่ต้องการตรวจสอบ</p>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="กรองผลการตรวจจับ">
+            {([
+              { label: 'ทั้งหมด', value: 'all' },
+              { label: 'พบการฝ่าฝืน', value: 'violation' },
+              { label: 'ปกติ', value: 'compliant' },
+            ] as { label: string; value: DetectionFilter }[]).map((filter) => {
+              const isActive = activeFilter === filter.value
+              return (
+                <button
+                  key={filter.value}
+                  type="button"
+                  onClick={() => setDetectionFilter(filter.value)}
+                  disabled={loading}
+                  aria-pressed={isActive}
+                  className={`min-h-11 shrink-0 rounded-full border px-5 text-[14px] font-semibold transition-colors active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${
+                    isActive
+                      ? 'border-[var(--blue)] bg-[var(--blue)] text-white'
+                      : 'border-[var(--line)] bg-white text-[var(--blue)] hover:bg-[#f5f5f7]'
+                  }`}
+                >
+                  {filter.label}
+                </button>
+              )
+            })}
+          </div>
+        </section>
+
         {loading && detections.length === 0 ? (
           <div className="surface-card flex min-h-72 items-center justify-center gap-3 text-[15px] text-[var(--muted)]" role="status">
             <Loader2 size={21} className="animate-spin text-[var(--blue)]" aria-hidden="true" />
@@ -122,8 +167,13 @@ export function HistoryPage() {
         ) : detections.length === 0 ? (
           <div className="surface-card flex min-h-72 flex-col items-center justify-center gap-4 px-6 text-center">
             <Clock size={30} className="text-[var(--muted)]" strokeWidth={1.5} aria-hidden="true" />
-            <p className="text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">No detection records yet</p>
-            <p className="max-w-sm text-[15px] leading-relaxed text-[var(--muted)]">Detection results will appear here after the system processes media or a camera feed.</p>
+            <p className="text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">{activeFilter === 'all' ? 'ยังไม่มีประวัติการตรวจจับ' : 'ไม่พบรายการตามตัวกรองนี้'}</p>
+            <p className="max-w-sm text-[15px] leading-relaxed text-[var(--muted)]">
+              {activeFilter === 'all' ? 'ผลการตรวจจับจะแสดงที่นี่หลังจากระบบประมวลผลรูปภาพ วิดีโอ หรือกล้อง' : 'ลองเลือกตัวกรองอื่นเพื่อดูประวัติที่มีอยู่'}
+            </p>
+            {activeFilter !== 'all' && (
+              <button type="button" onClick={() => setDetectionFilter('all')} className="btn-apple-secondary !min-h-11 text-[var(--blue)]">แสดงทั้งหมด</button>
+            )}
           </div>
         ) : (
           <section className="surface-card overflow-hidden" aria-labelledby="records-title">
@@ -388,6 +438,8 @@ export function HistoryPage() {
           </section>
         </div>
       )}
-    </Layout>
+    </>
   )
+
+  return embedded ? content : <Layout>{content}</Layout>
 }

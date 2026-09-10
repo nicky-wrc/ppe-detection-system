@@ -39,6 +39,7 @@ handler.setFormatter(
 )
 logging.basicConfig(level=logging.DEBUG if settings.DEBUG else logging.INFO, handlers=[handler], force=True)
 logger = logging.getLogger(__name__)
+DATA_ACCESS_POLICY = "organization-shared-read-v1"
 
 
 @asynccontextmanager
@@ -129,7 +130,11 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "environment": settings.ENVIRONMENT}
+    return {
+        "status": "healthy",
+        "environment": settings.ENVIRONMENT,
+        "data_access_policy": DATA_ACCESS_POLICY,
+    }
 
 
 @app.get("/ready")

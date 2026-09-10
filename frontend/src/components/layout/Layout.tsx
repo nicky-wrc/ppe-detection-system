@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Bell,
-  Camera,
+  // Camera,
   FileText,
   LayoutDashboard,
   LogOut,
@@ -19,18 +18,27 @@ import toast from 'react-hot-toast'
 import { camerasService } from '../../services/cameras'
 import { settingsService } from '../../services/settings'
 import { useAuthStore } from '../../stores/authStore'
+import type { UserRole } from '../../types'
 
 interface LayoutProps {
   children: React.ReactNode
 }
 
-const navItems = [
+interface NavItem {
+  path: string
+  icon: typeof LayoutDashboard
+  label: string
+  description: string
+  roles?: readonly UserRole[]
+}
+
+const navItems: NavItem[] = [
   { path: '/', icon: LayoutDashboard, label: 'Overview', description: 'Safety intelligence' },
-  { path: '/detection', icon: Camera, label: 'Detect', description: 'Analyze PPE media' },
-  { path: '/camera', icon: ScanLine, label: 'Cameras', description: 'Live edge monitoring' },
-  { path: '/reports', icon: FileText, label: 'Reports', description: 'Evidence and history' },
-  { path: '/alerts', icon: Bell, label: 'Alerts', description: 'Review safety events' },
-  { path: '/settings', icon: Settings, label: 'Settings', description: 'Detection preferences' },
+  // Detect page is temporarily hidden; uncomment this item to restore it.
+  // { path: '/detection', icon: Camera, label: 'Detect', description: 'Analyze PPE media' },
+  { path: '/detect', icon: ScanLine, label: 'Detect', description: 'Live edge monitoring', roles: ['admin', 'safety_officer'] },
+  { path: '/reports', icon: FileText, label: 'Reports & Alerts', description: 'Evidence, history and safety review' },
+  { path: '/settings', icon: Settings, label: 'Settings', description: 'Detection preferences', roles: ['admin', 'safety_officer'] },
 ]
 
 export function Layout({ children }: LayoutProps) {
@@ -40,26 +48,27 @@ export function Layout({ children }: LayoutProps) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
   const [alertSound, setAlertSound] = useState(false)
-  const visibleNavItems = user?.role === 'admin'
-    ? [...navItems, { path: '/admin/users', icon: Users, label: 'Users', description: 'Access management' }]
-    : navItems
+  const roleVisibleNavItems = navItems.filter((item) => (
+    !item.roles || (user ? item.roles.includes(user.role) : false)
+  ))
+  const visibleNavItems: NavItem[] = user?.role === 'admin'
+    ? [...roleVisibleNavItems, { path: '/admin/users', icon: Users, label: 'Users', description: 'Access management' }]
+    : roleVisibleNavItems
+  const isNavItemActive = (path: string) => (
+    location.pathname === path
+    || (path !== '/' && location.pathname.startsWith(path))
+    || (path === '/reports' && location.pathname.startsWith('/alerts'))
+  )
   const activeNavItem = visibleNavItems.find((item) => (
-    location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))
+    isNavItemActive(item.path)
   )) ?? visibleNavItems[0]
 
   useEffect(() => {
     if (!user) return
-    void settingsService.getMe().then((value) => setAlertSound(value.alert_sound)).catch(() => undefined)
+    return settingsService.subscribe(user.id, (value) => setAlertSound(value.alert_sound), () => {
+      toast.error('โหลดค่าเสียงเตือนไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อ', { id: 'settings-sync-error' })
+    })
   }, [user])
-
-  useEffect(() => {
-    const handleSettingsUpdate = (event: Event) => {
-      const detail = (event as CustomEvent<{ alertSound?: boolean }>).detail
-      if (typeof detail?.alertSound === 'boolean') setAlertSound(detail.alertSound)
-    }
-    window.addEventListener('ppe:settings-updated', handleSettingsUpdate)
-    return () => window.removeEventListener('ppe:settings-updated', handleSettingsUpdate)
-  }, [])
 
   useEffect(() => {
     if (!user) return
@@ -99,10 +108,10 @@ export function Layout({ children }: LayoutProps) {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <Link to="/" className="brand" aria-label="PPE Guard AI overview">
+        <Link to="/" className="brand" aria-label="PPE Detection System overview">
           <span className="brand-mark"><Shield size={20} /></span>
           <span className="brand-copy">
-            <strong>PPE Guard AI</strong>
+            <strong>PPE Detection System</strong>
             <small>Edge safety</small>
           </span>
         </Link>
@@ -120,7 +129,7 @@ export function Layout({ children }: LayoutProps) {
 
         <nav id="primary-navigation" className={`app-nav${isMobileNavOpen ? ' is-open' : ''}`} aria-label="Primary navigation">
           {visibleNavItems.map((item) => {
-            const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))
+            const isActive = isNavItemActive(item.path)
             return (
               <Link
                 key={item.path}
@@ -179,9 +188,28 @@ export function Layout({ children }: LayoutProps) {
         <div className="app-content">{children}</div>
       </main>
 
-      <footer className="app-footer">
-        <span><i /> Edge AI operational</span>
-        <span>Privacy-aware PPE monitoring · Hybrid YOLOv8m + YOLO11n</span>
+      <footer className="app-footer" aria-label="PPE Detection System footer">
+        <div className="app-footer-inner">
+          <div className="app-footer-brand">
+            <span className="app-footer-mark" aria-hidden="true"><Shield size={18} strokeWidth={1.8} /></span>
+            <span className="app-footer-copy">
+              <strong>PPE Detection System</strong>
+              <small>Privacy-aware edge safety monitoring</small>
+            </span>
+          </div>
+
+          <div className="app-footer-creators">
+            <span>Created by</span>
+            <strong>Nicky</strong>
+            <span>and</span>
+            <strong>Krit</strong>
+          </div>
+
+          <div className="app-footer-note">
+            <span>Hybrid YOLOv8m + YOLO11n</span>
+            <span>Safety-support system · Human review required</span>
+          </div>
+        </div>
       </footer>
     </div>
   )

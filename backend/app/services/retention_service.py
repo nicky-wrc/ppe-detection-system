@@ -30,6 +30,9 @@ def _safe_unlink(path_value: str | None, root: Path | None = None) -> bool:
 
 
 def purge_expired_evidence() -> int:
+    if not settings.EVIDENCE_RETENTION_ENABLED:
+        logger.info("Evidence cleanup is disabled; preserving existing files and metadata")
+        return 0
     cutoff = datetime.now(timezone.utc) - timedelta(days=settings.EVIDENCE_RETENTION_DAYS)
     db = SessionLocal()
     removed = 0
@@ -62,6 +65,9 @@ def purge_expired_evidence() -> int:
 
 
 async def retention_loop() -> None:
+    if not settings.EVIDENCE_RETENTION_ENABLED:
+        logger.info("Automatic evidence cleanup is disabled by configuration")
+        return
     while True:
         try:
             removed = await asyncio.to_thread(purge_expired_evidence)

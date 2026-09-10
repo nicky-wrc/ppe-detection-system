@@ -14,13 +14,13 @@ class EmailNotifier:
             return False
 
         message = EmailMessage()
-        message["Subject"] = f"[PPE Guard] {violation_type} at {camera_name}"
+        message["Subject"] = f"[PPE Detection System] {violation_type} at {camera_name}"
         message["From"] = settings.SMTP_FROM_EMAIL
         message["To"] = ", ".join(settings.alert_recipients_list)
         message.set_content(
             f"A PPE violation was confirmed.\n\n"
             f"Camera: {camera_name}\nViolation: {violation_type}\nEvent ID: {event_id}\n\n"
-            "Open the PPE Guard dashboard to review and acknowledge the evidence."
+            "Open the PPE Detection System dashboard to review and acknowledge the evidence."
         )
 
         with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as server:
@@ -35,11 +35,11 @@ class EmailNotifier:
         if not settings.SMTP_HOST or not settings.SMTP_FROM_EMAIL:
             return False
         message = EmailMessage()
-        message["Subject"] = "PPE Guard password reset code"
+        message["Subject"] = "PPE Detection System password reset code"
         message["From"] = settings.SMTP_FROM_EMAIL
         message["To"] = recipient
         message.set_content(
-            "A password reset was requested for your PPE Guard account.\n\n"
+            "A password reset was requested for your PPE Detection System account.\n\n"
             f"Reset code: {token}\n\nThis code expires in 15 minutes."
         )
         with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as server:

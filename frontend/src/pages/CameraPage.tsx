@@ -105,6 +105,7 @@ const drawDetectionOverlay = (
   naturalWidth: number,
   naturalHeight: number,
   det: Detection | null,
+  mirrored = false,
 ) => {
   if (!det?.persons || det.persons.length === 0) return
 
@@ -113,9 +114,12 @@ const drawDetectionOverlay = (
 
   det.persons.forEach((person) => {
     if (!person.bbox) return
-    const [x1, y1, x2, y2] = person.bbox.map((value: number, index: number) => (
-      index % 2 === 0 ? value * scaleX : value * scaleY
-    ))
+    const rawX1 = person.bbox[0] * scaleX
+    const y1 = person.bbox[1] * scaleY
+    const rawX2 = person.bbox[2] * scaleX
+    const y2 = person.bbox[3] * scaleY
+    const x1 = mirrored ? canvasWidth - rawX2 : rawX1
+    const x2 = mirrored ? canvasWidth - rawX1 : rawX2
     const color = person.is_compliant ? '#22c55e' : '#ef4444'
     const lineWidth = Math.max(2, canvasWidth / 300)
 
@@ -161,6 +165,25 @@ const drawDetectionOverlay = (
   ctx.fillStyle = '#fff'
   ctx.font = `600 ${Math.max(11, bannerHeight * 0.5)}px system-ui, -apple-system, sans-serif`
   ctx.fillText(message, 12, bannerHeight * 0.72)
+}
+
+const drawCameraFrame = (
+  ctx: CanvasRenderingContext2D,
+  video: HTMLVideoElement,
+  width: number,
+  height: number,
+  mirrored = false,
+) => {
+  if (!mirrored) {
+    ctx.drawImage(video, 0, 0, width, height)
+    return
+  }
+
+  ctx.save()
+  ctx.translate(width, 0)
+  ctx.scale(-1, 1)
+  ctx.drawImage(video, 0, 0, width, height)
+  ctx.restore()
 }
 
 const getCameraDeviceLabel = (device: CameraDeviceOption) => {
@@ -332,7 +355,8 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
   const clearStreakRef = useRef(0)
   const isPersistingViolationRef = useRef(false)
   const [status, setStatus] = useState<PreviewStatus>('waiting')
-  const [alertSoundEnabled, setAlertSoundEnabled] = useState(true)
+  const alertSoundEnabledRef = useRef(false)
+  const settingsUserId = useAuthStore((state) => state.user?.id)
   const [frameCount, setFrameCount] = useState(0)
   const [summary, setSummary] = useState<{ persons: number; violations: number; message: string }>({
     persons: 0,
@@ -341,18 +365,13 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
   })
 
   useEffect(() => {
-    void settingsService.getMe()
-      .then((settings) => setAlertSoundEnabled(settings.alert_sound))
-      .catch(() => undefined)
-
-    const handleSettingsUpdate = (event: Event) => {
-      const detail = (event as CustomEvent<{ alertSound?: boolean }>).detail
-      if (typeof detail?.alertSound === 'boolean') setAlertSoundEnabled(detail.alertSound)
-    }
-
-    window.addEventListener('ppe:settings-updated', handleSettingsUpdate)
-    return () => window.removeEventListener('ppe:settings-updated', handleSettingsUpdate)
-  }, [])
+    if (!settingsUserId) return
+    return settingsService.subscribe(settingsUserId, (settings) => {
+      alertSoundEnabledRef.current = settings.alert_sound
+    }, () => {
+      toast.error('โหลดค่าเสียงเตือนไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อ', { id: 'settings-sync-error' })
+    })
+  }, [settingsUserId])
 
   const renderLoop = useCallback(() => {
     const video = videoRef.current
@@ -367,8 +386,8 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
     if (canvas.height !== height) canvas.height = height
 
     if (video.videoWidth && video.videoHeight) {
-      ctx.drawImage(video, 0, 0, width, height)
-      drawDetectionOverlay(ctx, width, height, video.videoWidth, video.videoHeight, lastDetectionRef.current)
+      drawCameraFrame(ctx, video, width, height, true)
+      drawDetectionOverlay(ctx, width, height, video.videoWidth, video.videoHeight, lastDetectionRef.current, true)
 
       const badgeY = lastDetectionRef.current?.persons?.length ? 38 : 10
       ctx.fillStyle = 'rgba(220,38,38,0.88)'
@@ -478,7 +497,7 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
           violations: detection.violation_count,
           message: detection.summary?.message || (detection.has_violation ? 'พบการฝ่าฝืน PPE' : 'ไม่พบการฝ่าฝืน'),
         })
-        if (alertSoundEnabled && hasTargetPpeViolation(detection)) {
+        if (alertSoundEnabledRef.current && hasTargetPpeViolation(detection)) {
           const now = Date.now()
           const signature = getTargetPpeViolationSignature(detection)
           if (
@@ -506,7 +525,7 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
         if (sessionId === sessionRef.current) isFrameBusyRef.current = false
       }
     }, 'image/jpeg', 0.8)
-  }, [alertSoundEnabled, camera.zone_id, updateLiveViolationEpisode])
+  }, [camera.zone_id, updateLiveViolationEpisode])
 
   useEffect(() => {
     let mounted = true
@@ -747,12 +766,13 @@ function CameraPreview({ camera, deviceLabel, forceBrowserPreview = false }: { c
     : preview.status === 'stale'
       ? 'RECONNECTING'
       : preview.status.toUpperCase()
+  const shouldMirrorPreview = camera.source_type === 'usb'
 
   return (
     <div className="relative mt-5 aspect-video overflow-hidden rounded-[18px] border border-[#333336] bg-black">
       <video
         ref={videoRef}
-        className={`h-full w-full object-contain ${useBrowserPreview ? 'block' : 'hidden'}`}
+        className={`h-full w-full object-contain ${useBrowserPreview ? 'block' : 'hidden'} ${shouldMirrorPreview ? '-scale-x-100' : ''}`}
         playsInline
         muted
       />
@@ -760,12 +780,12 @@ function CameraPreview({ camera, deviceLabel, forceBrowserPreview = false }: { c
         <img
           src={streamUrl}
           alt={`Live preview from ${camera.name}`}
-          className="h-full w-full object-contain"
+          className={`h-full w-full object-contain ${shouldMirrorPreview ? '-scale-x-100' : ''}`}
           onLoad={() => setPreview({ url: null, status: 'live' })}
           onError={() => setStreamFailed(true)}
         />
       ) : !useBrowserPreview && preview.url ? (
-        <img src={preview.url} alt={`Live preview from ${camera.name}`} className="h-full w-full object-contain" />
+        <img src={preview.url} alt={`Live preview from ${camera.name}`} className={`h-full w-full object-contain ${shouldMirrorPreview ? '-scale-x-100' : ''}`} />
       ) : !useBrowserPreview ? (
         <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center text-[#cccccc]">
           {preview.status === 'waiting' ? <Loader2 size={26} className="animate-spin" aria-hidden="true" /> : <Camera size={28} aria-hidden="true" />}
@@ -791,7 +811,8 @@ function CameraPreview({ camera, deviceLabel, forceBrowserPreview = false }: { c
 export function CameraPage() {
   const user = useAuthStore((state) => state.user)
   const isAdmin = user?.role === 'admin'
-  const canViewPreview = user?.role === 'admin' || user?.role === 'safety_officer'
+  const canOperateCameras = user?.role === 'admin' || user?.role === 'safety_officer'
+  const canViewPreview = canOperateCameras
   const [cameras, setCameras] = useState<EdgeCamera[]>([])
   const [zones, setZones] = useState<Zone[]>([])
   const [loading, setLoading] = useState(true)
@@ -825,10 +846,12 @@ export function CameraPage() {
     try {
       setCameraPermissionError(null)
       const [backendDevices, browserDevices] = await Promise.all([
-        camerasService.devices().catch((error) => {
-          console.error('Backend camera device discovery failed:', error)
-          return [] as CameraDeviceOption[]
-        }),
+        isAdmin
+          ? camerasService.devices().catch((error) => {
+              console.error('Backend camera device discovery failed:', error)
+              return [] as CameraDeviceOption[]
+            })
+          : Promise.resolve([] as CameraDeviceOption[]),
         getBrowserCameraDevices().catch((error) => {
           console.error('Browser camera device discovery failed:', error)
           return [] as CameraDeviceOption[]
@@ -850,7 +873,7 @@ export function CameraPage() {
     } finally {
       setIsRefreshingDevices(false)
     }
-  }, [applyCameraDevices])
+  }, [applyCameraDevices, isAdmin])
 
   const load = useCallback(async (silent = false) => {
     const requestId = loadRequestRef.current + 1
@@ -1119,10 +1142,14 @@ export function CameraPage() {
         <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="page-heading max-w-3xl">
             <h1>กล้องตรวจจับหน้างาน</h1>
-            <p className="max-w-2xl text-[17px] leading-7">จัดการกล้องหน้างานที่เชื่อมต่อกับอุปกรณ์ backend พร้อม live preview ที่ยืนยันตัวตนและเก็บภาพไว้ในหน่วยความจำเท่านั้น</p>
+            <p className="max-w-2xl text-[17px] leading-7">
+              {isAdmin
+                ? 'ลงทะเบียนและควบคุมกล้องหน้างาน พร้อม live preview ที่ยืนยันตัวตนและเก็บภาพไว้ในหน่วยความจำเท่านั้น'
+                : 'ตรวจสอบ ทดสอบ เริ่ม และหยุดการตรวจจับจากกล้องที่ผู้ดูแลระบบลงทะเบียนไว้'}
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {isAdmin && cameras.length > 0 && (
+            {canOperateCameras && cameras.length > 0 && (
               <button
                 type="button"
                 onClick={() => void runBulkAction('stop')}
@@ -1350,7 +1377,7 @@ export function CameraPage() {
 
                   {shouldShowBackendError && <p className="mb-0 mt-4 rounded-[18px] border border-[#f0c3c8] bg-[#fff8f8] px-4 py-3 text-[13px] leading-5 text-[#b4232f]" role="alert">{camera.last_error}</p>}
 
-                  {isAdmin && (
+                  {canOperateCameras && (
                     <div className="mt-5 border-t border-[#e0e0e0] pt-5">
                       <div className="flex flex-wrap items-center gap-2">
                         {camera.is_active || isBrowserPreviewActive ? (
@@ -1362,15 +1389,17 @@ export function CameraPage() {
                             {busyAction === 'start' ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Play size={15} aria-hidden="true" />} Test & Start
                           </button>
                         )}
-                        <button
-                          type="button"
-                          title="ลบกล้องนี้ออกจากระบบ"
-                          onClick={() => void deleteCamera(camera)}
-                          disabled={isBusy || bulkAction !== null}
-                          className="ml-auto inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-[#f0c3c8] bg-white px-4 text-[14px] font-semibold text-[#b4232f] transition hover:bg-[#fff8f8] disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {busyAction === 'delete' ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Trash2 size={15} aria-hidden="true" />} Delete
-                        </button>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            title="ลบกล้องนี้ออกจากระบบ"
+                            onClick={() => void deleteCamera(camera)}
+                            disabled={isBusy || bulkAction !== null}
+                            className="ml-auto inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-[#f0c3c8] bg-white px-4 text-[14px] font-semibold text-[#b4232f] transition hover:bg-[#fff8f8] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {busyAction === 'delete' ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Trash2 size={15} aria-hidden="true" />} Delete
+                          </button>
+                        )}
                       </div>
                       {isUsbDeviceMissing && (
                         <p className="mb-0 mt-3 rounded-[18px] border border-[#ffd599] bg-[#fff9ed] px-4 py-3 text-[13px] leading-5 text-[#9a5b00]" role="alert">

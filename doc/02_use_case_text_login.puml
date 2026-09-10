@@ -1,0 +1,29 @@
+@startuml
+title Use Case Text — การเข้าสู่ระบบ
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontSize 11
+skinparam ArrowColor #475569
+skinparam usecase {
+  BackgroundColor #FFF7ED
+  BorderColor #F97316
+  FontColor #0F172A
+}
+
+actor "ผู้ใช้ระบบ" as User
+usecase "เข้าสู่ระบบ" as Login
+User --> Login
+
+legend bottom
+|= หัวข้อ |= รายละเอียด |
+| <b>Use case name</b> | เข้าสู่ระบบ |
+| <b>Description</b> | ผู้ใช้ยืนยันตัวตนด้วยอีเมลและรหัสผ่าน เพื่อรับ JWT และเข้าสู่หน้าที่มีการป้องกันสิทธิ์ |
+| <b>Actor</b> | Admin, Safety Officer, Viewer |
+| <b>Preconditions</b> | 1. มีบัญชีผู้ใช้ที่ยังเปิดใช้งานอยู่<br>2. ผู้ใช้อยู่ที่หน้า /login |
+| <b>Postconditions</b> | 1. เก็บ access token ใน localStorage<br>2. โหลดข้อมูลผู้ใช้เข้าสู่ auth store<br>3. นำผู้ใช้ไปยังหน้า Dashboard |
+| <b>Main Success Scenario</b> | 1. ผู้ใช้กรอกอีเมลและรหัสผ่าน<br>2. กดปุ่ม “เข้าสู่ Dashboard”<br>3. Web App ส่ง POST /api/v1/auth/login แบบ form-urlencoded<br>4. API ตรวจสอบอัตราคำขอ ค้นหาบัญชี และตรวจรหัสผ่าน<br>5. API สร้างและคืน JWT<br>6. Web App บันทึก token และส่ง GET /api/v1/auth/me<br>7. API คืนโปรไฟล์ผู้ใช้<br>8. Web App แสดงข้อความสำเร็จและเปิด Dashboard |
+| <b>Alternate / Exception</b> | 1. กรอกข้อมูลไม่ครบ: browser ระงับการส่งฟอร์ม<br>2. อีเมลหรือรหัสผ่านผิด หรือบัญชีไม่ active: API คืน 401 และแสดงข้อความผิดพลาด<br>3. คำขอเกินกำหนด: API ปฏิเสธตาม rate limit<br>4. โหลด /auth/me ไม่สำเร็จหรือ token หมดอายุ: ล้าง token และกลับหน้า Login |
+endlegend
+
+@enduml

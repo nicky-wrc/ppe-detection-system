@@ -5,6 +5,7 @@ import { detectionService } from '../services/detection'
 import { alertsService } from '../services/alerts'
 import { camerasService } from '../services/cameras'
 import { ProtectedDetectionImage } from '../components/ui/ProtectedDetectionImage'
+import { useAuthStore } from '../stores/authStore'
 import type { Alert, DetectionStats, Detection } from '../types'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
@@ -174,12 +175,15 @@ function pdfAddImageFitWidth(
 }
 
 export function DashboardPage() {
+  const canOperateDetection = useAuthStore((state) => (
+    state.user?.role === 'admin' || state.user?.role === 'safety_officer'
+  ))
   const [stats, setStats] = useState<DetectionStats | null>(null)
   const [violations, setViolations] = useState<ViolationRow[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [activeCameras, setActiveCameras] = useState(0)
-  const [activeFilter, setActiveFilter] = useState<string>('Today')
+  const [activeFilter, setActiveFilter] = useState<string>('30 days')
   const [customStartDate, setCustomStartDate] = useState<string>('')
   const [customEndDate, setCustomEndDate] = useState<string>('')
   const [dailyData, setDailyData] = useState<{ name: string; value: number; compliance?: number }[]>([])
@@ -615,7 +619,7 @@ export function DashboardPage() {
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-8 lg:gap-12">
         <header className="page-heading max-w-[760px]">
           <h1>ภาพรวมความปลอดภัย</h1>
-          <p>ติดตามสถานะกล้อง การตรวจจับ และแนวโน้มการปฏิบัติตาม PPE จากที่เดียว</p>
+          <p>ติดตามสถานะกล้อง การตรวจจับ และแนวโน้ม PPE จากข้อมูลส่วนกลางของทุกบัญชี</p>
         </header>
 
         <section className="overflow-hidden bg-[#272729] text-white" aria-labelledby="safety-hero-title">
@@ -636,16 +640,23 @@ export function DashboardPage() {
                 สำหรับตรวจหมวกนิรภัยและเสื้อสะท้อนแสงจากกล้องหน้างาน
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
-                <button type="button" className="btn-apple-primary min-h-11 px-5 text-[15px]" onClick={() => navigate('/camera')}>
-                  <Camera size={17} aria-hidden="true" /> เปิดกล้องตรวจจับ
-                </button>
-                <button
+                {canOperateDetection ? (
+                  <button type="button" className="btn-apple-primary min-h-11 px-5 text-[15px]" onClick={() => navigate('/detect')}>
+                    <Camera size={17} aria-hidden="true" /> เปิดกล้องตรวจจับ
+                  </button>
+                ) : (
+                  <button type="button" className="btn-apple-primary min-h-11 px-5 text-[15px]" onClick={() => navigate('/reports')}>
+                    <Eye size={17} aria-hidden="true" /> ดูรายงานและหลักฐาน
+                  </button>
+                )}
+                {/* Detect upload page is temporarily hidden; keep this action for easy restoration. */}
+                {/* <button
                   type="button"
                   className="btn-apple-secondary min-h-11 !border-[#2997ff] !bg-transparent px-5 text-[15px] !text-[#2997ff]"
                   onClick={() => navigate('/detection')}
                 >
                   <Activity size={17} aria-hidden="true" /> ทดสอบภาพหรือวิดีโอ
-                </button>
+                </button> */}
               </div>
             </div>
             <div className="rounded-[18px] border border-white/15 bg-[#272729] p-6 sm:p-8">

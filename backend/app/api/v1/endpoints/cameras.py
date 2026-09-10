@@ -284,10 +284,8 @@ async def delete_camera(
 async def test_camera(
     camera_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("admin", "safety_officer")),
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Administrator role required")
     camera = _get_camera_or_404(db, camera_id, current_user)
     return await _run_camera_probe(test_camera_source, camera)
 
@@ -296,10 +294,8 @@ async def test_camera(
 async def start_camera(
     camera_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("admin", "safety_officer")),
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Administrator role required")
     camera = _get_camera_or_404(db, camera_id, current_user)
     camera.is_active = True
     camera.last_error = None
@@ -313,10 +309,8 @@ async def start_camera(
 async def stop_camera(
     camera_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles("admin", "safety_officer")),
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Administrator role required")
     camera = _get_camera_or_404(db, camera_id, current_user)
     camera.is_active = False
     camera.is_online = False

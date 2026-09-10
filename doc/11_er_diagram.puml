@@ -1,0 +1,209 @@
+@startuml
+title ER Diagram — PPE Dectection System (Current Database Model)
+
+hide circle
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam linetype ortho
+skinparam defaultFontSize 9
+skinparam ArrowColor #475569
+skinparam entity {
+  BackgroundColor #F8FAFC
+  BorderColor #475569
+  FontColor #0F172A
+}
+
+entity "users" as users {
+  * id : INTEGER <<PK>>
+  --
+  * email : VARCHAR(255) <<UQ>>
+  * hashed_password : VARCHAR(255)
+  * full_name : VARCHAR(255)
+  role : VARCHAR(50)
+  is_active : BOOLEAN
+  reset_token_hash : VARCHAR(255)
+  reset_token_expires_at : DATETIME
+  created_at : DATETIME
+  updated_at : DATETIME
+}
+
+entity "user_settings" as user_settings {
+  * id : INTEGER <<PK>>
+  --
+  * user_id : INTEGER <<FK, UQ>>
+  alert_sound : BOOLEAN
+  save_evidence : BOOLEAN
+  confidence_threshold : INTEGER
+  ppe_detection_sensitivity : INTEGER
+  active_ppe_rules : JSON
+  created_at : DATETIME
+  updated_at : DATETIME
+}
+
+entity "zones" as zones {
+  * id : INTEGER <<PK>>
+  --
+  * name : VARCHAR(255)
+  description : TEXT
+  polygon_points : JSON
+  required_ppe : JSON
+  rules_config : JSON
+  is_active : BOOLEAN
+  risk_level : VARCHAR(20)
+  total_violations : INTEGER
+  created_at : DATETIME
+  updated_at : DATETIME
+}
+
+entity "cameras" as cameras {
+  * id : INTEGER <<PK>>
+  --
+  owner_id : INTEGER <<FK>>
+  * name : VARCHAR(100)
+  * source_type : VARCHAR(20)
+  device_index : INTEGER
+  rtsp_url : VARCHAR(500)
+  location : VARCHAR(200)
+  zone_id : INTEGER <<FK>>
+  is_active : BOOLEAN
+  is_online : BOOLEAN
+  last_seen : DATETIME
+  started_at : DATETIME
+  last_error : TEXT
+  measured_fps : FLOAT
+  frames_analyzed : INTEGER
+  config : JSON
+  created_at : DATETIME
+  updated_at : DATETIME
+}
+
+entity "detections" as detections {
+  * id : INTEGER <<PK>>
+  --
+  user_id : INTEGER <<FK>>
+  zone_id : INTEGER <<FK>>
+  * original_image_path : VARCHAR(500)
+  result_image_path : VARCHAR(500)
+  result_video_path : VARCHAR(500)
+  detected_objects : JSON
+  persons : JSON
+  violations : JSON
+  person_count : INTEGER
+  violation_count : INTEGER
+  has_violation : BOOLEAN
+  processing_time_ms : FLOAT
+  summary : JSON
+  created_at : DATETIME
+}
+
+entity "violation_logs" as violation_logs {
+  * id : INTEGER <<PK>>
+  --
+  user_id : INTEGER <<FK>>
+  camera_id : INTEGER <<FK>>
+  zone_id : INTEGER <<FK>>
+  detection_id : INTEGER <<FK>>
+  * violation_type : VARCHAR(50)
+  track_id : INTEGER
+  confidence_score : INTEGER
+  person_count : INTEGER
+  snapshot_path : VARCHAR(500)
+  evidence_clip_path : VARCHAR(500)
+  bbox_data : JSON
+  model_version : VARCHAR(100)
+  status : VARCHAR(20)
+  acknowledged_by : INTEGER <<FK users.id>>
+  acknowledged_at : DATETIME
+  resolved_by : INTEGER <<FK users.id>>
+  resolved_at : DATETIME
+  notes : TEXT
+  first_seen : DATETIME
+  last_seen : DATETIME
+  created_at : DATETIME
+}
+
+entity "alerts" as alerts {
+  * id : INTEGER <<PK>>
+  --
+  * detection_id : INTEGER <<FK>>
+  violation_log_id : INTEGER <<FK>>
+  * alert_type : VARCHAR(100)
+  message : VARCHAR(500)
+  status : VARCHAR(50)
+  acknowledged_by : INTEGER <<FK users.id>>
+  acknowledged_at : DATETIME
+  resolved_by : INTEGER <<FK users.id>>
+  resolved_at : DATETIME
+  resolution_note : TEXT
+  created_at : DATETIME
+}
+
+entity "alert_deliveries" as alert_deliveries {
+  * id : INTEGER <<PK>>
+  --
+  * alert_id : INTEGER <<FK>>
+  * channel : VARCHAR(30)
+  recipients : JSON
+  * status : VARCHAR(30)
+  attempts : INTEGER
+  last_error : TEXT
+  sent_at : DATETIME
+  created_at : DATETIME
+}
+
+entity "safety_rules" as safety_rules {
+  * id : INTEGER <<PK>>
+  --
+  * name : VARCHAR(100)
+  * code : VARCHAR(50) <<UQ>>
+  description : TEXT
+  * ppe_type : VARCHAR(50)
+  is_active : BOOLEAN
+  severity : VARCHAR(20)
+  created_at : DATETIME
+}
+
+entity "daily_stats" as daily_stats {
+  * id : INTEGER <<PK>>
+  --
+  * date : DATETIME <<UQ>>
+  total_detections : INTEGER
+  total_persons : INTEGER
+  total_violations : INTEGER
+  no_hardhat_count : INTEGER
+  no_vest_count : INTEGER
+  no_mask_count : INTEGER
+  other_violations : INTEGER
+  compliance_rate : INTEGER
+  zone_stats : JSON
+  created_at : DATETIME
+  updated_at : DATETIME
+}
+
+users ||--o| user_settings : "has"
+users |o--o{ cameras : "owns"
+users |o--o{ detections : "submits"
+users |o--o{ violation_logs : "creates / reviews"
+users |o--o{ alerts : "acknowledges / resolves"
+
+zones |o--o{ cameras : "contains"
+zones |o--o{ detections : "applies rules to"
+zones |o--o{ violation_logs : "groups"
+
+cameras |o--o{ violation_logs : "produces"
+detections |o--o{ violation_logs : "references"
+detections ||--o{ alerts : "generates"
+violation_logs |o--o{ alerts : "links"
+alerts ||--o{ alert_deliveries : "delivers through"
+
+note right of safety_rules
+ตารางกฎกลางใน schema ปัจจุบัน
+ยังไม่มี Foreign Key ไปยัง zones
+end note
+
+note right of daily_stats
+ตารางสรุปรายวันใน schema ปัจจุบัน
+ไม่มี Foreign Key โดยตรง
+end note
+
+@enduml

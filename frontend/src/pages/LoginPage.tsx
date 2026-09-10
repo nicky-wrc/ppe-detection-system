@@ -59,7 +59,7 @@ export function LoginPage() {
               <div className="flex h-9 w-9 items-center justify-center rounded-[8px] border border-white/15 bg-[#272729]">
                 <Shield size={18} aria-hidden="true" />
               </div>
-              PPE Guard AI
+              PPE Detection System
             </div>
             <p className="!m-0 !max-w-none !text-[13px] font-semibold tracking-[0.08em] !text-white/55 uppercase">Industrial safety intelligence</p>
             <h1
@@ -87,9 +87,14 @@ export function LoginPage() {
             </div>
           </div>
 
-          <p className="!m-0 !max-w-[620px] border-t border-white/15 pt-6 !text-[12px] !leading-[1.6] !text-white/60">
-            ระบบสนับสนุนการกำกับดูแลความปลอดภัย ไม่สามารถทดแทนขั้นตอนความปลอดภัยและการตรวจสอบโดยมนุษย์
-          </p>
+          <footer className="flex max-w-[620px] flex-col gap-3 border-t border-white/15 pt-6 text-white/60 sm:flex-row sm:items-end sm:justify-between sm:gap-8">
+            <p className="!m-0 !max-w-[430px] !text-[12px] !leading-[1.6] !text-inherit">
+              ระบบสนับสนุนการกำกับดูแลความปลอดภัย ไม่สามารถทดแทนขั้นตอนความปลอดภัยและการตรวจสอบโดยมนุษย์
+            </p>
+            <p className="!m-0 shrink-0 !text-[12px] !leading-[1.6] !text-white/75">
+              Created by <strong className="font-semibold text-white">Nicky</strong> and <strong className="font-semibold text-white">Krit</strong>
+            </p>
+          </footer>
         </div>
       </section>
 
@@ -98,7 +103,7 @@ export function LoginPage() {
           <div className="mb-9">
             <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-black/8 bg-[#f5f5f7] px-3.5 py-2">
               <Shield className="h-4 w-4 text-[#1d1d1f]" aria-hidden="true" />
-              <span className="text-[12px] font-semibold tracking-[0.02em] text-[#424245]">PPE Guard AI</span>
+              <span className="text-[12px] font-semibold tracking-[0.02em] text-[#424245]">PPE Detection System</span>
             </div>
             <h2 id="login-form-title" className="mb-3 text-[clamp(34px,4vw,42px)] font-semibold leading-[1.08] tracking-[-0.035em] text-[#1d1d1f]">ยินดีต้อนรับ</h2>
             <p className="text-[17px] font-normal leading-[1.47] tracking-[-0.01em] text-[#6e6e73]">เข้าสู่ศูนย์ควบคุมความปลอดภัยด้วยบัญชีที่ผู้ดูแลระบบออกให้</p>

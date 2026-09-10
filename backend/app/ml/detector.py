@@ -701,7 +701,7 @@ class PPEDetector:
         if self.ppe_model is None:
             return self._empty_result()
 
-        required = required_ppe or DEFAULT_REQUIRED_PPE
+        required = DEFAULT_REQUIRED_PPE if required_ppe is None else required_ppe
         ppe_confidence = max(
             0.05,
             min(0.95, confidence_threshold if confidence_threshold is not None else settings.CONFIDENCE_THRESHOLD),
