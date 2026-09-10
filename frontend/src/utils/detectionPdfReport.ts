@@ -26,6 +26,17 @@ function formatPpeList(items: string[] | undefined): string {
   return items.map((k) => PPE_LABEL_TH[k] || k).join(', ')
 }
 
+function formatViolationLabel(value: string): string {
+  const normalized = value.trim().toLowerCase()
+  if (normalized === 'no_helmet' || normalized === 'no_hardhat' || normalized.includes('helmet') || normalized.includes('hardhat')) {
+    return 'ไม่สวมหมวกนิรภัย'
+  }
+  if (normalized === 'no_safety_vest' || normalized === 'no_vest' || normalized.includes('vest')) {
+    return 'ไม่สวมเสื้อสะท้อนแสง'
+  }
+  return value
+}
+
 function drawToJpegDataUrl(
   source: ImageBitmap | HTMLImageElement,
   maxW: number,
@@ -108,11 +119,13 @@ function buildReportHtml(
     dateStyle: 'long',
     timeStyle: 'short',
   })
-  const types = detection.violations?.filter(Boolean) ?? []
+  const types = (detection.violations?.filter(Boolean) ?? []).map(formatViolationLabel)
   const summaryMsg =
     types.length > 0
       ? `ตรวจพบ: ${types.join(' และ ')}`
       : (detection.summary?.message || '')
+  const isPersonOnly = detection.summary?.status === 'person_only' || detection.summary?.settings?.ppe_check_enabled === false
+  const settingsSummary = detection.summary?.settings
 
   const persons = detection.persons || []
   const personRows = persons
@@ -131,6 +144,8 @@ function buildReportHtml(
 
   const statusTh = detection.has_violation
     ? 'พบการฝ่าฝืน (Non-compliant)'
+    : isPersonOnly
+      ? 'ตรวจพบบุคคลเท่านั้น (PPE rules disabled)'
     : 'สอดคล้องตามข้อกำหนด (Compliant)'
 
   let evidenceBlock = ''
@@ -176,6 +191,15 @@ function buildReportHtml(
     ${
       summaryMsg
         ? `<div class="summary-box"><span class="k">ข้อความสรุปจากระบบ</span><br/>${esc(summaryMsg)}</div>`
+        : ''
+    }
+    ${
+      settingsSummary
+        ? `<div class="summary-box"><span class="k">การตั้งค่าที่ใช้ตอนตรวจจับ</span><br/>
+          ${esc(settingsSummary.detection_mode)}<br/>
+          กฎ PPE: ${esc(settingsSummary.ppe_rules_label)}<br/>
+          เกณฑ์: ${esc(settingsSummary.confidence_settings)}
+        </div>`
         : ''
     }
 

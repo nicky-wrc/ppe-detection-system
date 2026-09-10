@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle,
   CalendarDays,
@@ -28,7 +29,11 @@ interface HistoryPageProps {
 }
 
 type MissingPpeFilter = '' | 'helmet' | 'vest' | 'both'
+type PpeFilterMode = '' | 'missing' | 'detected'
 type DateSelection = 'start' | 'end'
+
+const REPORTS_FILTER_STORAGE_KEY = 'ppe_reports_filter_query'
+const REPORTS_FILTER_PARAMS = ['result', 'missing_ppe', 'start_date', 'end_date', 'page']
 
 const todayDate = () => {
   const now = new Date()
@@ -49,23 +54,110 @@ const displayDate = (value: string) => value
   ? dateFromValue(value).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
   : 'เลือกวัน'
 
-const isSameDate = (left: Date, right: Date) => (
-  left.getFullYear() === right.getFullYear()
-  && left.getMonth() === right.getMonth()
-  && left.getDate() === right.getDate()
+const isReportFilterMode = (value: string | null): value is PpeFilterMode => (
+  value === '' || value === 'missing' || value === 'detected'
 )
 
+const isMissingPpeFilter = (value: string | null): value is MissingPpeFilter => (
+  value === '' || value === 'helmet' || value === 'vest' || value === 'both'
+)
+
+const hasReportsFilterParams = (params: URLSearchParams) => (
+  REPORTS_FILTER_PARAMS.some((name) => params.has(name))
+)
+
+const safeDateParam = (value: string | null) => (
+  value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : ''
+)
+
+const readReportsFilterParams = (params: URLSearchParams) => {
+  const result = params.get('result')
+  const mode: PpeFilterMode = isReportFilterMode(result) ? result : ''
+  const rawMissingPpe = params.get('missing_ppe')
+  const missingPpe: MissingPpeFilter = mode === 'missing' && isMissingPpeFilter(rawMissingPpe) ? rawMissingPpe : ''
+  const parsedPage = Number(params.get('page') || 1)
+
+  return {
+    startDate: safeDateParam(params.get('start_date')),
+    endDate: safeDateParam(params.get('end_date')),
+    page: Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1,
+    ppeFilterMode: mode,
+    missingPpe,
+  }
+}
+
+const buildReportsFilterParams = ({
+  startDate,
+  endDate,
+  page,
+  ppeFilterMode,
+  missingPpe,
+}: {
+  startDate: string
+  endDate: string
+  page: number
+  ppeFilterMode: PpeFilterMode
+  missingPpe: MissingPpeFilter
+}) => {
+  const params = new URLSearchParams()
+  if (startDate) params.set('start_date', startDate)
+  if (endDate) params.set('end_date', endDate)
+  if (ppeFilterMode) params.set('result', ppeFilterMode)
+  if (ppeFilterMode === 'missing' && missingPpe) params.set('missing_ppe', missingPpe)
+  if (page > 1) params.set('page', String(page))
+  return params
+}
+
+const isPersonOnlyDetection = (detection: Detection) => (
+  detection.summary?.status === 'person_only'
+  || detection.summary?.settings?.ppe_check_enabled === false
+)
+
+const reportTag = (detection: Detection) => {
+  if (detection.violations && detection.violations.length > 0) return null
+  return isPersonOnlyDetection(detection) ? 'ตรวจพบบุคคล' : 'สวมใส่ครบถ้วน'
+}
+
+const reportStatus = (detection: Detection) => {
+  if (detection.has_violation) return 'Violation'
+  return isPersonOnlyDetection(detection) ? 'Person only' : 'Compliant'
+}
+
+const formatViolationLabel = (value: string) => {
+  const normalized = value.trim().toLowerCase()
+  if (normalized === 'no_helmet' || normalized === 'no_hardhat' || normalized.includes('helmet') || normalized.includes('hardhat')) {
+    return 'ไม่สวมหมวกนิรภัย'
+  }
+  if (normalized === 'no_safety_vest' || normalized === 'no_vest' || normalized.includes('vest')) {
+    return 'ไม่สวมเสื้อสะท้อนแสง'
+  }
+  return value
+}
+
 export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialFilterQueryRef = useRef<string | null>(null)
+  const restoredStoredFilterRef = useRef(false)
+  if (initialFilterQueryRef.current === null) {
+    const hasUrlFilter = hasReportsFilterParams(searchParams)
+    let initialQuery = hasUrlFilter ? searchParams.toString() : ''
+    if (!initialQuery && typeof window !== 'undefined') {
+      initialQuery = window.sessionStorage.getItem(REPORTS_FILTER_STORAGE_KEY) || ''
+    }
+    restoredStoredFilterRef.current = Boolean(initialQuery && !hasUrlFilter)
+    initialFilterQueryRef.current = initialQuery
+  }
+  const initialFilters = readReportsFilterParams(new URLSearchParams(initialFilterQueryRef.current))
   const [detections, setDetections] = useState<Detection[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
-  const [page, setPage] = useState(1)
+  const [page, setPage] = useState(initialFilters.page)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [missingPpe, setMissingPpe] = useState<MissingPpeFilter>('')
-  const [detectedPpe, setDetectedPpe] = useState<MissingPpeFilter>('')
+  const [startDate, setStartDate] = useState(initialFilters.startDate)
+  const [endDate, setEndDate] = useState(initialFilters.endDate)
+  const [ppeFilterMode, setPpeFilterMode] = useState<PpeFilterMode>(initialFilters.ppeFilterMode)
+  const [missingPpe, setMissingPpe] = useState<MissingPpeFilter>(initialFilters.missingPpe)
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
   const [dateSelection, setDateSelection] = useState<DateSelection>('start')
   const [calendarMonth, setCalendarMonth] = useState(() => {
@@ -79,17 +171,45 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
   const closeDetectionDetail = useCallback(() => setSelectedDetection(null), [])
   const detectionDialogRef = useDialogFocus<HTMLElement>(Boolean(selectedDetection), closeDetectionDetail)
 
+  useEffect(() => {
+    if (!hasReportsFilterParams(searchParams) && restoredStoredFilterRef.current) {
+      restoredStoredFilterRef.current = false
+      return
+    }
+    const next = readReportsFilterParams(searchParams)
+    setStartDate((current) => current === next.startDate ? current : next.startDate)
+    setEndDate((current) => current === next.endDate ? current : next.endDate)
+    setPpeFilterMode((current) => current === next.ppeFilterMode ? current : next.ppeFilterMode)
+    setMissingPpe((current) => current === next.missingPpe ? current : next.missingPpe)
+    setPage((current) => current === next.page ? current : next.page)
+  }, [searchParams])
+
+  useEffect(() => {
+    const params = buildReportsFilterParams({ startDate, endDate, page, ppeFilterMode, missingPpe })
+    const nextQuery = params.toString()
+    if (typeof window !== 'undefined') {
+      if (nextQuery) window.sessionStorage.setItem(REPORTS_FILTER_STORAGE_KEY, nextQuery)
+      else window.sessionStorage.removeItem(REPORTS_FILTER_STORAGE_KEY)
+    }
+    if (nextQuery !== searchParams.toString()) {
+      setSearchParams(params, { replace: true })
+    }
+  }, [endDate, missingPpe, page, ppeFilterMode, searchParams, setSearchParams, startDate])
+
   const loadHistory = useCallback(async () => {
     const requestId = historyRequestRef.current + 1
     historyRequestRef.current = requestId
     setLoading(true)
     setLoadError(false)
+    const activeMissingPpe = ppeFilterMode === 'missing' ? missingPpe : ''
+    const activeDetectedPpe = ppeFilterMode === 'detected' ? 'both' : ''
     try {
       const data = await detectionService.getHistory(page, 12, {
         startDate: startDate || undefined,
         endDate: endDate || undefined,
-        missingPpe: missingPpe || undefined,
-        detectedPpe: detectedPpe || undefined,
+        hasViolation: ppeFilterMode === 'missing' ? true : undefined,
+        missingPpe: activeMissingPpe || undefined,
+        detectedPpe: activeDetectedPpe || undefined,
       })
       if (historyRequestRef.current !== requestId) return
       setDetections(data.items || [])
@@ -102,7 +222,7 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
     } finally {
       if (historyRequestRef.current === requestId) setLoading(false)
     }
-  }, [detectedPpe, endDate, missingPpe, page, startDate])
+  }, [endDate, missingPpe, page, ppeFilterMode, startDate])
 
   useEffect(() => {
     void loadHistory()
@@ -123,23 +243,35 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
   const violationCount = detections.filter((detection) => detection.has_violation).length
   const complianceCount = detections.filter((detection) => !detection.has_violation).length
 
-  const updateFilters = (next: Partial<{ startDate: string; endDate: string; missingPpe: MissingPpeFilter; detectedPpe: MissingPpeFilter }>) => {
+  const updateFilters = (next: Partial<{ startDate: string; endDate: string; missingPpe: MissingPpeFilter }>) => {
     setPage(1)
     if (next.startDate !== undefined) setStartDate(next.startDate)
     if (next.endDate !== undefined) setEndDate(next.endDate)
-    if (next.missingPpe !== undefined) setMissingPpe(next.missingPpe)
-    if (next.detectedPpe !== undefined) setDetectedPpe(next.detectedPpe)
+    if (next.missingPpe !== undefined) {
+      setMissingPpe(next.missingPpe)
+    }
+  }
+
+  const updatePpeFilterMode = (mode: PpeFilterMode) => {
+    setPage(1)
+    setPpeFilterMode(mode)
+    if (mode === 'detected') {
+      setMissingPpe('')
+      return
+    }
+    if (mode === 'missing') return
+    setMissingPpe('')
   }
 
   const clearFilters = () => {
     setPage(1)
     setStartDate('')
     setEndDate('')
+    setPpeFilterMode('')
     setMissingPpe('')
-    setDetectedPpe('')
   }
 
-  const hasActiveFilters = Boolean(startDate || endDate || missingPpe || detectedPpe)
+  const hasActiveFilters = Boolean(startDate || endDate || ppeFilterMode || missingPpe)
   const today = todayDate()
   const todayCalendarDate = dateFromValue(today)
   const calendarDays = Array.from({ length: 42 }, (_, index) => {
@@ -213,7 +345,7 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
         <section className="surface-card flex flex-col gap-3 p-4" aria-label="ตัวกรองประวัติการตรวจจับ">
           <div>
             <h2 className="text-[16px] font-semibold text-[var(--ink)]">ตัวกรองประวัติการตรวจจับ</h2>
-            <p className="mt-0.5 text-[13px] text-[var(--muted)]">ค้นหาตามช่วงวัน อุปกรณ์ PPE ที่ตรวจพบ หรืออุปกรณ์ที่ตรวจไม่พบ</p>
+            <p className="mt-0.5 text-[13px] text-[var(--muted)]">ค้นหาตามช่วงวัน แล้วเลือกว่าจะดูรายการสวมใส่ครบถ้วนหรือรายการที่ตรวจไม่พบ PPE</p>
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <div ref={datePickerRef} className="relative flex min-w-0 flex-col gap-1 text-[12px] font-medium text-[var(--muted)]">
@@ -258,23 +390,33 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
               )}
             </div>
             <label className="flex min-w-0 flex-col gap-1 text-[12px] font-medium text-[var(--muted)]">
-              <span>ตรวจไม่พบ</span>
-              <select value={missingPpe} onChange={(event) => updateFilters({ missingPpe: event.target.value as MissingPpeFilter })} disabled={loading} className="min-h-10 rounded-lg border border-[var(--line)] bg-white px-3 text-[14px] text-[var(--ink)] outline-none focus:border-[var(--blue)] disabled:cursor-not-allowed disabled:opacity-50">
+              <span>ประเภทผลตรวจ</span>
+              <select value={ppeFilterMode} onChange={(event) => updatePpeFilterMode(event.target.value as PpeFilterMode)} disabled={loading} className="min-h-10 rounded-lg border border-[var(--line)] bg-white px-3 text-[14px] text-[var(--ink)] outline-none focus:border-[var(--blue)] disabled:cursor-not-allowed disabled:opacity-50">
                 <option value="">ทั้งหมด</option>
-                <option value="helmet">หมวกนิรภัย</option>
-                <option value="vest">เสื้อสะท้อนแสง</option>
-                <option value="both">ตรวจไม่พบทั้งคู่</option>
+                <option value="missing">ละเมิดการสวมใส่</option>
+                <option value="detected">สวมใส่ครบถ้วน</option>
               </select>
             </label>
-            <label className="flex min-w-0 flex-col gap-1 text-[12px] font-medium text-[var(--muted)]">
-              <span>ตรวจพบ</span>
-              <select value={detectedPpe} onChange={(event) => updateFilters({ detectedPpe: event.target.value as MissingPpeFilter })} disabled={loading} className="min-h-10 rounded-lg border border-[var(--line)] bg-white px-3 text-[14px] text-[var(--ink)] outline-none focus:border-[var(--blue)] disabled:cursor-not-allowed disabled:opacity-50">
-                <option value="">ทั้งหมด</option>
-                <option value="helmet">หมวกนิรภัย</option>
-                <option value="vest">เสื้อสะท้อนแสง</option>
-                <option value="both">ตรวจพบทั้งคู่</option>
-              </select>
-            </label>
+            {ppeFilterMode === 'missing' ? (
+              <label className="flex min-w-0 flex-col gap-1 text-[12px] font-medium text-[var(--muted)]">
+                <span>รายการที่ตรวจไม่พบ</span>
+                <select value={missingPpe} onChange={(event) => updateFilters({ missingPpe: event.target.value as MissingPpeFilter })} disabled={loading} className="min-h-10 rounded-lg border border-[var(--line)] bg-white px-3 text-[14px] text-[var(--ink)] outline-none focus:border-[var(--blue)] disabled:cursor-not-allowed disabled:opacity-50">
+                  <option value="">เลือก PPE ที่ตรวจไม่พบ</option>
+                  <option value="helmet">หมวกนิรภัย</option>
+                  <option value="vest">เสื้อสะท้อนแสง</option>
+                  <option value="both">ตรวจไม่พบทั้งคู่</option>
+                </select>
+              </label>
+            ) : ppeFilterMode === 'detected' ? (
+              <div className="flex min-w-0 flex-col gap-1 text-[12px] font-medium text-[var(--muted)]">
+                <span>รายการที่ตรวจพบ</span>
+                <div className="flex min-h-10 items-center rounded-lg border border-[#b9dfc2] bg-[#f3fbf5] px-3 text-[14px] font-semibold text-[#15803d]">
+                  สวมใส่ครบถ้วน
+                </div>
+              </div>
+            ) : (
+              <div className="hidden lg:block" aria-hidden="true" />
+            )}
             <div className="flex items-end">
               <button type="button" onClick={clearFilters} disabled={loading || !hasActiveFilters} className="btn-apple-secondary min-h-10 w-full text-[var(--blue)] disabled:cursor-not-allowed disabled:opacity-50">ล้างการเลือก</button>
             </div>
@@ -355,7 +497,7 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
                           <div className="flex flex-wrap gap-2">
                             {detection.violations.slice(0, 2).map((violation, violationIndex) => (
                               <span key={`${violation}-${violationIndex}`} className="inline-flex rounded-full border border-[#f0c3c8] bg-[#fff8f8] px-3 py-1.5 text-[12px] font-semibold text-[#d70015]">
-                                {violation}
+                                {formatViolationLabel(violation)}
                               </span>
                             ))}
                             {detection.violations.length > 2 && (
@@ -363,13 +505,27 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
                             )}
                           </div>
                         ) : (
-                          <span className="text-[var(--muted)]">—</span>
+                          <span className={`inline-flex rounded-full border px-3 py-1.5 text-[12px] font-semibold ${
+                            isPersonOnlyDetection(detection)
+                              ? 'border-[#c7d2fe] bg-[#eef2ff] text-[#1d4ed8]'
+                              : 'border-[#b9dfc2] bg-[#f3fbf5] text-[#15803d]'
+                          }`}>
+                            {reportTag(detection)}
+                          </span>
                         )}
                       </td>
                       <td className="px-6 py-4 align-middle">
-                        <span className={`inline-flex items-center gap-2 text-[13px] font-semibold ${detection.has_violation ? 'text-[#d70015]' : 'text-[#15803d]'}`}>
-                          <span className={`h-2 w-2 rounded-full ${detection.has_violation ? 'bg-[#d70015]' : 'bg-[#34c759]'}`} aria-hidden="true" />
-                          {detection.has_violation ? 'Violation' : 'Compliant'}
+                        <span className={`inline-flex items-center gap-2 text-[13px] font-semibold ${
+                          detection.has_violation
+                            ? 'text-[#d70015]'
+                            : isPersonOnlyDetection(detection) ? 'text-[#1d4ed8]' : 'text-[#15803d]'
+                        }`}>
+                          <span className={`h-2 w-2 rounded-full ${
+                            detection.has_violation
+                              ? 'bg-[#d70015]'
+                              : isPersonOnlyDetection(detection) ? 'bg-[#3b82f6]' : 'bg-[#34c759]'
+                          }`} aria-hidden="true" />
+                          {reportStatus(detection)}
                         </span>
                       </td>
                       <td className="px-6 py-4 align-middle sm:pr-8">
@@ -491,9 +647,11 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
                     <span className={`inline-flex rounded-full border px-3 py-1.5 text-[12px] font-semibold ${
                       selectedDetection.has_violation
                         ? 'border-[#f0c3c8] bg-[#fff8f8] text-[#d70015]'
-                        : 'border-[#b9dfc2] bg-[#f3fbf5] text-[#15803d]'
+                        : isPersonOnlyDetection(selectedDetection)
+                          ? 'border-[#c7d2fe] bg-[#eef2ff] text-[#1d4ed8]'
+                          : 'border-[#b9dfc2] bg-[#f3fbf5] text-[#15803d]'
                     }`}>
-                      {selectedDetection.has_violation ? 'Violation detected' : 'All compliant'}
+                      {selectedDetection.has_violation ? 'Violation detected' : isPersonOnlyDetection(selectedDetection) ? 'ตรวจพบบุคคลเท่านั้น' : 'ตรวจพบการสวมใส่ครบถ้วน'}
                     </span>
                   </div>
                   <div className="grid grid-cols-1 divide-y divide-[var(--line)] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
@@ -516,9 +674,29 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
                     <div className="flex flex-wrap gap-2">
                       {selectedDetection.violations.map((violation, index) => (
                         <span key={`${violation}-${index}`} className="inline-flex rounded-full border border-[#f0c3c8] bg-[#fff8f8] px-4 py-2 text-[13px] font-semibold text-[#d70015]">
-                          {violation.toUpperCase().includes('HELMET') ? 'Missing helmet' : violation.toUpperCase().includes('VEST') ? 'Missing vest' : violation}
+                          {formatViolationLabel(violation)}
                         </span>
                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {selectedDetection.summary?.settings && (
+                  <div className="rounded-[18px] border border-[var(--line)] p-5 sm:p-6">
+                    <p className="mb-4 text-[14px] font-semibold text-[var(--ink)]">Settings used</p>
+                    <div className="grid gap-3 text-[14px] sm:grid-cols-3">
+                      <div>
+                        <p className="text-[var(--muted)]">Mode</p>
+                        <p className="mt-1 font-semibold text-[var(--ink)]">{selectedDetection.summary.settings.detection_mode}</p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--muted)]">PPE rules</p>
+                        <p className="mt-1 font-semibold text-[var(--ink)]">{selectedDetection.summary.settings.ppe_rules_label}</p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--muted)]">Confidence</p>
+                        <p className="mt-1 font-semibold text-[var(--ink)]">{selectedDetection.summary.settings.confidence_settings}</p>
+                      </div>
                     </div>
                   </div>
                 )}

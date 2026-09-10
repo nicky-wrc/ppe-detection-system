@@ -430,7 +430,7 @@ export function DashboardPage() {
   }
 
   const renderTrend = (trend: DayTrend, favorableDirection: 'up' | 'down' | 'neutral') => {
-    const sub = <span className="font-normal text-[var(--muted)]">vs yesterday</span>
+    const sub = <span className="font-normal text-[var(--muted)]">from yesterday</span>
     const directionColor = (isUp: boolean) => {
       if (favorableDirection === 'neutral') return 'text-[#6e6e73]'
       return (isUp && favorableDirection === 'up') || (!isUp && favorableDirection === 'down')

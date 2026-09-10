@@ -36,6 +36,8 @@ const LIVE_CONFIRM_FRAMES = 2
 const LIVE_CLEAR_FRAMES = 2
 const LIVE_EVENT_COOLDOWN_MS = 60_000
 const LIVE_PERSIST_RETRY_MS = 10_000
+const LIVE_COMPLIANT_CONFIRM_FRAMES = 2
+const LIVE_COMPLIANT_REPORT_COOLDOWN_MS = 30_000
 const CAMERA_DEVICE_NOT_FOUND_MESSAGE = 'ไม่สามารถเปิดกล้องได้เนื่องจากตรวจไม่พบอุปกรณ์ โปรดทำการเชื่อมต่ออุปกรณ์อีกครั้ง'
 const BROWSER_PREVIEW_CONSTRAINTS = {
   width: { ideal: 1280 },
@@ -354,6 +356,10 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
   const violationStreakRef = useRef(0)
   const clearStreakRef = useRef(0)
   const isPersistingViolationRef = useRef(false)
+  const compliantStreakRef = useRef(0)
+  const lastCompliantReportAtRef = useRef(0)
+  const lastCompliantReportAttemptAtRef = useRef(0)
+  const isPersistingCompliantRef = useRef(false)
   const [status, setStatus] = useState<PreviewStatus>('waiting')
   const alertSoundEnabledRef = useRef(false)
   const settingsUserId = useAuthStore((state) => state.user?.id)
@@ -422,6 +428,7 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
       return
     }
 
+    compliantStreakRef.current = 0
     clearStreakRef.current = 0
     const signature = getViolationSignature(detection)
     if (activeViolationSignatureRef.current === signature) {
@@ -464,6 +471,46 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
       if (sessionId === sessionRef.current) isPersistingViolationRef.current = false
     }
   }, [camera.name, camera.zone_id])
+
+  const updateLiveCompliantReport = useCallback(async (
+    detection: Detection,
+    frameFile: File,
+    sessionId: number,
+  ) => {
+    if (detection.has_violation || (detection.person_count ?? 0) <= 0) {
+      compliantStreakRef.current = 0
+      return
+    }
+
+    compliantStreakRef.current += 1
+
+    const now = Date.now()
+    if (
+      compliantStreakRef.current < LIVE_COMPLIANT_CONFIRM_FRAMES
+      || now - lastCompliantReportAtRef.current < LIVE_COMPLIANT_REPORT_COOLDOWN_MS
+      || now - lastCompliantReportAttemptAtRef.current < LIVE_PERSIST_RETRY_MS
+      || isPersistingCompliantRef.current
+      || sessionId !== sessionRef.current
+    ) {
+      return
+    }
+
+    isPersistingCompliantRef.current = true
+    lastCompliantReportAttemptAtRef.current = now
+    try {
+      const persisted = await detectionService.saveCompliantFrameReport(frameFile, camera.zone_id)
+      if (sessionId !== sessionRef.current) return
+      if (!persisted.has_violation && persisted.person_count > 0) {
+        lastCompliantReportAtRef.current = Date.now()
+      }
+    } catch (error) {
+      if (sessionId === sessionRef.current) {
+        console.error('Camera page compliant report persist error:', error)
+      }
+    } finally {
+      if (sessionId === sessionRef.current) isPersistingCompliantRef.current = false
+    }
+  }, [camera.zone_id])
 
   const captureAndDetect = useCallback(() => {
     const video = videoRef.current
@@ -516,6 +563,7 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
           lastAlertSignatureRef.current = ''
         }
         await updateLiveViolationEpisode(detection, frameFile, sessionId)
+        await updateLiveCompliantReport(detection, frameFile, sessionId)
       } catch (error) {
         if (sessionId === sessionRef.current) {
           console.error('Camera page live detection failed:', error)
@@ -525,7 +573,7 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
         if (sessionId === sessionRef.current) isFrameBusyRef.current = false
       }
     }, 'image/jpeg', 0.8)
-  }, [camera.zone_id, updateLiveViolationEpisode])
+  }, [camera.zone_id, updateLiveCompliantReport, updateLiveViolationEpisode])
 
   useEffect(() => {
     let mounted = true
@@ -548,10 +596,12 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
       if (videoRef.current) videoRef.current.srcObject = null
       isFrameBusyRef.current = false
       isPersistingViolationRef.current = false
+      isPersistingCompliantRef.current = false
       activeViolationSignatureRef.current = null
       recordedViolationSignatureRef.current = null
       violationStreakRef.current = 0
       clearStreakRef.current = 0
+      compliantStreakRef.current = 0
     }
 
     const start = async () => {

@@ -18,7 +18,11 @@ import numpy as np
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models import Alert, AlertDelivery, Camera, Detection, ViolationLog, Zone
-from app.services.detection_preferences import resolve_detection_preferences
+from app.services.detection_preferences import (
+    normalize_violation_label,
+    resolve_detection_preferences,
+    summarize_detection_settings,
+)
 from app.services.email_notifier import email_notifier
 from app.services.evidence_recorder import EvidenceRecorder, blur_person_heads
 from app.services.temporal_tracker import ConfirmedViolation, TemporalViolationTracker, bbox_match_score
@@ -513,14 +517,18 @@ class CameraRuntimeManager:
         events: list[ConfirmedViolation],
         recorder: EvidenceRecorder,
         save_evidence: bool,
+        required: list[str],
+        confidence: float,
+        person_confidence: float,
     ) -> None:
+        settings_summary = summarize_detection_settings(required, confidence, person_confidence)
         grouped: dict[int, list[ConfirmedViolation]] = defaultdict(list)
         for event in events:
             grouped[event.track_id].append(event)
 
         for track_id, track_events in grouped.items():
             email_jobs: list[tuple[int, str, str, int]] = []
-            violations = [event.violation_type for event in track_events]
+            violations = [normalize_violation_label(event.violation_type) for event in track_events]
             snapshot_path: Path | None = None
             if save_evidence:
                 annotated = self.detector.draw_detections(frame, result)
@@ -546,6 +554,7 @@ class CameraRuntimeManager:
                     "message": ", ".join(violations),
                     "track_id": track_id,
                     "model_version": settings.MODEL_VERSION,
+                    "settings": settings_summary,
                 },
             )
             db.add(detection)
@@ -558,7 +567,7 @@ class CameraRuntimeManager:
                     camera_id=camera.id,
                     zone_id=camera.zone_id,
                     detection_id=detection.id,
-                    violation_type=event.violation_type,
+                    violation_type=normalize_violation_label(event.violation_type),
                     track_id=event.track_id,
                     confidence_score=round(event.confidence * 100),
                     person_count=1,
@@ -575,8 +584,8 @@ class CameraRuntimeManager:
                 alert = Alert(
                     detection_id=detection.id,
                     violation_log_id=violation_log.id,
-                    alert_type=event.violation_type,
-                    message=f"Confirmed PPE violation at {camera.name}: {event.violation_type}",
+                    alert_type=normalize_violation_label(event.violation_type),
+                    message=f"Confirmed PPE violation at {camera.name}: {normalize_violation_label(event.violation_type)}",
                 )
                 db.add(alert)
                 db.flush()
@@ -592,7 +601,7 @@ class CameraRuntimeManager:
                     )
                     db.add(delivery)
                     db.flush()
-                    email_jobs.append((delivery.id, camera.name, event.violation_type, violation_log.id))
+                    email_jobs.append((delivery.id, camera.name, normalize_violation_label(event.violation_type), violation_log.id))
 
                 await ws_manager.broadcast_alert(
                     {
@@ -600,7 +609,7 @@ class CameraRuntimeManager:
                         "detection_id": detection.id,
                         "camera_id": camera.id,
                         "camera_name": camera.name,
-                        "violation_type": event.violation_type,
+                        "violation_type": normalize_violation_label(event.violation_type),
                         "created_at": now.isoformat(),
                     },
                 )
@@ -616,8 +625,17 @@ class CameraRuntimeManager:
                 )
 
     @staticmethod
-    def _persist_compliant_detection(db, camera: Camera, result: dict[str, Any]) -> None:
+    def _persist_compliant_detection(
+        db,
+        camera: Camera,
+        result: dict[str, Any],
+        required: list[str],
+        confidence: float,
+        person_confidence: float,
+    ) -> None:
         """Keep periodic compliant camera results visible in the shared reports history."""
+        settings_summary = summarize_detection_settings(required, confidence, person_confidence)
+        ppe_check_enabled = bool(settings_summary.get("ppe_check_enabled"))
         detection = Detection(
             user_id=camera.owner_id,
             zone_id=camera.zone_id,
@@ -630,9 +648,10 @@ class CameraRuntimeManager:
             has_violation=False,
             processing_time_ms=result.get("processing_time_ms", 0),
             summary={
-                "status": "compliant",
-                "message": "พบผู้สวม PPE ครบตามที่กำหนด",
+                "status": "compliant" if ppe_check_enabled else "person_only",
+                "message": "พบผู้สวม PPE ครบตามที่กำหนด" if ppe_check_enabled else "ตรวจพบบุคคล โดยปิดการตรวจเงื่อนไข PPE",
                 "model_version": settings.MODEL_VERSION,
+                "settings": settings_summary,
             },
         )
         db.add(detection)
@@ -802,7 +821,18 @@ class CameraRuntimeManager:
                         preview_generated_at = preview_now
 
                 if confirmed:
-                    await self._persist_events(db, camera, frame, result, confirmed, recorder, save_evidence)
+                    await self._persist_events(
+                        db,
+                        camera,
+                        frame,
+                        result,
+                        confirmed,
+                        recorder,
+                        save_evidence,
+                        required,
+                        confidence,
+                        person_confidence,
+                    )
 
                 report_now = time.monotonic()
                 if (
@@ -810,7 +840,7 @@ class CameraRuntimeManager:
                     and not result.get("has_violation", False)
                     and report_now - last_compliant_report_at >= settings.CAMERA_COMPLIANT_REPORT_INTERVAL_SECONDS
                 ):
-                    self._persist_compliant_detection(db, camera, result)
+                    self._persist_compliant_detection(db, camera, result, required, confidence, person_confidence)
                     last_compliant_report_at = report_now
 
                 analyzed += 1

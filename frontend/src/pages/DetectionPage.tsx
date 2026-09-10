@@ -26,6 +26,8 @@ const LIVE_CONFIRM_FRAMES = 2
 const LIVE_CLEAR_FRAMES = 2
 const LIVE_EVENT_COOLDOWN_MS = 60_000
 const LIVE_PERSIST_RETRY_MS = 10_000
+const LIVE_COMPLIANT_CONFIRM_FRAMES = 2
+const LIVE_COMPLIANT_REPORT_COOLDOWN_MS = 30_000
 
 const getCameraDeviceLabel = (device: MediaDeviceInfo, index: number) => (
   device.label || `Camera ${index + 1}`
@@ -197,6 +199,10 @@ export function DetectionPage() {
   const persistedAtBySignatureRef = useRef<Record<string, number>>({})
   const persistAttemptAtBySignatureRef = useRef<Record<string, number>>({})
   const isPersistingViolationRef = useRef(false)
+  const compliantStreakRef = useRef(0)
+  const lastCompliantReportAtRef = useRef(0)
+  const lastCompliantReportAttemptAtRef = useRef(0)
+  const isPersistingCompliantRef = useRef(false)
   const [isLiveDetecting, setIsLiveDetecting] = useState(false)
   const [isCameraOn, setIsCameraOn] = useState(false)
   const [isCameraStarting, setIsCameraStarting] = useState(false)
@@ -299,6 +305,7 @@ export function DetectionPage() {
       return
     }
 
+    compliantStreakRef.current = 0
     clearStreakRef.current = 0
     const signature = getViolationSignature(detection)
     if (activeViolationSignatureRef.current === signature) {
@@ -344,6 +351,46 @@ export function DetectionPage() {
     }
   }, [])
 
+  const updateLiveCompliantReport = useCallback(async (
+    detection: Detection,
+    frameFile: File,
+    sessionId: number,
+  ) => {
+    if (detection.has_violation || (detection.person_count ?? 0) <= 0) {
+      compliantStreakRef.current = 0
+      return
+    }
+
+    compliantStreakRef.current += 1
+
+    const now = Date.now()
+    if (
+      compliantStreakRef.current < LIVE_COMPLIANT_CONFIRM_FRAMES
+      || now - lastCompliantReportAtRef.current < LIVE_COMPLIANT_REPORT_COOLDOWN_MS
+      || now - lastCompliantReportAttemptAtRef.current < LIVE_PERSIST_RETRY_MS
+      || isPersistingCompliantRef.current
+      || sessionId !== liveSessionRef.current
+    ) {
+      return
+    }
+
+    isPersistingCompliantRef.current = true
+    lastCompliantReportAttemptAtRef.current = now
+    try {
+      const persisted = await detectionService.saveCompliantFrameReport(frameFile)
+      if (sessionId !== liveSessionRef.current) return
+      if (!persisted.has_violation && persisted.person_count > 0) {
+        lastCompliantReportAtRef.current = Date.now()
+      }
+    } catch (error) {
+      if (sessionId === liveSessionRef.current) {
+        console.error('Live compliant report persist error:', error)
+      }
+    } finally {
+      if (sessionId === liveSessionRef.current) isPersistingCompliantRef.current = false
+    }
+  }, [])
+
   const captureAndDetect = useCallback(async () => {
     const video = videoRef.current
     const cap = captureCanvasRef.current
@@ -372,13 +419,14 @@ export function DetectionPage() {
         setResult(detection)
         setLiveFrameCount(prev => prev + 1)
         await updateLiveViolationEpisode(detection, frameFile, sessionId)
+        await updateLiveCompliantReport(detection, frameFile, sessionId)
       } catch (err) {
         if (sessionId === liveSessionRef.current) console.error('Frame detect error:', err)
       } finally {
         if (sessionId === liveSessionRef.current) isFrameBusyRef.current = false
       }
     }, 'image/jpeg', 0.8)
-  }, [updateLiveViolationEpisode])
+  }, [updateLiveCompliantReport, updateLiveViolationEpisode])
 
   const stopLiveDetection = useCallback(() => {
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
@@ -388,8 +436,10 @@ export function DetectionPage() {
     recordedViolationSignatureRef.current = null
     violationStreakRef.current = 0
     clearStreakRef.current = 0
+    compliantStreakRef.current = 0
     isFrameBusyRef.current = false
     isPersistingViolationRef.current = false
+    isPersistingCompliantRef.current = false
     setIsLiveDetecting(false)
   }, [])
 

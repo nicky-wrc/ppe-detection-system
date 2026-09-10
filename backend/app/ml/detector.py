@@ -475,6 +475,25 @@ class PPEDetector:
                 })
         return persons, ppe
 
+    def _ppe_model_class_ids(
+        self,
+        required: list[str],
+        include_person: bool = True,
+    ) -> list[int] | None:
+        if self.ppe_model is None:
+            return None
+
+        required_set = set(required)
+        class_ids: list[int] = []
+        for class_id, name in self._model_names(self.ppe_model).items():
+            if include_person and name == "person":
+                class_ids.append(class_id)
+                continue
+            canonical = canonical_ppe_class(name)
+            if canonical in required_set:
+                class_ids.append(class_id)
+        return class_ids
+
     def _person_assist(self, frame: np.ndarray, confidence: float) -> list[dict[str, Any]]:
         if self.person_model is None:
             return []
@@ -654,6 +673,8 @@ class PPEDetector:
         person_count = len(persons)
         if person_count == 0:
             status, message = "no_person", "ไม่พบคนในภาพ"
+        elif violation_count == 0 and not (metadata or {}).get("ppe_check_enabled", True):
+            status, message = "person_only", f"พบ {person_count} คน — ปิดการตรวจเงื่อนไข PPE"
         elif violation_count == 0:
             status, message = "compliant", f"พบ {person_count} คน — สวม PPE ครบทุกคน"
         else:
@@ -698,7 +719,7 @@ class PPEDetector:
         person_confidence: float | None = None,
     ) -> dict[str, Any]:
         started = time.perf_counter()
-        if self.ppe_model is None:
+        if self.ppe_model is None and self.person_model is None:
             return self._empty_result()
 
         required = DEFAULT_REQUIRED_PPE if required_ppe is None else required_ppe
@@ -718,21 +739,24 @@ class PPEDetector:
         else:
             inference_frame, mean_luma, enhanced = image, -1.0, False
 
-        full_frame_results = self._predict(
-            self.ppe_model,
-            inference_frame,
-            min(ppe_confidence, minimum_person_confidence),
-        )
         raw_persons: list[dict[str, Any]] = []
         ppe_objects: list[dict[str, Any]] = []
-        for result in full_frame_results:
-            persons, ppe = self._parse_ppe_result(
-                result,
-                ppe_confidence=ppe_confidence,
-                person_confidence=minimum_person_confidence,
+
+        if self.ppe_model is not None:
+            full_frame_results = self._predict(
+                self.ppe_model,
+                inference_frame,
+                min(ppe_confidence, minimum_person_confidence),
+                classes=self._ppe_model_class_ids(required),
             )
-            raw_persons.extend(persons)
-            ppe_objects.extend(ppe)
+            for result in full_frame_results:
+                persons, ppe = self._parse_ppe_result(
+                    result,
+                    ppe_confidence=ppe_confidence,
+                    person_confidence=minimum_person_confidence,
+                )
+                raw_persons.extend(persons)
+                ppe_objects.extend([item for item in ppe if item["class"] in required])
 
         raw_persons.extend(self._person_assist(inference_frame, minimum_person_confidence))
         raw_persons = fuse_person_detections(
@@ -740,9 +764,11 @@ class PPEDetector:
             image_width=image.shape[1],
             image_height=image.shape[0],
         )
-        ppe_objects.extend(
-            self._refine_ppe_in_person_crops(inference_frame, raw_persons, ppe_confidence)
-        )
+        if required:
+            ppe_objects.extend(
+                item for item in self._refine_ppe_in_person_crops(inference_frame, raw_persons, ppe_confidence)
+                if item["class"] in required
+            )
         ppe_objects = non_max_suppression(ppe_objects, iou_threshold=0.50, class_aware=True)
         persons = self._associate_ppe(raw_persons, ppe_objects, image.shape[0], required)
 
@@ -753,6 +779,8 @@ class PPEDetector:
                 "mean_luma": round(mean_luma, 2) if mean_luma >= 0 else None,
                 "low_light_enhanced": enhanced,
                 "ppe_candidates": len(ppe_objects),
+                "ppe_check_enabled": bool(required),
+                "required_ppe": required,
             },
         )
 
@@ -786,7 +814,10 @@ class PPEDetector:
             color = compliant_color if person["is_compliant"] else violation_color
             draw.rectangle([(x1, y1), (x2, y2)], outline=color, width=3)
             confidence = int(person["confidence"] * 100)
-            status_label = "ปลอดภัย" if person["is_compliant"] else "ไม่ครบ PPE"
+            if status == "person_only":
+                status_label = "ตรวจพบคน"
+            else:
+                status_label = "ปลอดภัย" if person["is_compliant"] else "ไม่ครบ PPE"
             self._draw_label(draw, x1, y1 - 28, f"คน {person['id']} · {confidence}% · {status_label}", self.font_small, color)
             label_y = y1 + 6
             for item in person.get("wearing", []):

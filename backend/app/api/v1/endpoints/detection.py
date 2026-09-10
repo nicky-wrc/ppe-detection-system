@@ -89,6 +89,40 @@ async def detect_from_frame(
         )
 
 
+@router.post("/frame/compliant-report", response_model=DetectionResponse)
+async def save_compliant_frame_report(
+    request: Request,
+    file: UploadFile = File(...),
+    zone_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("admin", "safety_officer"))
+):
+    """บันทึกเฟรมกล้อง realtime ลงประวัติเฉพาะเมื่อสวม PPE ครบถ้วน โดยไม่สร้าง alert"""
+    enforce_rate_limit(request, "compliant-frame-report", limit=30)
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="เฟรมต้องเป็นรูปภาพเท่านั้น"
+        )
+    _validate_extension(file, {".jpg", ".jpeg", ".png", ".webp"})
+
+    service = DetectionService(db)
+
+    try:
+        return await service.process_compliant_frame_report(
+            file=file,
+            user_id=current_user.id,
+            zone_id=zone_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"เกิดข้อผิดพลาด: {str(e)}"
+        )
+
+
 @router.post("/video", response_model=DetectionResponse)
 async def detect_from_video(
     request: Request,

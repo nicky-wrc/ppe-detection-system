@@ -3,7 +3,7 @@ import cv2
 import aiofiles
 import numpy as np
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Any, Optional, List, Tuple
 from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, Date, String, and_, or_
@@ -12,7 +12,11 @@ from fastapi import UploadFile
 from app.core.config import settings
 from app.models import Detection, Alert
 from app.ml.detector import get_detector
-from app.services.detection_preferences import resolve_detection_preferences
+from app.services.detection_preferences import (
+    normalize_violation_label,
+    resolve_detection_preferences,
+    summarize_detection_settings,
+)
 from app.services.websocket_manager import ws_manager
 
 
@@ -44,11 +48,27 @@ class DetectionService:
         self,
         user_id: Optional[int],
         zone_id: Optional[int],
-    ) -> tuple[list[str] | None, float | None, float | None]:
+    ) -> tuple[list[str], float, float, dict]:
         required_ppe, confidence, person_confidence, _ = resolve_detection_preferences(
             self.db, user_id, zone_id,
         )
-        return required_ppe, confidence, person_confidence
+        settings_summary = summarize_detection_settings(required_ppe, confidence, person_confidence)
+        return required_ppe, confidence, person_confidence, settings_summary
+
+    @staticmethod
+    def _summary_with_settings(detection_result: dict, settings_summary: dict) -> dict:
+        return {
+            **(detection_result.get("summary", {}) or {}),
+            "settings": settings_summary,
+        }
+
+    @staticmethod
+    def _violation_flags(violations: Any) -> tuple[bool, bool]:
+        values = violations if isinstance(violations, list) else []
+        text = " ".join(str(value) for value in values).lower()
+        has_helmet_violation = any(token in text for token in ("helmet", "hardhat", "หมวก"))
+        has_vest_violation = any(token in text for token in ("vest", "เสื้อ"))
+        return has_helmet_violation, has_vest_violation
 
     async def process_image(
         self,
@@ -61,7 +81,7 @@ class DetectionService:
         result_filename = f"result_{uuid.uuid4()}.jpg"
         result_path = str(self.upload_dir / result_filename)
         
-        required_ppe, confidence, person_confidence = self._get_detection_options(user_id, zone_id)
+        required_ppe, confidence, person_confidence, settings_summary = self._get_detection_options(user_id, zone_id)
 
         detection_result = self.detector.process_image(
             original_path,
@@ -78,12 +98,12 @@ class DetectionService:
             result_image_path=result_path,
             detected_objects=detection_result.get("detected_objects", []),
             persons=detection_result.get("persons", []),
-            violations=detection_result.get("violations", []),
+            violations=[normalize_violation_label(item) for item in detection_result.get("violations", [])],
             person_count=detection_result.get("person_count", 0),
             violation_count=detection_result.get("violation_count", 0),
             has_violation=detection_result.get("has_violation", False),
             processing_time_ms=detection_result.get("processing_time_ms", 0),
-            summary=detection_result.get("summary", {})
+            summary=self._summary_with_settings(detection_result, settings_summary)
         )
         
         self.db.add(detection)
@@ -109,7 +129,7 @@ class DetectionService:
         if image is None:
             raise ValueError("ไม่สามารถอ่านเฟรมจากกล้องได้")
 
-        required_ppe, confidence, person_confidence = self._get_detection_options(user_id, zone_id)
+        required_ppe, confidence, person_confidence, settings_summary = self._get_detection_options(user_id, zone_id)
 
         detection_result = self.detector.detect(
             image,
@@ -125,14 +145,76 @@ class DetectionService:
             "result_image_path": None,
             "detected_objects": detection_result.get("detected_objects", []),
             "persons": detection_result.get("persons", []),
-            "violations": detection_result.get("violations", []),
+            "violations": [normalize_violation_label(item) for item in detection_result.get("violations", [])],
             "person_count": detection_result.get("person_count", 0),
             "violation_count": detection_result.get("violation_count", 0),
             "has_violation": detection_result.get("has_violation", False),
             "processing_time_ms": detection_result.get("processing_time_ms", 0),
-            "summary": detection_result.get("summary", {}),
+            "summary": self._summary_with_settings(detection_result, settings_summary),
             "created_at": datetime.now(),
         }
+
+    async def process_compliant_frame_report(
+        self,
+        file: UploadFile,
+        user_id: Optional[int] = None,
+        zone_id: Optional[int] = None,
+    ) -> Detection:
+        original_path = await self.save_upload_file(file)
+
+        result_filename = f"result_{uuid.uuid4()}.jpg"
+        result_path = str(self.upload_dir / result_filename)
+
+        required_ppe, confidence, person_confidence, settings_summary = self._get_detection_options(user_id, zone_id)
+
+        detection_result = self.detector.process_image(
+            original_path,
+            result_path,
+            required_ppe=required_ppe,
+            confidence_threshold=confidence,
+            person_confidence=person_confidence,
+        )
+
+        if detection_result.get("has_violation", False) or detection_result.get("person_count", 0) <= 0:
+            Path(original_path).unlink(missing_ok=True)
+            Path(result_path).unlink(missing_ok=True)
+            raise ValueError("เฟรมนี้ยังไม่ใช่รายการที่ตรวจพบคนโดยไม่มีการละเมิด")
+
+        ppe_check_enabled = bool(settings_summary.get("ppe_check_enabled"))
+        summary = self._summary_with_settings(detection_result, settings_summary)
+        if ppe_check_enabled:
+            summary = {
+                **summary,
+                "status": "compliant",
+                "message": "ตรวจพบการสวมใส่ครบถ้วน",
+            }
+        else:
+            summary = {
+                **summary,
+                "status": "person_only",
+                "message": "ตรวจพบบุคคล โดยปิดการตรวจเงื่อนไข PPE",
+            }
+
+        detection = Detection(
+            user_id=user_id,
+            zone_id=zone_id,
+            original_image_path=original_path,
+            result_image_path=result_path,
+            detected_objects=detection_result.get("detected_objects", []),
+            persons=detection_result.get("persons", []),
+            violations=[],
+            person_count=detection_result.get("person_count", 0),
+            violation_count=0,
+            has_violation=False,
+            processing_time_ms=detection_result.get("processing_time_ms", 0),
+            summary=summary,
+        )
+
+        self.db.add(detection)
+        self.db.commit()
+        self.db.refresh(detection)
+
+        return detection
 
     async def process_video(
         self,
@@ -145,7 +227,7 @@ class DetectionService:
         result_filename = f"result_{uuid.uuid4()}.avi"
         result_path = str(self.upload_dir / result_filename)
         
-        required_ppe, confidence, person_confidence = self._get_detection_options(user_id, zone_id)
+        required_ppe, confidence, person_confidence, settings_summary = self._get_detection_options(user_id, zone_id)
 
         detection_result = self.detector.process_video(
             original_path,
@@ -166,12 +248,12 @@ class DetectionService:
             result_video_path=actual_video_path,
             detected_objects=detection_result.get("detected_objects", []),
             persons=detection_result.get("persons", []),
-            violations=detection_result.get("violations", []),
+            violations=[normalize_violation_label(item) for item in detection_result.get("violations", [])],
             person_count=detection_result.get("person_count", 0),
             violation_count=detection_result.get("violation_count", 0),
             has_violation=detection_result.get("has_violation", False),
             processing_time_ms=detection_result.get("processing_time_ms", 0),
-            summary=detection_result.get("summary", {})
+            summary=self._summary_with_settings(detection_result, settings_summary)
         )
         
         self.db.add(detection)
@@ -224,6 +306,7 @@ class DetectionService:
     ) -> Tuple[List[Detection], int]:
         """Return shared detection history; account ownership never scopes reads."""
         query = self.db.query(Detection)
+        order_by_clauses = [Detection.created_at.desc()]
 
         if zone_id is not None:
             query = query.filter(Detection.zone_id == zone_id)
@@ -239,26 +322,54 @@ class DetectionService:
             query = query.filter(Detection.created_at < next_day)
 
         if missing_ppe is not None:
-            violations_text = cast(Detection.violations, String)
-            helmet = or_(
-                violations_text.ilike('%helmet%'),
-                violations_text.ilike('%hardhat%'),
-                violations_text.ilike('%หมวก%'),
-            )
-            vest = or_(
-                violations_text.ilike('%vest%'),
-                violations_text.ilike('%เสื้อ%'),
-            )
-            query = query.filter(and_(helmet, vest) if missing_ppe == 'both' else helmet if missing_ppe == 'helmet' else vest)
+            candidates = query.all()
+
+            def matches_missing(detection: Detection) -> bool:
+                has_helmet_violation, has_vest_violation = self._violation_flags(detection.violations)
+                if missing_ppe == "both":
+                    return has_helmet_violation and has_vest_violation
+                if missing_ppe == "helmet":
+                    return has_helmet_violation
+                return has_vest_violation
+
+            def missing_priority(detection: Detection) -> int:
+                has_helmet_violation, has_vest_violation = self._violation_flags(detection.violations)
+                if missing_ppe == "helmet":
+                    return 0 if has_helmet_violation and not has_vest_violation else 1
+                if missing_ppe == "vest":
+                    return 0 if has_vest_violation and not has_helmet_violation else 1
+                return 0
+
+            filtered = [detection for detection in candidates if matches_missing(detection)]
+            filtered.sort(key=lambda detection: detection.created_at.timestamp() if detection.created_at else 0, reverse=True)
+            if missing_ppe in {"helmet", "vest"}:
+                filtered.sort(key=missing_priority)
+            total = len(filtered)
+            return filtered[skip:skip + limit], total
 
         if detected_ppe is not None:
             persons_text = cast(Detection.persons, String)
-            helmet = persons_text.ilike('%helmet%')
-            vest = persons_text.ilike('%safety-vest%')
+            summary_text = cast(Detection.summary, String)
+            helmet = or_(
+                persons_text.ilike('%helmet%'),
+                persons_text.ilike('%hardhat%'),
+                persons_text.ilike('%หมวก%'),
+            )
+            vest = or_(
+                persons_text.ilike('%safety-vest%'),
+                persons_text.ilike('%safety_vest%'),
+                persons_text.ilike('%vest%'),
+                persons_text.ilike('%เสื้อ%'),
+            )
+            if detected_ppe == "both":
+                query = query.filter(
+                    Detection.has_violation.is_(False),
+                    or_(Detection.summary.is_(None), ~summary_text.ilike('%person_only%')),
+                )
             query = query.filter(and_(helmet, vest) if detected_ppe == 'both' else helmet if detected_ppe == 'helmet' else vest)
         
         total = query.count()
-        detections = query.order_by(Detection.created_at.desc()).offset(skip).limit(limit).all()
+        detections = query.order_by(*order_by_clauses).offset(skip).limit(limit).all()
         
         return detections, total
 
