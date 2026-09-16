@@ -136,3 +136,33 @@ Precision/recall ของ Ultralytics เป็นค่าที่จุด c
 ล็อก test ก่อนปรับโมเดล; การเพิ่ม epochs เพียงอย่างเดียวไม่รับประกันผลกับกล้องจริง
 
 การทดลองนี้ไม่เขียนทับ weights เดิม ไม่ commit ข้อมูล/โมเดล และไม่เปลี่ยนโมเดลของหน้าเว็บอัตโนมัติ
+
+## รอบเน้นสีส้ม 5,000 ภาพ — 17 กันยายน 2026
+
+สร้างรายชื่อภาพ train แบบ deterministic จาก prepared train split เดิม:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/select_orange_training.py `
+  --data datasets/hardhat-vest-v3-sh17/data.yaml `
+  --output datasets/hardhat-vest-v3-sh17/orange-focus-5000-v2 `
+  --target-images 5000 --negatives 500 --minimum-fraction 0.25 --seed 42 --materialize
+```
+
+`--materialize` สร้าง hard-link view แยกสำหรับ train/val/test เพื่อให้ Ultralytics เขียน cache
+ในโฟลเดอร์ใหม่ ไม่ลบหรือแก้ cache/source เดิม ชุดนี้เก็บภาพเสื้อส้มที่เข้าเกณฑ์ทั้งหมด
+1,237 ภาพ เติมหมวกส้ม 3,263 ภาพ และภาพลบ 500 ภาพ รายละเอียดและ hash อยู่ใน
+`orange-focus-5000-v2/selection.json` ซึ่งถูก Git ignore พร้อม dataset
+
+ฝึกต่อจาก candidate รอบก่อนด้วย learning rate ต่ำและลดการบิดสี:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.ml.train_ppe `
+  --data datasets/hardhat-vest-v3-sh17/orange-focus-5000-v2/data.yaml `
+  --model experiments/orange-ppe-yolo8m-20260909-v2/weights/best.pt `
+  --epochs 15 --imgsz 640 --batch 16 --workers 0 --freeze 10 `
+  --optimizer AdamW --lr0 0.0001 --hsv-h 0.01 --hsv-s 0.35 --hsv-v 0.25 `
+  --patience 5 --save-period 5 --device 0 --project experiments `
+  --name orange-ppe-yolo8m-20260917-v4
+```
+
+ผลจริงและข้อแลกเปลี่ยน: [ORANGE_PPE_RESULTS_20260917.md](ORANGE_PPE_RESULTS_20260917.md)

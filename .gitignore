@@ -205,6 +205,7 @@ backend/experiments/
 backend/runs/
 backend/mlops/ppe_factory.yaml
 backend/datasets/
+/backend/yolo26n.pt
 *.engine
 *.onnx
 

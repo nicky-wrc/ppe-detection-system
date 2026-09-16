@@ -1,5 +1,15 @@
 # Codex Handoff — PPE Guard AI
 
+## Session update — orange PPE 5,000-image fine-tune (2026-09-17)
+
+- User reported weak real-camera orange hardhat/vest detection and requested about 5,000 training images. Created a deterministic public-data selection: 5,000 unique train images = 1,237 orange-like vest, 3,263 orange-like helmet, 500 no-helmet/no-vest negatives. HSV selection is not human color truth and may include skin/background/warm yellow. Locked val/test unchanged.
+- Added `scripts/select_orange_training.py`, tests, and configurable `--hsv-s/--hsv-v` training options. Materialized v2 view uses 19,712 hard links (0 copies) to isolate Ultralytics cache without duplicating image data or changing source files.
+- First run `orange-ppe-yolo8m-20260917-v3` stopped before epoch 1 because the existing train cache was Windows-locked. It was preserved. Successful v4 trained all 15 epochs on RTX 4070 from the 20260909-v2 candidate; best validation checkpoint came from epoch 11.
+- New candidate: `backend/experiments/orange-ppe-yolo8m-20260917-v4/weights/best.pt`, 52,044,626 bytes, SHA-256 `833fa3362afad19f27ff68ac44a52e598d26bd96f7f9f750b5469bd2382e0b9c`. Existing candidate, baseline, local `.env`, DB/uploads/evidence and retention config remain unchanged. App model was not switched.
+- Locked public test: helmet AP50 89.43→89.82, AP50-95 58.51→58.57; vest AP50 84.88→85.12, AP50-95 56.38→55.97. At conf 0.20 on the 772-image orange-like slice: helmet F1 84.76→84.79 (recall up, precision down); vest F1 75.17→76.06 (precision up, recall down). Improvement is modest and does not prove target-camera accuracy.
+- Separate orange-slice Ultralytics evaluation hit the same locked source test cache; no cache was deleted. Fixed-threshold slice scoring instead reused full locked-test predictions and the identical frozen image list, which is sufficient for TP/FP/FN comparison. Details: `backend/mlops/ORANGE_PPE_RESULTS_20260917.md`.
+- Next meaningful step: obtain approved, human-labeled target-camera orange PPE and orange-decoy images split by camera/date. Do not promote v4 merely from public HSV metrics; compare it with v2 on the user's real staged clips first. Keep `MODEL_LICENSE_APPROVED=false`.
+
 ## Session update — Settings applied to runtime (2026-09-09)
 
 - Scope: make the existing Settings controls take effect without changing database schema, public API, RBAC, model artifacts, local `.env`, or retention policy. Worktree was clean at the start. No commit/push or application/camera startup performed.

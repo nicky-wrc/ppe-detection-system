@@ -28,6 +28,8 @@ def parse_args(argv=None):
     parser.add_argument("--optimizer", default="auto", choices=["auto", "AdamW", "SGD"])
     parser.add_argument("--lr0", type=float, default=0.01)
     parser.add_argument("--hsv-h", type=float, default=0.015)
+    parser.add_argument("--hsv-s", type=float, default=0.7)
+    parser.add_argument("--hsv-v", type=float, default=0.4)
     parser.add_argument("--save-period", type=int, default=5)
     parser.add_argument("--resume", action="store_true", help="Continue --model last.pt in its original run")
     return parser.parse_args(argv)
@@ -45,7 +47,8 @@ def training_options(args) -> dict:
         project=str(Path(args.project).resolve()), name=args.name, exist_ok=True,
         patience=args.patience, plots=True, workers=args.workers, cache=False,
         freeze=args.freeze, optimizer=args.optimizer, lr0=args.lr0,
-        hsv_h=args.hsv_h, save_period=args.save_period,
+        hsv_h=args.hsv_h, hsv_s=args.hsv_s, hsv_v=args.hsv_v,
+        save_period=args.save_period,
         close_mosaic=min(5, args.epochs),
     )
 
