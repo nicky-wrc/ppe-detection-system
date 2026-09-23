@@ -2,10 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Layout } from '../components/layout/Layout'
 import { useDialogFocus } from '../hooks/useDialogFocus'
 import { detectionService } from '../services/detection'
-import { alertsService } from '../services/alerts'
 import { camerasService } from '../services/cameras'
 import { ProtectedDetectionImage } from '../components/ui/ProtectedDetectionImage'
-import type { Alert, DetectionStats, Detection } from '../types'
+import type { DetectionStats, Detection } from '../types'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import {
@@ -26,18 +25,10 @@ import {
   CheckCircle,
   Camera,
   Eye,
+  Users,
   X,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-
-interface ViolationRow {
-  id: string
-  detectionId: number
-  createdAt: string
-  refId: string
-  violationTypes: string[]
-  message?: string
-}
 
 interface DailySummary {
   detections: number
@@ -185,7 +176,7 @@ function pdfAddImageFitWidth(
 
 export function DashboardPage() {
   const [stats, setStats] = useState<DetectionStats | null>(null)
-  const [violations, setViolations] = useState<ViolationRow[]>([])
+  const [violations, setViolations] = useState<Detection[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [activeCameras, setActiveCameras] = useState(0)
@@ -203,7 +194,7 @@ export function DashboardPage() {
     violation: true,
   })
   const [isExporting, setIsExporting] = useState(false)
-  const [selectedViolation, setSelectedViolation] = useState<ViolationRow | null>(null)
+  const [selectedViolation, setSelectedViolation] = useState<Detection | null>(null)
   const [fullDetectionDetails, setFullDetectionDetails] = useState<Detection | null>(null)
   const [isLoadingDetails, setIsLoadingDetails] = useState(false)
   const [detailsError, setDetailsError] = useState(false)
@@ -224,7 +215,7 @@ export function DashboardPage() {
     if (selectedViolation) {
       setIsLoadingDetails(true)
       setDetailsError(false)
-      detectionService.getDetection(selectedViolation.detectionId)
+      detectionService.getDetection(selectedViolation.id)
         .then(data => {
           if (!cancelled) setFullDetectionDetails(data)
         })
@@ -248,38 +239,14 @@ export function DashboardPage() {
   const loadData = async () => {
     setLoadError(false)
     try {
-      const [statsData, alertsData, camerasData] = await Promise.all([
+      const [statsData, historyData, camerasData] = await Promise.all([
         detectionService.getStats(),
-        alertsService.list(1, 20).catch(() => ({ items: [] as Alert[], total: 0, page: 1, per_page: 20 })),
+        detectionService.getHistory(1, 10, { hasViolation: true }).catch(() => ({ items: [] as Detection[], total: 0, page: 1, per_page: 10, total_pages: 0 })),
         camerasService.list().catch(() => []),
       ])
       setStats(statsData)
       setActiveCameras((camerasData || []).filter((camera) => camera.is_online).length)
-
-      const items = alertsData?.items || []
-      
-      type GroupedAlert = Alert & { alert_types: string[] }
-      const groupedItems = items.reduce<GroupedAlert[]>((acc, current) => {
-        const existing = acc.find((item) => item.detection_id === current.detection_id)
-        if (existing) {
-          if (!existing.alert_types.includes(current.alert_type)) {
-            existing.alert_types.push(current.alert_type)
-          }
-        } else {
-          acc.push({ ...current, alert_types: [current.alert_type] })
-        }
-        return acc
-      }, [])
-
-      const rows: ViolationRow[] = groupedItems.map((a) => ({
-        id: String(a.id),
-        detectionId: a.detection_id,
-        createdAt: a.created_at,
-        refId: `DET-${String(a.detection_id).padStart(5, '0')}`,
-        violationTypes: a.alert_types,
-        message: a.message,
-      }))
-      setViolations(rows.slice(0, 10))
+      setViolations((historyData?.items || []).slice(0, 10))
     } catch (error) {
       console.error('Error loading data:', error)
       setLoadError(true)
@@ -588,6 +555,17 @@ export function DashboardPage() {
     } finally {
       setIsExporting(false)
     }
+  }
+
+  const formatViolationLabel = (value: string) => {
+    const normalized = value.trim().toLowerCase()
+    if (normalized === 'no_helmet' || normalized === 'no_hardhat' || normalized.includes('helmet') || normalized.includes('hardhat')) {
+      return 'ไม่สวมหมวกนิรภัย'
+    }
+    if (normalized === 'no_safety_vest' || normalized === 'no_vest' || normalized.includes('vest')) {
+      return 'ไม่สวมเสื้อสะท้อนแสง'
+    }
+    return value
   }
 
   const getViolationBadgeClass = (type: string) => {
@@ -960,53 +938,79 @@ export function DashboardPage() {
             </div>
           ) : (
             <div className="max-h-[480px] overflow-auto">
-              <table className="relative w-full min-w-[780px] border-collapse">
-                <thead className="sticky top-0 z-10">
-                  <tr>
-                    <th className="m-0 bg-[#f5f5f7] px-6 py-3 text-left text-[12px] font-semibold text-[#6e6e73]">Thumbnail</th>
-                    <th className="m-0 bg-[#f5f5f7] px-6 py-3 text-left text-[12px] font-semibold text-[#6e6e73]">Date &amp; time</th>
-                    <th className="m-0 bg-[#f5f5f7] px-6 py-3 text-left text-[12px] font-semibold text-[#6e6e73]">Reference</th>
-                    <th className="m-0 bg-[#f5f5f7] px-6 py-3 text-left text-[12px] font-semibold text-[#6e6e73]">Violation type</th>
-                    <th className="m-0 bg-[#f5f5f7] px-6 py-3 text-left text-[12px] font-semibold text-[#6e6e73]">Actions</th>
+              <table className="w-full min-w-[900px] border-collapse">
+                <thead>
+                  <tr className="bg-[#f5f5f7] text-left text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--muted)]">
+                    <th scope="col" className="w-[110px] px-6 py-4 sm:pl-8">Preview</th>
+                    <th scope="col" className="min-w-[190px] px-6 py-4">Date &amp; time</th>
+                    <th scope="col" className="w-[110px] px-6 py-4">Persons</th>
+                    <th scope="col" className="px-6 py-4">Violations</th>
+                    <th scope="col" className="w-[140px] px-6 py-4">Status</th>
+                    <th scope="col" className="w-[140px] px-6 py-4 sm:pr-8">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {violations.map((row) => (
-                    <tr key={row.id} className="transition-colors hover:bg-[#fafafc]">
-                      <td className="border-b border-black/8 px-6 py-4 text-[15px] text-[#424245]">
-                        <div className="h-14 w-14 overflow-hidden rounded-[8px] border border-black/8 bg-[#f5f5f7]">
+                  {violations.map((detection, index) => (
+                    <tr key={detection.id} className={`border-t border-[var(--line)] transition-colors hover:bg-[#f5f5f7] ${index % 2 === 0 ? 'bg-white' : 'bg-[#fafafc]'}`}>
+                      <td className="px-6 py-4 align-middle sm:pl-8">
+                        <div className="h-14 w-14 overflow-hidden rounded-[11px] border border-[var(--line)] bg-[#f5f5f7]">
                           <ProtectedDetectionImage
-                            detectionId={row.detectionId}
-                            alt={row.refId}
+                            detectionId={detection.id}
+                            alt={`Detection ${detection.id} preview`}
                             className="h-full w-full object-cover"
                           />
                         </div>
                       </td>
-                      <td className="border-b border-black/8 px-6 py-4 text-[15px] text-[#424245]">
-                        <div className="font-semibold text-[#1d1d1f]">{new Date(row.createdAt).toLocaleDateString()}</div>
-                        <div className="mt-0.5 text-[13px] text-[var(--muted)]">{new Date(row.createdAt).toLocaleTimeString()}</div>
+                      <td className="whitespace-nowrap px-6 py-4 align-middle text-[15px] text-[var(--ink)]">
+                        {new Date(detection.created_at).toLocaleString('en-GB', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
                       </td>
-                      <td className="border-b border-black/8 px-6 py-4 text-[15px] text-[#424245]">{row.refId}</td>
-                      <td className="border-b border-black/8 px-6 py-4 text-[15px] text-[#424245]">
-                        <div className="flex flex-wrap gap-2">
-                          {row.violationTypes.map((type, idx) => (
-                            <span key={idx} className={getViolationBadgeClass(type)}>
-                              {type.toUpperCase().includes('HELMET') ? 'MISSING HELMET' :
-                               type.toUpperCase().includes('VEST') ? 'MISSING VEST' :
-                               type.toUpperCase()}
-                            </span>
-                          ))}
+                      <td className="px-6 py-4 align-middle">
+                        <span className="inline-flex items-center gap-2 text-[15px] text-[var(--ink)]">
+                          <Users size={15} className="text-[var(--muted)]" strokeWidth={1.8} aria-hidden="true" />
+                          <span className="font-semibold tabular-nums">{detection.person_count}</span>
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 align-middle">
+                        {detection.violations && detection.violations.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {detection.violations.slice(0, 2).map((violation, violationIndex) => (
+                              <span key={`${violation}-${violationIndex}`} className="inline-flex rounded-full border border-[#f0c3c8] bg-[#fff8f8] px-3 py-1.5 text-[12px] font-semibold text-[#d70015]">
+                                {formatViolationLabel(violation)}
+                              </span>
+                            ))}
+                            {detection.violations.length > 2 && (
+                              <span className="inline-flex rounded-full bg-[#f5f5f7] px-3 py-1.5 text-[12px] text-[var(--muted)]">+{detection.violations.length - 2} more</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="inline-flex rounded-full border border-[#b9dfc2] bg-[#f3fbf5] px-3 py-1.5 text-[12px] font-semibold text-[#15803d]">
+                            สวมใส่ครบถ้วน
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 align-middle">
+                        <span className="inline-flex items-center gap-2 text-[13px] font-semibold text-[#d70015]">
+                          <span className="h-2 w-2 rounded-full bg-[#d70015]" aria-hidden="true" />
+                          Violation
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 align-middle sm:pr-8">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(event) => { event.stopPropagation(); setSelectedViolation(detection) }}
+                            aria-label={`View detection ${detection.id}`}
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--line)] bg-white text-[var(--blue)] transition-colors hover:bg-[#f5f5f7] active:scale-95"
+                          >
+                            <Eye size={16} strokeWidth={1.8} aria-hidden="true" />
+                          </button>
                         </div>
-                      </td>
-                      <td className="border-b border-black/8 px-6 py-4 text-[15px] text-[#424245]">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedViolation(row)}
-                          className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-[#0066cc] bg-transparent text-[#0066cc] transition active:scale-95"
-                          aria-label={`View details for ${row.refId}`}
-                        >
-                          <Eye size={17} aria-hidden="true" />
-                        </button>
                       </td>
                     </tr>
                   ))}
@@ -1138,8 +1142,8 @@ export function DashboardPage() {
 
                     <div className="surface-card overflow-hidden">
                       <ProtectedDetectionImage
-                        detectionId={selectedViolation.detectionId}
-                        alt={selectedViolation.refId}
+                        detectionId={selectedViolation.id}
+                        alt={`Detection ${selectedViolation.id}`}
                         className="h-[260px] w-full bg-[#fafafc] object-contain sm:h-[400px]"
                       />
                     </div>
@@ -1148,23 +1152,21 @@ export function DashboardPage() {
                       <div className="surface-card p-5">
                         <p className="m-0 mb-2 text-[12px] font-semibold tracking-[0.08em] text-[var(--muted)] uppercase">Date &amp; time</p>
                         <p className="m-0 text-[20px] font-semibold leading-tight tracking-[-0.02em] text-[#1d1d1f]">
-                          {new Date(selectedViolation.createdAt).toLocaleString('th-TH')}
+                          {new Date(selectedViolation.created_at).toLocaleString('th-TH')}
                         </p>
                       </div>
                       <div className="surface-card p-5">
                         <p className="m-0 mb-2 text-[12px] font-semibold tracking-[0.08em] text-[var(--muted)] uppercase">Reference ID</p>
-                        <p className="m-0 text-[24px] font-semibold leading-tight tracking-[-0.025em] text-[#1d1d1f]">{selectedViolation.refId}</p>
+                        <p className="m-0 text-[24px] font-semibold leading-tight tracking-[-0.025em] text-[#1d1d1f]">DET-{String(selectedViolation.id).padStart(5, '0')}</p>
                       </div>
                     </div>
 
                     <div className="surface-card p-5">
                       <p className="m-0 mb-3 text-[12px] font-semibold tracking-[0.08em] text-[var(--muted)] uppercase">Violation type</p>
                       <div className="flex flex-wrap gap-2">
-                        {selectedViolation.violationTypes.map((type, idx) => (
+                        {selectedViolation.violations.map((type, idx) => (
                           <span key={idx} className={getViolationBadgeClass(type)}>
-                            {type.toUpperCase().includes('HELMET') ? 'MISSING HELMET' :
-                             type.toUpperCase().includes('VEST') ? 'MISSING VEST' :
-                             type.toUpperCase()}
+                            {formatViolationLabel(type)}
                           </span>
                         ))}
                       </div>
@@ -1177,13 +1179,13 @@ export function DashboardPage() {
                           const types =
                             (fullDetectionDetails?.violations?.length
                               ? fullDetectionDetails.violations
-                              : selectedViolation.violationTypes) ?? []
+                              : selectedViolation.violations) ?? []
                           if (types.length > 0) {
-                            return `ตรวจพบ: ${types.join(' และ ')}`
+                            return `ตรวจพบ: ${types.map(formatViolationLabel).join(' และ ')}`
                           }
                           return (
                             fullDetectionDetails?.summary?.message ||
-                            selectedViolation.message ||
+                            selectedViolation.summary?.message ||
                             '—'
                           )
                         })()}
