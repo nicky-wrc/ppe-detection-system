@@ -63,6 +63,15 @@ export interface DetectionSummary {
   compliant_persons: number
   non_compliant_persons: number
   violation_breakdown: Record<string, number>
+  settings?: {
+    ppe_check_enabled: boolean
+    detection_mode: string
+    ppe_rules: string[]
+    ppe_rules_label: string
+    confidence_settings: string
+    person_confidence_percent: number
+    ppe_confidence_percent: number
+  }
 }
 
 export interface DetectionStats {

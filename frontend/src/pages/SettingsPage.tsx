@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Bell, Cpu, Database, HardDrive, Loader2, Save, Shield, SlidersHorizontal } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { Bell, CheckCircle, Cpu, Database, HardDrive, Loader2, Save, Shield, SlidersHorizontal, X, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { Layout } from '../components/layout/Layout'
@@ -12,6 +13,25 @@ import type { ActiveModelInfo, UserSettings, Zone } from '../types'
 const PPE_RULES = [
   { key: 'helmet', label: 'หมวกนิรภัย' },
   { key: 'safety-vest', label: 'เสื้อสะท้อนแสง' },
+]
+
+const PERSON_CONFIDENCE_PRESETS = [
+  { key: 'strict', label: 'ตรวจเฉพาะที่ชัดเจน', value: 60, displayLevel: 40, effect: 'นับเฉพาะคนที่เห็นชัด', useCase: 'ใช้เมื่อระบบมักจะตรวจจับวัตถุอื่นเป็นคนบ่อย' },
+  { key: 'balanced', label: 'ตรวจแบบปกติ', value: 45, displayLevel: 55, effect: 'เหมาะกับการใช้งานทั่วไป', useCase: 'ใช้กับกล้องและแสงปกติ' },
+  { key: 'lenient', label: 'ตรวจเพิ่มแม้ภาพไม่ชัด', value: 30, displayLevel: 70, effect: 'พยายามนับคนในภาพที่ตรวจจับยากมากขึ้น', useCase: 'ใช้เมื่อคนอยู่ไกล ตัวเล็ก หรือภาพไม่คม' },
+]
+
+const PPE_SENSITIVITY_PRESETS = [
+  { key: 'strict', label: 'ตรวจเฉพาะที่ชัดเจน', value: 35, displayLevel: 35, effect: 'นับเฉพาะ PPE ที่เห็นชัด', useCase: 'ใช้เมื่อระบบมักจะตรวจจับวัตถุอื่นเป็น PPE บ่อย' },
+  { key: 'balanced', label: 'ตรวจแบบปกติ', value: 60, displayLevel: 60, effect: 'เหมาะกับการใช้งานทั่วไป', useCase: 'ใช้กับกล้องและแสงปกติ' },
+  { key: 'lenient', label: 'ตรวจเพิ่มแม้ภาพไม่ชัด', value: 75, displayLevel: 75, effect: 'พยายามหา PPE ในภาพที่ตรวจจับยากมากขึ้น', useCase: 'ใช้เมื่อหมวกหรือเสื้อเล็ก มืด หรืออยู่ไกล' },
+]
+
+const SETTINGS_SECTION_NAV_ITEMS = [
+  { href: '#ai-detection', icon: Cpu, label: 'AI & Detection' },
+  { href: '#zones', icon: Shield, label: 'Zone rules' },
+  { href: '#notifications', icon: Bell, label: 'Notifications' },
+  { href: '#system-health', icon: Database, label: 'System health' },
 ]
 
 interface ToggleSwitchProps {
@@ -37,6 +57,8 @@ const ToggleSwitch = ({ checked, label, onChange, disabled = false }: ToggleSwit
 )
 
 export function SettingsPage() {
+  const location = useLocation()
+  const navigate = useNavigate()
   const isAdmin = useAuthStore((state) => state.user?.role === 'admin')
   const [settings, setSettings] = useState<UserSettings | null>(null)
   const [savedSettings, setSavedSettings] = useState<UserSettings | null>(null)
@@ -50,6 +72,9 @@ export function SettingsPage() {
   const [savingZoneId, setSavingZoneId] = useState<number | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null)
+  const [showFloatingSectionNav, setShowFloatingSectionNav] = useState(false)
+  const sectionNavRef = useRef<HTMLElement>(null)
   const isDirty = settings !== null && JSON.stringify(settings) !== JSON.stringify(savedSettings)
 
   const loadModel = useCallback(async () => {
@@ -75,6 +100,47 @@ export function SettingsPage() {
     window.addEventListener('beforeunload', warnBeforeLeaving)
     return () => window.removeEventListener('beforeunload', warnBeforeLeaving)
   }, [isDirty])
+
+  useEffect(() => {
+    if (!isDirty) return
+    const interceptInternalLink = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+      const target = event.target as HTMLElement | null
+      const anchor = target?.closest('a[href]') as HTMLAnchorElement | null
+      if (!anchor || anchor.target || anchor.hasAttribute('download')) return
+
+      const nextUrl = new URL(anchor.href)
+      if (nextUrl.origin !== window.location.origin) return
+      const nextPath = `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`
+      const currentPath = `${location.pathname}${location.search}${location.hash}`
+      if (nextPath === currentPath || nextUrl.pathname === location.pathname) return
+
+      event.preventDefault()
+      setPendingNavigation(nextPath)
+    }
+    document.addEventListener('click', interceptInternalLink, true)
+    return () => document.removeEventListener('click', interceptInternalLink, true)
+  }, [isDirty, location.hash, location.pathname, location.search])
+
+  useEffect(() => {
+    if (isLoading || loadError) {
+      setShowFloatingSectionNav(false)
+      return
+    }
+
+    const updateFloatingSectionNav = () => {
+      const rect = sectionNavRef.current?.getBoundingClientRect()
+      setShowFloatingSectionNav(Boolean(rect && rect.bottom < 108))
+    }
+
+    updateFloatingSectionNav()
+    window.addEventListener('scroll', updateFloatingSectionNav, { passive: true })
+    window.addEventListener('resize', updateFloatingSectionNav)
+    return () => {
+      window.removeEventListener('scroll', updateFloatingSectionNav)
+      window.removeEventListener('resize', updateFloatingSectionNav)
+    }
+  }, [isLoading, loadError])
 
   const loadZones = useCallback(async () => {
     setZonesError(false)
@@ -115,27 +181,46 @@ export function SettingsPage() {
     void loadAll()
   }, [loadAll])
 
-  const handleSave = () => {
-    if (!settings || !isDirty || isSaving) return
+  const handleSave = async () => {
+    if (!settings || !isDirty || isSaving) return false
     setIsSaving(true)
-    settingsService
-      .updateMe({
+    try {
+      const updatedSettings = await settingsService.updateMe({
         alert_sound: settings.alert_sound,
         save_evidence: settings.save_evidence,
         confidence_threshold: settings.confidence_threshold,
         ppe_detection_sensitivity: settings.ppe_detection_sensitivity,
         active_ppe_rules: settings.active_ppe_rules,
       })
-      .then((updatedSettings) => {
-        setSettings(updatedSettings)
-        setSavedSettings(updatedSettings)
-        toast.success('บันทึกแล้ว การตรวจจับครั้งถัดไปจะใช้ค่าใหม่ตามบัญชีและโซน')
-      })
-      .catch((error) => {
-        console.error(error)
-        toast.error('บันทึกไม่สำเร็จ')
-      })
-      .finally(() => setIsSaving(false))
+      setSettings(updatedSettings)
+      setSavedSettings(updatedSettings)
+      toast.success('บันทึกแล้ว การตรวจจับครั้งถัดไปจะใช้ค่าใหม่ตามบัญชีและโซน')
+      return true
+    } catch (error) {
+      console.error(error)
+      toast.error('บันทึกไม่สำเร็จ')
+      return false
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const saveAndLeave = async () => {
+    if (!pendingNavigation) return
+    const saved = await handleSave()
+    if (saved) {
+      const nextPath = pendingNavigation
+      setPendingNavigation(null)
+      navigate(nextPath)
+    }
+  }
+
+  const discardAndLeave = () => {
+    if (!pendingNavigation) return
+    const nextPath = pendingNavigation
+    setSettings(savedSettings)
+    setPendingNavigation(null)
+    navigate(nextPath)
   }
 
   const toggleRule = (key: string) => {
@@ -186,7 +271,7 @@ export function SettingsPage() {
           </div>
           <button
             type="button"
-            onClick={handleSave}
+            onClick={() => void handleSave()}
             disabled={isSaving || isLoading || !settings || !isDirty}
             className="btn-apple-primary !min-h-11 min-w-44 px-6 active:scale-95"
           >
@@ -213,13 +298,8 @@ export function SettingsPage() {
               <p className="mt-2">กล้องฝั่ง Backend ใช้ค่าของ <strong>เจ้าของกล้อง</strong> ส่วนกล้องผ่านเบราว์เซอร์และการอัปโหลดใช้ค่าของบัญชีที่กำลังใช้งาน หากเลือกโซน ระบบใช้กฎ PPE ของโซนนั้นก่อนกฎรายบุคคล</p>
               <p className="mt-2">การปรับค่าจะไม่เปลี่ยนผลตรวจย้อนหลัง และไม่ลบข้อมูลหรือหลักฐานที่บันทึกไว้แล้ว</p>
             </div>
-            <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="Settings sections">
-              {[
-                { href: '#ai-detection', icon: Cpu, label: 'AI & Detection' },
-                { href: '#zones', icon: Shield, label: 'Zone rules' },
-                { href: '#notifications', icon: Bell, label: 'Notifications' },
-                { href: '#system-health', icon: Database, label: 'System health' },
-              ].map((item) => (
+            <nav ref={sectionNavRef} className="flex gap-2 overflow-x-auto pb-1" aria-label="Settings sections">
+              {SETTINGS_SECTION_NAV_ITEMS.map((item) => (
                 <a
                   key={item.href}
                   href={item.href}
@@ -238,52 +318,91 @@ export function SettingsPage() {
               </div>
               <div className="grid gap-8 p-6 sm:p-8 lg:grid-cols-2">
                 <div className="rounded-[18px] border border-[var(--line)] bg-[#f5f5f7] p-6">
-                  <div className="mb-5 flex items-center justify-between gap-4">
-                    <label htmlFor="person-confidence" className="text-[17px] font-semibold text-[var(--ink)]">ความมั่นใจขั้นต่ำในการตรวจพบคน</label>
-                    <output htmlFor="person-confidence" className="rounded-full bg-white px-3 py-1.5 text-[14px] font-semibold text-[var(--blue)]">
-                      {settings.confidence_threshold}%
-                    </output>
+                  <div className="mb-5">
+                    <p className="text-[17px] font-semibold text-[var(--ink)]">การตรวจพบบุคคล</p>
+                    <p className="mt-2 text-[14px] leading-relaxed text-[var(--muted)]">เลือกตามสภาพกล้องและความผิดพลาดที่เจอ ตัวเลขสูงขึ้นหมายถึงระบบพยายามจับคนในภาพยากมากขึ้น</p>
                   </div>
-                  <input
-                    id="person-confidence"
-                    type="range"
-                    min="10"
-                    max="90"
-                    step="5"
-                    value={settings.confidence_threshold}
-                    onChange={(event) => setSettings({ ...settings, confidence_threshold: parseInt(event.target.value) })}
-                    disabled={isSaving}
-                    className="h-11 w-full cursor-pointer accent-[var(--blue)]"
-                  />
-                  <p className="mt-4 text-[14px] leading-relaxed text-[var(--muted)]">ลดค่าเพื่อรับผลตรวจคนที่โมเดลมั่นใจน้อยลง แต่อาจตรวจผิดมากขึ้น เพิ่มค่าเพื่อกรองผลที่ไม่มั่นใจ แต่อาจพลาดคนที่อยู่ไกลหรือมุมยาก</p>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {PERSON_CONFIDENCE_PRESETS.map((preset) => {
+                      const isSelected = settings.confidence_threshold === preset.value
+                      return (
+                        <button
+                          key={preset.key}
+                          type="button"
+                          onClick={() => setSettings({ ...settings, confidence_threshold: preset.value })}
+                          disabled={isSaving}
+                          aria-pressed={isSelected}
+                          className={`group min-h-[156px] rounded-[14px] border px-4 py-3 text-left transition-colors active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 ${
+                            isSelected
+                              ? 'border-[var(--blue)] bg-white text-[var(--ink)] shadow-sm'
+                              : 'border-[var(--line)] bg-white/70 text-[var(--ink)] hover:bg-white'
+                          }`}
+                        >
+                          <span className="block text-[30px] font-semibold leading-none tracking-[-0.03em] text-[var(--blue)]">
+                            {preset.displayLevel}%
+                          </span>
+                          <span className="mt-3 block whitespace-nowrap text-[13px] font-semibold text-[var(--ink)] sm:text-[14px]">{preset.label}</span>
+                          <span className="mt-3 block">
+                            <span className="block text-[12px] leading-snug text-[var(--muted)]">
+                              <span className="font-semibold text-[var(--ink)]">ผลลัพธ์:</span> {preset.effect}
+                            </span>
+                            <span className="mt-1 block text-[12px] leading-snug text-[var(--muted)]">
+                              <span className="font-semibold text-[var(--ink)]">เหมาะเมื่อ:</span> {preset.useCase}
+                            </span>
+                          </span>
+                          {isSelected && <span className="mt-3 inline-flex rounded-full bg-[#e8f2ff] px-2.5 py-1 text-[11px] font-semibold text-[var(--blue)]">กำลังใช้งาน</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <p className="mt-4 text-[14px] leading-relaxed text-[var(--muted)]">ถ้าไม่แน่ใจให้ใช้ “สมดุล” ก่อน แล้วค่อยเปลี่ยนเมื่อเห็นปัญหาจากภาพจริง</p>
                 </div>
 
                 <div className="rounded-[18px] border border-[var(--line)] bg-[#f5f5f7] p-6">
-                  <div className="mb-5 flex items-center justify-between gap-4">
-                    <label htmlFor="ppe-sensitivity" className="text-[17px] font-semibold text-[var(--ink)]">ความไวในการตรวจพบ PPE</label>
-                    <output htmlFor="ppe-sensitivity" className="rounded-full bg-white px-3 py-1.5 text-[14px] font-semibold text-[var(--blue)]">
-                      {settings.ppe_detection_sensitivity}%
-                    </output>
+                  <div className="mb-5">
+                    <p className="text-[17px] font-semibold text-[var(--ink)]">การตรวจพบหมวกและเสื้อ</p>
+                    <p className="mt-2 text-[14px] leading-relaxed text-[var(--muted)]">เลือกตามความชัดของหมวกและเสื้อในภาพ ตัวเลขสูงขึ้นหมายถึงระบบพยายามจับ PPE ในภาพยากมากขึ้น</p>
                   </div>
-                  <input
-                    id="ppe-sensitivity"
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="5"
-                    value={settings.ppe_detection_sensitivity}
-                    onChange={(event) => setSettings({ ...settings, ppe_detection_sensitivity: parseInt(event.target.value) })}
-                    disabled={isSaving}
-                    className="h-11 w-full cursor-pointer accent-[var(--blue)]"
-                  />
-                  <p className="mt-4 text-[14px] leading-relaxed text-[var(--muted)]">เพิ่มค่าเพื่อให้รับผลตรวจหมวกและเสื้อได้ง่ายขึ้น แต่อาจนับสิ่งที่ไม่ใช่ PPE เป็น PPE ได้ ไม่ใช่การเพิ่มความเข้มงวดของการแจ้งเตือน</p>
-                  <p className="mt-2 text-[13px] font-semibold text-[var(--blue)]">เกณฑ์ความมั่นใจ PPE หลัก: {Number((Math.max(0.1, 0.45 - settings.ppe_detection_sensitivity * 0.0035) * 100).toFixed(1))}%</p>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {PPE_SENSITIVITY_PRESETS.map((preset) => {
+                      const isSelected = settings.ppe_detection_sensitivity === preset.value
+                      return (
+                        <button
+                          key={preset.key}
+                          type="button"
+                          onClick={() => setSettings({ ...settings, ppe_detection_sensitivity: preset.value })}
+                          disabled={isSaving}
+                          aria-pressed={isSelected}
+                          className={`group min-h-[156px] rounded-[14px] border px-4 py-3 text-left transition-colors active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 ${
+                            isSelected
+                              ? 'border-[var(--blue)] bg-white text-[var(--ink)] shadow-sm'
+                              : 'border-[var(--line)] bg-white/70 text-[var(--ink)] hover:bg-white'
+                          }`}
+                        >
+                          <span className="block text-[30px] font-semibold leading-none tracking-[-0.03em] text-[var(--blue)]">
+                            {preset.displayLevel}%
+                          </span>
+                          <span className="mt-3 block whitespace-nowrap text-[13px] font-semibold text-[var(--ink)] sm:text-[14px]">{preset.label}</span>
+                          <span className="mt-3 block">
+                            <span className="block text-[12px] leading-snug text-[var(--muted)]">
+                              <span className="font-semibold text-[var(--ink)]">ผลลัพธ์:</span> {preset.effect}
+                            </span>
+                            <span className="mt-1 block text-[12px] leading-snug text-[var(--muted)]">
+                              <span className="font-semibold text-[var(--ink)]">เหมาะเมื่อ:</span> {preset.useCase}
+                            </span>
+                          </span>
+                          {isSelected && <span className="mt-3 inline-flex rounded-full bg-[#e8f2ff] px-2.5 py-1 text-[11px] font-semibold text-[var(--blue)]">กำลังใช้งาน</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <p className="mt-4 text-[14px] leading-relaxed text-[var(--muted)]">ถ้าไม่แน่ใจให้ใช้ “สมดุล” ก่อน แล้วค่อยเปลี่ยนเมื่อเห็นปัญหาจากภาพจริง</p>
                 </div>
 
                 <div className="lg:col-span-2">
                   <p className="mb-2 text-[14px] font-semibold text-[var(--ink)]">กฎ PPE ส่วนบุคคล (เมื่อไม่ได้ใช้กฎโซน)</p>
                   <p className="mb-4 text-[14px] text-[var(--muted)]">ปิดรายการใดจะไม่แจ้งการขาด PPE ชนิดนั้น การปิดทั้งสองรายการยังนับคน แต่ไม่ตรวจการฝ่าฝืน PPE</p>
-                  <div className="flex flex-wrap gap-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
                     {PPE_RULES.map((rule) => {
                       const isActive = Boolean((settings.active_ppe_rules || {})[rule.key])
                       return (
@@ -293,14 +412,27 @@ export function SettingsPage() {
                           onClick={() => toggleRule(rule.key)}
                           disabled={isSaving}
                           aria-pressed={isActive}
-                          className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-5 text-[14px] font-semibold transition-colors active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${
+                          className={`flex min-h-[104px] items-center justify-between gap-4 rounded-[16px] border p-4 text-left transition-colors active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 ${
                             isActive
-                              ? 'border-[var(--blue)] bg-[var(--blue)] text-white'
-                              : 'border-[var(--line)] bg-white text-[var(--blue)] hover:bg-[#f5f5f7]'
+                              ? 'border-[#b9dfc2] bg-[#f3fbf5] text-[var(--ink)]'
+                              : 'border-[#f0c3c8] bg-[#fff8f8] text-[var(--ink)]'
                           }`}
                         >
-                          <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-white' : 'bg-[var(--blue)]'}`} aria-hidden="true" />
-                          {rule.label}
+                          <span className="min-w-0">
+                            <span className="flex items-center gap-2 text-[17px] font-semibold">
+                              {isActive
+                                ? <CheckCircle size={18} className="shrink-0 text-[#15803d]" strokeWidth={1.8} aria-hidden="true" />
+                                : <XCircle size={18} className="shrink-0 text-[#d70015]" strokeWidth={1.8} aria-hidden="true" />
+                              }
+                              {rule.label}
+                            </span>
+                            <span className={`mt-2 block text-[13px] font-semibold ${isActive ? 'text-[#15803d]' : 'text-[#d70015]'}`}>
+                              {isActive ? 'เปิดการตรวจจับรายการนี้' : 'ปิดการตรวจจับรายการนี้'}
+                            </span>
+                          </span>
+                          <span className={`relative h-8 w-[54px] shrink-0 rounded-full transition-colors ${isActive ? 'bg-[#34c759]' : 'bg-[#d1d1d6]'}`} aria-hidden="true">
+                            <span className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow-sm transition-transform ${isActive ? 'left-7' : 'left-1'}`} />
+                          </span>
                         </button>
                       )
                     })}
@@ -470,12 +602,85 @@ export function SettingsPage() {
               <p role="status" className="text-[14px] font-semibold text-[var(--ink)]">{isSaving ? 'กำลังบันทึก…' : isDirty ? 'มีการเปลี่ยนแปลงที่ยังไม่บันทึก' : 'ค่าบัญชีตรงกับข้อมูลที่บันทึกแล้ว'}</p>
               <div className="flex flex-wrap gap-2">
                 <button type="button" className="btn-apple-secondary" disabled={!isDirty || isSaving} onClick={() => setSettings(savedSettings)}>ยกเลิกการแก้ไข</button>
-                <button type="button" className="btn-apple-primary" disabled={!isDirty || isSaving} onClick={handleSave}>{isSaving ? 'กำลังบันทึก…' : 'บันทึกค่าบัญชี'}</button>
+                <button type="button" className="btn-apple-primary" disabled={!isDirty || isSaving} onClick={() => void handleSave()}>{isSaving ? 'กำลังบันทึก…' : 'บันทึกค่าบัญชี'}</button>
               </div>
             </div>
           </div>
         )}
       </div>
+      {showFloatingSectionNav && (
+        <nav
+          aria-label="Settings sections floating"
+          className="fixed left-1/2 top-[108px] z-30 flex w-fit max-w-[calc(100vw-32px)] -translate-x-1/2 justify-center gap-2 overflow-x-auto rounded-full border border-[var(--line)] bg-white/95 p-2 shadow-[0_14px_40px_rgba(0,0,0,0.14)] backdrop-blur"
+        >
+          {SETTINGS_SECTION_NAV_ITEMS.map((item) => (
+            <a
+              key={item.href}
+              href={item.href}
+              className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full px-4 text-[13px] font-semibold text-[var(--blue)] no-underline transition-colors hover:bg-[#f5f5f7]"
+            >
+              <item.icon size={15} aria-hidden="true" />
+              {item.label}
+            </a>
+          ))}
+        </nav>
+      )}
+      {pendingNavigation && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="กลับไปแก้ไขการตั้งค่า"
+            className="absolute inset-0 h-full w-full cursor-default border-0 bg-black/55 backdrop-blur-[2px]"
+            onClick={() => setPendingNavigation(null)}
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="unsaved-settings-title"
+            className="relative w-full max-w-[480px] rounded-[20px] border border-[var(--line)] bg-white p-6 shadow-[0_24px_80px_rgba(0,0,0,0.24)] sm:p-7"
+          >
+            <button
+              type="button"
+              aria-label="ปิดหน้าต่างและกลับไปแก้ไข"
+              className="absolute right-4 top-4 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#f5f5f7] text-[var(--ink)] transition-colors hover:text-[var(--blue)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => setPendingNavigation(null)}
+              disabled={isSaving}
+            >
+              <X size={18} aria-hidden="true" />
+            </button>
+            <div className="flex items-start gap-4">
+              <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#fff8e6] text-[#b45309]" aria-hidden="true">
+                <Shield size={19} strokeWidth={1.8} />
+              </span>
+              <div className="min-w-0">
+                <h2 id="unsaved-settings-title" className="m-0 text-[22px] font-semibold tracking-[-0.02em] text-[var(--ink)]">ยังไม่ได้บันทึกการตั้งค่า</h2>
+                <p className="mt-2 text-[15px] leading-relaxed text-[var(--muted)]">
+                  คุณมีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก ต้องการบันทึกก่อนออกจากหน้านี้หรือไม่
+                </p>
+              </div>
+            </div>
+            <div className="mt-7 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                className="btn-apple-secondary !min-h-11 text-[#d70015]"
+                onClick={discardAndLeave}
+                disabled={isSaving}
+              >
+                ออกโดยไม่บันทึก
+              </button>
+              <button
+                type="button"
+                className="btn-apple-primary !min-h-11"
+                onClick={() => void saveAndLeave()}
+                disabled={isSaving}
+              >
+                {isSaving ? <Loader2 size={17} className="animate-spin" aria-hidden="true" /> : <Save size={17} aria-hidden="true" />}
+                {isSaving ? 'กำลังบันทึก…' : 'บันทึกแล้วออก'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </Layout>
   )
 }

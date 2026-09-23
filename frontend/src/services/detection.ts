@@ -32,6 +32,14 @@ export interface DetectionHistoryResponse {
   total_pages: number
 }
 
+export interface DetectionHistoryFilters {
+  startDate?: string
+  endDate?: string
+  hasViolation?: boolean
+  missingPpe?: 'helmet' | 'vest' | 'both'
+  detectedPpe?: 'helmet' | 'vest' | 'both'
+}
+
 export const detectionService = {
   async uploadImage(file: File, zoneId?: number): Promise<Detection> {
     const formData = new FormData()
@@ -55,6 +63,29 @@ export const detectionService = {
     return response.data
   },
 
+  async saveCompliantFrameReport(file: File, zoneId?: number): Promise<Detection> {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const params = zoneId ? `?zone_id=${zoneId}` : ''
+    try {
+      const response = await api.post(`/detection/frame/compliant-report${params}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      return response.data
+    } catch (error) {
+      const status = (error as { response?: { status?: number } }).response?.status
+      if (status !== 404 && status !== 405) throw error
+
+      const fallbackFormData = new FormData()
+      fallbackFormData.append('file', file)
+      const response = await api.post(`/detection/image${params}`, fallbackFormData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      return response.data
+    }
+  },
+
   async uploadVideo(file: File, zoneId?: number): Promise<Detection> {
     const formData = new FormData()
     formData.append('file', file)
@@ -67,12 +98,16 @@ export const detectionService = {
   },
 
 
-  async getHistory(page = 1, perPage = 20, hasViolation?: boolean): Promise<DetectionHistoryResponse> {
+  async getHistory(page = 1, perPage = 20, filters: DetectionHistoryFilters = {}): Promise<DetectionHistoryResponse> {
     const params = new URLSearchParams({
       page: String(page),
       per_page: String(perPage),
     })
-    if (hasViolation !== undefined) params.set('has_violation', String(hasViolation))
+    if (filters.startDate) params.set('start_date', filters.startDate)
+    if (filters.endDate) params.set('end_date', filters.endDate)
+    if (filters.hasViolation !== undefined) params.set('has_violation', String(filters.hasViolation))
+    if (filters.missingPpe) params.set('missing_ppe', filters.missingPpe)
+    if (filters.detectedPpe) params.set('detected_ppe', filters.detectedPpe)
     const response = await api.get(`/detection/history?${params.toString()}`)
     return response.data
   },

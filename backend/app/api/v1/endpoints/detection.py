@@ -89,6 +89,40 @@ async def detect_from_frame(
         )
 
 
+@router.post("/frame/compliant-report", response_model=DetectionResponse)
+async def save_compliant_frame_report(
+    request: Request,
+    file: UploadFile = File(...),
+    zone_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("admin", "safety_officer"))
+):
+    """บันทึกเฟรมกล้อง realtime ลงประวัติเฉพาะเมื่อสวม PPE ครบถ้วน โดยไม่สร้าง alert"""
+    enforce_rate_limit(request, "compliant-frame-report", limit=30)
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="เฟรมต้องเป็นรูปภาพเท่านั้น"
+        )
+    _validate_extension(file, {".jpg", ".jpeg", ".png", ".webp"})
+
+    service = DetectionService(db)
+
+    try:
+        return await service.process_compliant_frame_report(
+            file=file,
+            user_id=current_user.id,
+            zone_id=zone_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"เกิดข้อผิดพลาด: {str(e)}"
+        )
+
+
 @router.post("/video", response_model=DetectionResponse)
 async def detect_from_video(
     request: Request,
@@ -130,10 +164,20 @@ async def get_detection_history(
     per_page: int = Query(20, ge=1, le=100),
     zone_id: Optional[int] = Query(None),
     has_violation: Optional[bool] = Query(None),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    missing_ppe: Optional[str] = Query(None, pattern="^(helmet|vest|both)$"),
+    detected_ppe: Optional[str] = Query(None, pattern="^(helmet|vest|both)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """ดูประวัติการตรวจจับ"""
+    today = date.today()
+    if (start_date and start_date > today) or (end_date and end_date > today):
+        raise HTTPException(status_code=422, detail="Date filters cannot be in the future")
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=422, detail="Start date must not be after end date")
+
     service = DetectionService(db)
     
     skip = (page - 1) * per_page
@@ -141,7 +185,11 @@ async def get_detection_history(
         skip=skip,
         limit=per_page,
         zone_id=zone_id,
-        has_violation=has_violation
+        has_violation=has_violation,
+        start_date=start_date,
+        end_date=end_date,
+        missing_ppe=missing_ppe,
+        detected_ppe=detected_ppe,
     )
     
     return {

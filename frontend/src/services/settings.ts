@@ -11,11 +11,9 @@ function normalizeSettings(value: UserSettings): UserSettings {
     ...value,
     alert_sound: value.alert_sound ?? true,
     save_evidence: value.save_evidence ?? true,
-    confidence_threshold: value.confidence_threshold ?? 25,
+    confidence_threshold: value.confidence_threshold ?? 45,
     ppe_detection_sensitivity: value.ppe_detection_sensitivity ?? 60,
-    active_ppe_rules: Object.keys(value.active_ppe_rules || {}).length
-      ? value.active_ppe_rules
-      : { helmet: true, 'safety-vest': true },
+    active_ppe_rules: value.active_ppe_rules ?? { helmet: true, 'safety-vest': true },
   }
 }
 
@@ -71,4 +69,3 @@ export const settingsService = {
     }
   },
 }
-
