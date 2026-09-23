@@ -19,8 +19,10 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models import Alert, AlertDelivery, Camera, Detection, ViolationLog, Zone
 from app.services.detection_preferences import (
+    get_detection_record_mode,
     normalize_violation_label,
     resolve_detection_preferences,
+    should_save_detection_record,
     summarize_detection_settings,
 )
 from app.services.email_notifier import email_notifier
@@ -482,6 +484,13 @@ class CameraRuntimeManager:
         return resolve_detection_preferences(db, camera.owner_id, camera.zone_id)
 
     @staticmethod
+    def _allows_detection_record(db, camera: Camera, has_violation: bool) -> bool:
+        return should_save_detection_record(
+            get_detection_record_mode(db, camera.owner_id),
+            has_violation,
+        )
+
+    @staticmethod
     def _filter_to_zone(result: dict[str, Any], zone: Zone | None, frame_shape) -> dict[str, Any]:
         if not zone or not zone.polygon_points or len(zone.polygon_points) < 3:
             return result
@@ -821,18 +830,19 @@ class CameraRuntimeManager:
                         preview_generated_at = preview_now
 
                 if confirmed:
-                    await self._persist_events(
-                        db,
-                        camera,
-                        frame,
-                        result,
-                        confirmed,
-                        recorder,
-                        save_evidence,
-                        required,
-                        confidence,
-                        person_confidence,
-                    )
+                    if self._allows_detection_record(db, camera, True):
+                        await self._persist_events(
+                            db,
+                            camera,
+                            frame,
+                            result,
+                            confirmed,
+                            recorder,
+                            save_evidence,
+                            required,
+                            confidence,
+                            person_confidence,
+                        )
 
                 report_now = time.monotonic()
                 if (
@@ -840,7 +850,8 @@ class CameraRuntimeManager:
                     and not result.get("has_violation", False)
                     and report_now - last_compliant_report_at >= settings.CAMERA_COMPLIANT_REPORT_INTERVAL_SECONDS
                 ):
-                    self._persist_compliant_detection(db, camera, result, required, confidence, person_confidence)
+                    if self._allows_detection_record(db, camera, False):
+                        self._persist_compliant_detection(db, camera, result, required, confidence, person_confidence)
                     last_compliant_report_at = report_now
 
                 analyzed += 1

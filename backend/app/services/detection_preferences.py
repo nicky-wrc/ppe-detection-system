@@ -11,6 +11,7 @@ PPE_LABELS = {
     "helmet": "หมวกนิรภัย",
     "safety-vest": "เสื้อสะท้อนแสง",
 }
+DETECTION_RECORD_MODES = {"both", "violations_only", "compliant_only"}
 VIOLATION_LABELS = {
     "no_helmet": "ไม่สวมหมวกนิรภัย",
     "no_hardhat": "ไม่สวมหมวกนิรภัย",
@@ -29,6 +30,31 @@ def normalize_active_ppe_rules(value: dict | None) -> dict[str, bool]:
     if not isinstance(value, dict):
         return {}
     return {key: bool(value.get(key, False)) for key in PPE_LABELS}
+
+
+def normalize_detection_record_mode(value: str | None) -> str:
+    normalized = (value or "both").strip().lower()
+    return normalized if normalized in DETECTION_RECORD_MODES else "both"
+
+
+def should_save_detection_record(mode: str | None, has_violation: bool) -> bool:
+    normalized = normalize_detection_record_mode(mode)
+    if normalized == "violations_only":
+        return has_violation
+    if normalized == "compliant_only":
+        return not has_violation
+    return True
+
+
+def get_detection_record_mode(db: Session, user_id: int | None) -> str:
+    if user_id is None:
+        return "both"
+    preferences = db.query(UserSettings).populate_existing().filter(
+        UserSettings.user_id == user_id,
+    ).first()
+    if not preferences:
+        return "both"
+    return normalize_detection_record_mode(preferences.detection_record_mode)
 
 
 def normalize_violation_label(value: str) -> str:

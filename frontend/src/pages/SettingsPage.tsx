@@ -27,6 +27,11 @@ const PPE_SENSITIVITY_PRESETS = [
   { key: 'lenient', label: 'ตรวจเพิ่มแม้ภาพไม่ชัด', value: 75, displayLevel: 75, effect: 'พยายามหา PPE ในภาพที่ตรวจจับยากมากขึ้น', useCase: 'ใช้เมื่อหมวกหรือเสื้อเล็ก มืด หรืออยู่ไกล' },
 ]
 
+const DETECTION_RECORD_MODE_OPTIONS = [
+  { key: 'both', label: 'บันทึกสองแบบ', status: 'Violation และสวมใส่ครบถ้วน', description: 'ใช้กับแดชบอร์ดที่ต้องการเห็นทั้งความเสี่ยงและอัตราการปฏิบัติตาม' },
+  { key: 'violations_only', label: 'เฉพาะมีการละเมิด', status: 'Violation เท่านั้น', description: 'เหมาะเมื่ออยากให้ประวัติและกราฟเน้นเหตุที่ต้องติดตามแก้ไข' },
+] as const
+
 const SETTINGS_SECTION_NAV_ITEMS = [
   { href: '#ai-detection', icon: Cpu, label: 'AI & Detection' },
   { href: '#zones', icon: Shield, label: 'Zone rules' },
@@ -191,6 +196,7 @@ export function SettingsPage() {
         confidence_threshold: settings.confidence_threshold,
         ppe_detection_sensitivity: settings.ppe_detection_sensitivity,
         active_ppe_rules: settings.active_ppe_rules,
+        detection_record_mode: settings.detection_record_mode,
       })
       setSettings(updatedSettings)
       setSavedSettings(updatedSettings)
@@ -400,7 +406,7 @@ export function SettingsPage() {
                 </div>
 
                 <div className="lg:col-span-2">
-                  <p className="mb-2 text-[14px] font-semibold text-[var(--ink)]">กฎ PPE ส่วนบุคคล (เมื่อไม่ได้ใช้กฎโซน)</p>
+                  <p className="mb-2 text-[14px] font-semibold text-[var(--ink)]">กฎ PPE ส่วนบุคคล</p>
                   <p className="mb-4 text-[14px] text-[var(--muted)]">ปิดรายการใดจะไม่แจ้งการขาด PPE ชนิดนั้น การปิดทั้งสองรายการยังนับคน แต่ไม่ตรวจการฝ่าฝืน PPE</p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {PPE_RULES.map((rule) => {
@@ -433,6 +439,42 @@ export function SettingsPage() {
                           <span className={`relative h-8 w-[54px] shrink-0 rounded-full transition-colors ${isActive ? 'bg-[#34c759]' : 'bg-[#d1d1d6]'}`} aria-hidden="true">
                             <span className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow-sm transition-transform ${isActive ? 'left-7' : 'left-1'}`} />
                           </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className="lg:col-span-2">
+                  <p className="mb-2 text-[14px] font-semibold text-[var(--ink)]">รูปแบบการตรวจจับ</p>
+                  <p className="mb-4 text-[14px] text-[var(--muted)]">เลือกว่าการตรวจจับแบบ live จะบันทึกผลประเภทใดลงประวัติ กราฟ และรายงาน</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {DETECTION_RECORD_MODE_OPTIONS.map((option) => {
+                      const isSelected = settings.detection_record_mode === option.key
+                      return (
+                        <button
+                          key={option.key}
+                          type="button"
+                          onClick={() => setSettings({ ...settings, detection_record_mode: option.key })}
+                          disabled={isSaving}
+                          aria-pressed={isSelected}
+                          className={`min-h-[132px] rounded-[16px] border p-4 text-left transition-colors active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 ${
+                            isSelected
+                              ? 'border-[var(--blue)] bg-white text-[var(--ink)] shadow-sm'
+                              : 'border-[var(--line)] bg-white/70 text-[var(--ink)] hover:bg-white'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2 text-[17px] font-semibold">
+                            {isSelected
+                              ? <CheckCircle size={18} className="shrink-0 text-[var(--blue)]" strokeWidth={1.8} aria-hidden="true" />
+                              : <span className="h-[18px] w-[18px] shrink-0 rounded-full border border-[#c7c7cc]" aria-hidden="true" />
+                            }
+                            {option.label}
+                          </span>
+                          <span className={`mt-3 block text-[13px] font-semibold ${isSelected ? 'text-[var(--blue)]' : 'text-[var(--muted)]'}`}>
+                            {option.status}
+                          </span>
+                          <span className="mt-2 block text-[12px] leading-snug text-[var(--muted)]">{option.description}</span>
                         </button>
                       )
                     })}

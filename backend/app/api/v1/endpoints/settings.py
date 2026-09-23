@@ -10,6 +10,7 @@ from app.services.detection_preferences import (
     SAFE_PPE_SENSITIVITY_MAX,
     SAFE_PPE_SENSITIVITY_MIN,
     clamp_percent,
+    normalize_detection_record_mode,
     normalize_active_ppe_rules,
 )
 
@@ -40,6 +41,10 @@ def _get_or_create(db: Session, user_id: int) -> UserSettings:
         if s.active_ppe_rules != normalized_rules:
             s.active_ppe_rules = normalized_rules
             changed = True
+        normalized_record_mode = normalize_detection_record_mode(s.detection_record_mode)
+        if s.detection_record_mode != normalized_record_mode:
+            s.detection_record_mode = normalized_record_mode
+            changed = True
         if changed:
             db.commit()
             db.refresh(s)
@@ -49,6 +54,7 @@ def _get_or_create(db: Session, user_id: int) -> UserSettings:
         active_ppe_rules={"helmet": True, "safety-vest": True},
         confidence_threshold=45,
         ppe_detection_sensitivity=60,
+        detection_record_mode="both",
         alert_sound=True,
         save_evidence=True,
     )
@@ -65,6 +71,7 @@ def _settings_snapshot(settings_row: UserSettings) -> dict:
         "confidence_threshold": int(settings_row.confidence_threshold or 45),
         "ppe_detection_sensitivity": int(settings_row.ppe_detection_sensitivity or 60),
         "active_ppe_rules": normalize_active_ppe_rules(settings_row.active_ppe_rules),
+        "detection_record_mode": normalize_detection_record_mode(settings_row.detection_record_mode),
     }
 
 
@@ -84,6 +91,8 @@ def _normalize_update_payload(data: dict) -> dict:
         )
     if "active_ppe_rules" in normalized:
         normalized["active_ppe_rules"] = normalize_active_ppe_rules(normalized["active_ppe_rules"])
+    if "detection_record_mode" in normalized:
+        normalized["detection_record_mode"] = normalize_detection_record_mode(normalized["detection_record_mode"])
     return normalized
 
 

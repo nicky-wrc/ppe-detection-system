@@ -25,6 +25,7 @@ async def detect_from_image(
     request: Request,
     file: UploadFile = File(...),
     zone_id: Optional[int] = Query(None),
+    record_kind: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("admin", "safety_officer"))
 ):
@@ -43,7 +44,8 @@ async def detect_from_image(
         detection = await service.process_image(
             file=file,
             user_id=current_user.id,
-            zone_id=zone_id
+            zone_id=zone_id,
+            enforce_record_mode=record_kind == "violation",
         )
         return detection
     except ValueError as e:

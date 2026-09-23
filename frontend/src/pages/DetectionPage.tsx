@@ -40,6 +40,11 @@ const getViolationSignature = (detection: Detection): string => {
     : `violation:${detection.violation_count}`
 }
 
+const isRecordModeDisabledError = (error: unknown) => (
+  (error as { response?: { status?: number; data?: { detail?: string } } }).response?.status === 400
+  && ((error as { response?: { data?: { detail?: string } } }).response?.data?.detail || '').includes('Detection record type is disabled')
+)
+
 const drawDetectionOverlay = (
   ctx: CanvasRenderingContext2D,
   canvasWidth: number,
@@ -335,7 +340,7 @@ export function DetectionPage() {
     try {
       // Reuse the authenticated image flow so the confirmed frame, Detection and
       // Alert are committed together instead of creating a second API contract.
-      const persisted = await detectionService.uploadImage(frameFile)
+      const persisted = await detectionService.uploadImage(frameFile, undefined, 'violation')
       if (sessionId !== liveSessionRef.current) return
       if (persisted.has_violation) {
         recordedViolationSignatureRef.current = signature
@@ -344,6 +349,7 @@ export function DetectionPage() {
       }
     } catch (error) {
       if (sessionId !== liveSessionRef.current) return
+      if (isRecordModeDisabledError(error)) return
       console.error('Live violation persist error:', error)
       toast.error('บันทึกเหตุการณ์ฝ่าฝืนไม่สำเร็จ')
     } finally {
@@ -384,6 +390,7 @@ export function DetectionPage() {
       }
     } catch (error) {
       if (sessionId === liveSessionRef.current) {
+        if (isRecordModeDisabledError(error)) return
         console.error('Live compliant report persist error:', error)
       }
     } finally {

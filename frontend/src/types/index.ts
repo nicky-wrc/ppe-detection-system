@@ -124,6 +124,7 @@ export interface UserSettings {
   confidence_threshold: number
   ppe_detection_sensitivity: number
   active_ppe_rules: Record<string, boolean>
+  detection_record_mode: 'both' | 'violations_only' | 'compliant_only'
   created_at: string
 }
 

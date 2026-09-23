@@ -5,13 +5,12 @@ import { detectionService } from '../services/detection'
 import { alertsService } from '../services/alerts'
 import { camerasService } from '../services/cameras'
 import { ProtectedDetectionImage } from '../components/ui/ProtectedDetectionImage'
-import { useAuthStore } from '../stores/authStore'
 import type { Alert, DetectionStats, Detection } from '../types'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import {
-  LineChart,
-  Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -42,7 +41,17 @@ interface ViolationRow {
 
 interface DailySummary {
   detections: number
+  persons: number
   violations: number
+  compliance: number
+}
+
+interface AnalyticsBucket {
+  name: string
+  value: number
+  persons: number
+  violations: number
+  compliant: number
   compliance: number
 }
 
@@ -175,9 +184,6 @@ function pdfAddImageFitWidth(
 }
 
 export function DashboardPage() {
-  const canOperateDetection = useAuthStore((state) => (
-    state.user?.role === 'admin' || state.user?.role === 'safety_officer'
-  ))
   const [stats, setStats] = useState<DetectionStats | null>(null)
   const [violations, setViolations] = useState<ViolationRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -186,11 +192,11 @@ export function DashboardPage() {
   const [activeFilter, setActiveFilter] = useState<string>('30 days')
   const [customStartDate, setCustomStartDate] = useState<string>('')
   const [customEndDate, setCustomEndDate] = useState<string>('')
-  const [dailyData, setDailyData] = useState<{ name: string; value: number; compliance?: number }[]>([])
-  const [weeklyData, setWeeklyData] = useState<{ name: string; value: number }[]>([])
+  const [dailyData, setDailyData] = useState<AnalyticsBucket[]>([])
+  const [weeklyData, setWeeklyData] = useState<AnalyticsBucket[]>([])
   const [analyticsLoading, setAnalyticsLoading] = useState(true)
-  const [todaySummary, setTodaySummary] = useState<DailySummary>({ detections: 0, violations: 0, compliance: 0 })
-  const [yesterdaySummary, setYesterdaySummary] = useState<DailySummary>({ detections: 0, violations: 0, compliance: 0 })
+  const [todaySummary, setTodaySummary] = useState<DailySummary>({ detections: 0, persons: 0, violations: 0, compliance: 0 })
+  const [yesterdaySummary, setYesterdaySummary] = useState<DailySummary>({ detections: 0, persons: 0, violations: 0, compliance: 0 })
   const [isExportOpen, setIsExportOpen] = useState(false)
   const [exportTarget, setExportTarget] = useState<{ compliance: boolean; violation: boolean }>({
     compliance: true,
@@ -316,11 +322,19 @@ export function DashboardPage() {
 
         if (isSingleDay) {
           if (analytics?.hourly?.length) {
-            const mapped = analytics.hourly.map((d: { hour: string; violations?: number; compliance?: number }) => ({
-              name: d.hour,
-              value: d.violations ?? 0,
-              compliance: d.compliance ?? 0,
-            }))
+            const mapped = analytics.hourly.map((d: { hour: string; count?: number; detections?: number; persons?: number; violations?: number; compliance?: number }) => {
+              const persons = d.persons ?? 0
+              const violations = d.violations ?? 0
+              return {
+                name: d.hour,
+                value: violations,
+                detections: d.detections ?? d.count ?? 0,
+                persons,
+                violations,
+                compliant: Math.max(0, persons - violations),
+                compliance: d.compliance ?? 0,
+              }
+            })
             setDailyData(mapped)
             setWeeklyData(mapped)
           } else {
@@ -329,14 +343,21 @@ export function DashboardPage() {
           }
         } else {
           if (analytics?.daily?.length) {
-            const mapped = analytics.daily.map((d: { day?: string; date: string; violations?: number; compliance?: number }, idx: number) => {
+            const mapped = analytics.daily.map((d: { day?: string; date: string; detections?: number; persons?: number; violations?: number; compliance?: number }, idx: number) => {
               const isLongRange = (analytics?.daily?.length ?? 0) > 7
+              const persons = d.persons ?? 0
+              const violations = d.violations ?? 0
               return {
-              // For long ranges, show date labels to avoid repeated weekday names.
-              name: isLongRange ? d.date?.slice(5) || `D${idx + 1}` : d.day || d.date?.slice(5) || '',
-              value: d.violations ?? 0,
-              compliance: d.compliance ?? 0,
-            }})
+                // For long ranges, show date labels to avoid repeated weekday names.
+                name: isLongRange ? d.date?.slice(5) || `D${idx + 1}` : d.day || d.date?.slice(5) || '',
+                value: violations,
+                detections: d.detections ?? 0,
+                persons,
+                violations,
+                compliant: Math.max(0, persons - violations),
+                compliance: d.compliance ?? 0,
+              }
+            })
             setDailyData(mapped)
             setWeeklyData(mapped)
           } else {
@@ -383,11 +404,13 @@ export function DashboardPage() {
 
         setTodaySummary({
           detections: todayData?.detections ?? 0,
+          persons: todayData?.persons ?? 0,
           violations: todayData?.violations ?? 0,
           compliance: todayData?.compliance ?? 0,
         })
         setYesterdaySummary({
           detections: yesterdayData?.detections ?? 0,
+          persons: yesterdayData?.persons ?? 0,
           violations: yesterdayData?.violations ?? 0,
           compliance: yesterdayData?.compliance ?? 0,
         })
@@ -403,30 +426,32 @@ export function DashboardPage() {
     }
   }, [])
 
-  /** Day-over-day trend vs yesterday. When yesterday had no baseline (0), % change is undefined — do not show fake +100%. */
+  /** Day-over-day trend vs yesterday. Counts use item deltas; rates use percentage-point deltas. */
   type DayTrend =
-    | { kind: 'percent'; value: number; isUp: boolean }
+    | { kind: 'delta'; value: number; isUp: boolean; unit: 'items' | 'pts' }
     | { kind: 'stable' }
-    | { kind: 'from_zero_count'; value: number }
-    | { kind: 'from_zero_rate'; value: number }
 
   const getDayTrend = (current: number, previous: number, mode: 'count' | 'rate'): DayTrend => {
     if (previous === 0 && current === 0) return { kind: 'stable' }
-    if (previous === 0) {
-      return mode === 'count'
-        ? { kind: 'from_zero_count', value: current }
-        : { kind: 'from_zero_rate', value: current }
-    }
-    const diff = ((current - previous) / previous) * 100
+    const diff = current - previous
     if (!Number.isFinite(diff)) return { kind: 'stable' }
-    if (Math.abs(diff) < 0.05) return { kind: 'stable' }
-    return { kind: 'percent', value: Math.abs(diff), isUp: diff >= 0 }
+    if (Math.abs(diff) < (mode === 'rate' ? 0.05 : 1)) return { kind: 'stable' }
+    return {
+      kind: 'delta',
+      value: Math.abs(diff),
+      isUp: diff >= 0,
+      unit: mode === 'rate' ? 'pts' : 'items',
+    }
   }
 
   const cardChange = {
     detections: getDayTrend(todaySummary.detections, yesterdaySummary.detections, 'count'),
     violations: getDayTrend(todaySummary.violations, yesterdaySummary.violations, 'count'),
-    compliance: getDayTrend(todaySummary.compliance, yesterdaySummary.compliance, 'rate'),
+    compliance: getDayTrend(
+      Math.max(0, todaySummary.persons - todaySummary.violations),
+      Math.max(0, yesterdaySummary.persons - yesterdaySummary.violations),
+      'count'
+    ),
   }
 
   const renderTrend = (trend: DayTrend, favorableDirection: 'up' | 'down' | 'neutral') => {
@@ -444,24 +469,11 @@ export function DashboardPage() {
         </div>
       )
     }
-    if (trend.kind === 'from_zero_count') {
-      return (
-        <div className={`mt-2 flex flex-wrap items-center gap-1.5 text-[13px] font-semibold ${directionColor(true)}`}>
-          ↑ +{trend.value.toLocaleString()} {sub}
-        </div>
-      )
-    }
-    if (trend.kind === 'from_zero_rate') {
-      return (
-        <div className={`mt-2 flex flex-wrap items-center gap-1.5 text-[13px] font-semibold ${directionColor(true)}`}>
-          ↑ +{trend.value.toFixed(1)} pts {sub}
-        </div>
-      )
-    }
     return (
       <div className={`mt-2 flex flex-wrap items-center gap-1.5 text-[13px] font-semibold ${directionColor(trend.isUp)}`}>
         {trend.isUp ? '↑' : '↓'} {trend.isUp ? '+' : '-'}
-        {trend.value.toFixed(1)}% {sub}
+        {trend.unit === 'pts' ? trend.value.toFixed(1) : trend.value.toLocaleString()}
+        {trend.unit === 'pts' ? ' pts' : ' items'} {sub}
       </div>
     )
   }
@@ -596,6 +608,24 @@ export function DashboardPage() {
           ? 'เลือกช่วงเวลาได้สูงสุด 30 วัน'
           : null
     : null
+  const averageCompliance = dailyData.length
+    ? dailyData.reduce((sum, item) => sum + (item.compliance ?? 0), 0) / dailyData.length
+    : 0
+  const selectedViolationTotal = weeklyData.reduce((sum, item) => sum + item.value, 0)
+  const selectedPersonsTotal = dailyData.reduce((sum, item) => sum + item.persons, 0)
+  const selectedCompliantTotal = dailyData.reduce((sum, item) => sum + item.compliant, 0)
+  const selectedComplianceRate = selectedPersonsTotal
+    ? Number(((selectedCompliantTotal / selectedPersonsTotal) * 100).toFixed(2))
+    : Number(averageCompliance.toFixed(2))
+  const selectedViolationRate = selectedPersonsTotal
+    ? Number(((selectedViolationTotal / selectedPersonsTotal) * 100).toFixed(2))
+    : 0
+  const selectedPeriodLabel = getDashboardExportPeriod(activeFilter, customStartDate, customEndDate).labelTh
+  const compliantPersons = Math.max(0, (stats?.total_persons ?? 0) - (stats?.total_violations ?? 0))
+  const complianceRate = stats?.compliance_rate ?? 0
+  const violationRate = stats?.total_persons
+    ? Number((((stats.total_violations ?? 0) / stats.total_persons) * 100).toFixed(2))
+    : 0
 
   if (loading) {
     return (
@@ -616,62 +646,7 @@ export function DashboardPage() {
 
   return (
     <Layout>
-      <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-8 lg:gap-12">
-        <header className="page-heading max-w-[760px]">
-          <h1>ภาพรวมความปลอดภัย</h1>
-          <p>ติดตามสถานะกล้อง การตรวจจับ และแนวโน้ม PPE จากข้อมูลส่วนกลางของทุกบัญชี</p>
-        </header>
-
-        <section className="overflow-hidden bg-[#272729] text-white" aria-labelledby="safety-hero-title">
-          <div className="grid gap-10 px-6 py-12 sm:px-10 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)] lg:items-end lg:px-14 lg:py-16">
-            <div>
-              <div className="mb-5 flex items-center gap-2 text-[12px] font-semibold tracking-[0.08em] text-white/70 uppercase">
-                <span className="h-2 w-2 rounded-full bg-[#30d158]" aria-hidden="true" />
-                Live safety operations
-              </div>
-              <h2
-                id="safety-hero-title"
-                className="m-0 max-w-[780px] text-[clamp(34px,5vw,60px)] font-semibold leading-[1.02] tracking-[-0.035em]"
-              >
-                เห็นความเสี่ยง ก่อนกลายเป็นอุบัติเหตุ
-              </h2>
-              <p className="mt-5 max-w-[700px] text-[17px] font-normal leading-[1.47] tracking-[-0.01em] text-white/70">
-                ศูนย์ควบคุม PPE แบบเรียลไทม์ด้วย Hybrid YOLOv8m + YOLO11n
-                สำหรับตรวจหมวกนิรภัยและเสื้อสะท้อนแสงจากกล้องหน้างาน
-              </p>
-              <div className="mt-8 flex flex-wrap gap-3">
-                {canOperateDetection ? (
-                  <button type="button" className="btn-apple-primary min-h-11 px-5 text-[15px]" onClick={() => navigate('/detect')}>
-                    <Camera size={17} aria-hidden="true" /> เปิดกล้องตรวจจับ
-                  </button>
-                ) : (
-                  <button type="button" className="btn-apple-primary min-h-11 px-5 text-[15px]" onClick={() => navigate('/reports')}>
-                    <Eye size={17} aria-hidden="true" /> ดูรายงานและหลักฐาน
-                  </button>
-                )}
-                {/* Detect upload page is temporarily hidden; keep this action for easy restoration. */}
-                {/* <button
-                  type="button"
-                  className="btn-apple-secondary min-h-11 !border-[#2997ff] !bg-transparent px-5 text-[15px] !text-[#2997ff]"
-                  onClick={() => navigate('/detection')}
-                >
-                  <Activity size={17} aria-hidden="true" /> ทดสอบภาพหรือวิดีโอ
-                </button> */}
-              </div>
-            </div>
-            <div className="rounded-[18px] border border-white/15 bg-[#272729] p-6 sm:p-8">
-              <span className="text-[12px] font-semibold tracking-[0.08em] text-white/60 uppercase">Compliance rate</span>
-              <strong className="mt-3 block text-[clamp(42px,6vw,68px)] font-semibold leading-none tracking-[-0.045em]">
-                {stats?.compliance_rate ?? 0}%
-              </strong>
-              <div className="my-6 h-px bg-white/15" />
-              <div className="flex items-center gap-2 text-[15px] leading-[1.47] text-white/70">
-                <Camera size={16} aria-hidden="true" />
-                <span>{activeCameras} กล้องออนไลน์ · อัปเดตแบบเรียลไทม์</span>
-              </div>
-            </div>
-          </div>
-        </section>
+      <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-6 lg:gap-8">
 
         {loadError && (
           <div className="surface-card flex flex-col gap-4 border-[#f2b8bd] bg-[#fff7f7] p-5 sm:flex-row sm:items-center sm:justify-between" role="alert">
@@ -717,22 +692,24 @@ export function DashboardPage() {
               <AlertTriangle size={20} className="text-[#d70015]" strokeWidth={1.75} aria-hidden="true" />
             </div>
             <div className="mt-5">
-              <p className="m-0 text-[38px] font-semibold leading-none tracking-[-0.035em] text-[#1d1d1f]">
-                {(stats?.total_violations ?? 0).toLocaleString()}
+              <p className="m-0 flex flex-wrap items-baseline gap-x-2 text-[38px] font-semibold leading-none tracking-[-0.035em] text-[#1d1d1f]">
+                <span>{(stats?.total_violations ?? 0).toLocaleString()}</span>
+                <span className="text-[20px] font-semibold tracking-[-0.01em] text-[#86868b]">({violationRate}%)</span>
               </p>
               {renderTrend(cardChange.violations, 'down')}
             </div>
           </article>
 
-          {/* Compliance Rate */}
+          {/* Compliant Persons */}
           <article className="surface-card flex min-h-[156px] flex-col justify-between p-6">
             <div className="flex items-start justify-between">
-              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">Compliance rate</p>
+              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">Compliant persons</p>
               <CheckCircle size={20} className="text-[#248a3d]" strokeWidth={1.75} aria-hidden="true" />
             </div>
             <div className="mt-5">
-              <p className="m-0 text-[38px] font-semibold leading-none tracking-[-0.035em] text-[#1d1d1f]">
-                {stats ? stats.compliance_rate : 0}%
+              <p className="m-0 flex flex-wrap items-baseline gap-x-2 text-[38px] font-semibold leading-none tracking-[-0.035em] text-[#1d1d1f]">
+                <span>{compliantPersons.toLocaleString()}</span>
+                <span className="text-[20px] font-semibold tracking-[-0.01em] text-[#86868b]">({complianceRate}%)</span>
               </p>
               {renderTrend(cardChange.compliance, 'up')}
             </div>
@@ -754,8 +731,12 @@ export function DashboardPage() {
           </article>
         </section>
 
-        <section className="surface-card flex flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between" aria-label="Dashboard date controls">
-          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <section className="surface-card flex flex-col gap-4 p-4 sm:p-5 xl:flex-row xl:items-center xl:justify-between" aria-label="Dashboard date controls">
+          <div className="min-w-0">
+            <h1 className="m-0 text-[22px] font-semibold leading-tight tracking-[-0.02em] text-[#1d1d1f]">ภาพรวมความปลอดภัย</h1>
+            <p className="mt-1 text-[14px] leading-[1.45] text-[#6e6e73]">ตัวเลขและแนวโน้มจากข้อมูลส่วนกลางของทุกบัญชี</p>
+          </div>
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:justify-end">
             <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full bg-[#f5f5f7] p-1" aria-label="Date range">
               {['Today', '7 days', '30 days', 'Custom'].map((f) => (
                 <button
@@ -806,75 +787,145 @@ export function DashboardPage() {
             {customRangeError && (
               <p className="text-[13px] leading-5 text-[#b4232f]" role="status">{customRangeError}</p>
             )}
+            <button
+              type="button"
+              onClick={() => setIsExportOpen(true)}
+              disabled={analyticsLoading || Boolean(customRangeError)}
+              className="btn-apple-primary w-full shrink-0 px-5 sm:w-auto"
+            >
+              <Download size={17} strokeWidth={2} aria-hidden="true" />
+              Export PDF
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsExportOpen(true)}
-            disabled={analyticsLoading || Boolean(customRangeError)}
-            className="btn-apple-primary w-full shrink-0 px-5 sm:w-auto"
-          >
-            <Download size={17} strokeWidth={2} aria-hidden="true" />
-            Export PDF
-          </button>
         </section>
 
         <section className="grid grid-cols-1 gap-6 xl:grid-cols-2" aria-label="Safety analytics">
 
-          {/* Daily Compliance */}
-          <article ref={complianceChartRef} className="surface-card p-6 sm:p-7">
-            <h2 className="m-0 text-[21px] font-semibold tracking-[-0.02em] text-[#1d1d1f]">Daily compliance</h2>
-            <p className="mt-1 text-[15px] leading-[1.47] text-[#6e6e73]">Real-time safety adherence across all sectors</p>
-            {analyticsLoading ? (
-              <div className="flex h-[248px] items-center justify-center gap-3 text-[14px] text-[var(--muted)]" role="status">
-                <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#d2d2d7] border-t-[#0066cc]" aria-hidden="true" />
-                Loading analytics…
-              </div>
-            ) : dailyData.length === 0 ? (
-              <div className="flex h-[248px] flex-col items-center justify-center px-4 text-center" role="status">
-                <Activity size={32} className="mb-3 text-[#b7b7bb]" strokeWidth={1.5} aria-hidden="true" />
-                <p className="m-0 text-[15px] font-semibold text-[#1d1d1f]">No compliance data yet</p>
-                <p className="mt-1 text-[13px] leading-[1.47] text-[var(--muted)]">Data will appear after detections are processed.</p>
-              </div>
-            ) : (
-              <div className="mt-6 h-[248px]" aria-label="Compliance line chart">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={dailyData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e7" vertical={false} />
-                    <XAxis dataKey="name" tick={{ fill: '#6e6e73', fontSize: 12 }} tickLine={false} axisLine={false} />
-                    <YAxis tick={{ fill: '#6e6e73', fontSize: 12 }} tickLine={false} axisLine={false} domain={[0, 100]} />
-                    <Tooltip contentStyle={chartTooltipStyle.contentStyle} labelStyle={chartTooltipStyle.labelStyle} />
-                    <Line type="monotone" dataKey="compliance" stroke="#0066cc" strokeWidth={2.5} dot={{ fill: '#0066cc', r: 4, strokeWidth: 2, stroke: '#fff' }} name="Compliance %" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </article>
-
           {/* Weekly Violations */}
           <article ref={violationChartRef} className="surface-card p-6 sm:p-7">
-            <h2 className="m-0 text-[21px] font-semibold tracking-[-0.02em] text-[#1d1d1f]">Violation trend</h2>
-            <p className="mt-1 text-[15px] leading-[1.47] text-[#6e6e73]">Historical violation counts for the selected period</p>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="m-0 text-[21px] font-semibold tracking-[-0.02em] text-[#1d1d1f]">Violation count</h2>
+                <p className="mt-1 text-[14px] leading-[1.47] text-[#6e6e73]">{selectedPeriodLabel}</p>
+              </div>
+              <div className="rounded-[10px] border border-[#f2b8bd] bg-[#fff7f7] px-3 py-2 text-right">
+                <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.05em] text-[#d70015]">Total</p>
+                <p className="m-0 mt-1 flex flex-wrap items-baseline justify-end gap-x-1.5 text-[22px] font-semibold leading-none tracking-[-0.02em] text-[#1d1d1f]">
+                  <span>{selectedViolationTotal.toLocaleString()}</span>
+                  <span className="text-[14px] font-semibold text-[#86868b]">({selectedViolationRate}%)</span>
+                </p>
+              </div>
+            </div>
             {analyticsLoading ? (
-              <div className="flex h-[248px] items-center justify-center gap-3 text-[14px] text-[var(--muted)]" role="status">
+              <div className="flex h-[300px] items-center justify-center gap-3 text-[14px] text-[var(--muted)]" role="status">
                 <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#d2d2d7] border-t-[#0066cc]" aria-hidden="true" />
                 Loading analytics…
               </div>
             ) : weeklyData.length === 0 ? (
-              <div className="flex h-[248px] flex-col items-center justify-center px-4 text-center" role="status">
+              <div className="flex h-[300px] flex-col items-center justify-center px-4 text-center" role="status">
                 <ShieldAlert size={32} className="mb-3 text-[#b7b7bb]" strokeWidth={1.5} aria-hidden="true" />
                 <p className="m-0 text-[15px] font-semibold text-[#1d1d1f]">No violation data yet</p>
                 <p className="mt-1 text-[13px] leading-[1.47] text-[var(--muted)]">Choose another date range or wait for new activity.</p>
               </div>
             ) : (
-              <div className="mt-6 h-[248px]" aria-label="Violation line chart">
+              <div className="mt-6 h-[300px]" aria-label="Violation bar chart">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={weeklyData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e7" vertical={false} />
-                    <XAxis dataKey="name" tick={{ fill: '#6e6e73', fontSize: 12 }} tickLine={false} axisLine={false} />
-                    <YAxis tick={{ fill: '#6e6e73', fontSize: 12 }} tickLine={false} axisLine={false} />
-                    <Tooltip contentStyle={chartTooltipStyle.contentStyle} labelStyle={chartTooltipStyle.labelStyle} />
-                    <Line type="monotone" dataKey="value" stroke="#d70015" strokeWidth={2.5} dot={{ fill: '#d70015', r: 4, strokeWidth: 2, stroke: '#fff' }} name="Violations" />
-                  </LineChart>
+                  <BarChart data={weeklyData} margin={{ top: 10, right: 18, left: 2, bottom: 6 }} barCategoryGap="28%">
+                    <CartesianGrid stroke="#e8e8ed" vertical={false} />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fill: '#6e6e73', fontSize: 12 }}
+                      tickLine={false}
+                      axisLine={{ stroke: '#d2d2d7' }}
+                      minTickGap={18}
+                    />
+                    <YAxis
+                      width={44}
+                      tick={{ fill: '#6e6e73', fontSize: 12 }}
+                      tickLine={false}
+                      axisLine={false}
+                      allowDecimals={false}
+                    />
+                    <Tooltip
+                      cursor={{ fill: 'rgba(215, 0, 21, 0.06)' }}
+                      contentStyle={chartTooltipStyle.contentStyle}
+                      labelStyle={chartTooltipStyle.labelStyle}
+                      formatter={(value) => [Number(value).toLocaleString(), 'Violations']}
+                    />
+                    <Bar
+                      dataKey="value"
+                      fill="#d70015"
+                      radius={[6, 6, 0, 0]}
+                      maxBarSize={44}
+                      name="Violations"
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </article>
+
+          {/* Daily Compliance */}
+          <article ref={complianceChartRef} className="surface-card p-6 sm:p-7">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="m-0 text-[21px] font-semibold tracking-[-0.02em] text-[#1d1d1f]">Compliance rate</h2>
+                <p className="mt-1 text-[14px] leading-[1.47] text-[#6e6e73]">{selectedPeriodLabel}</p>
+              </div>
+              <div className="rounded-[10px] border border-[#d6e8ff] bg-[#f3f8ff] px-3 py-2 text-right">
+                <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.05em] text-[#0066cc]">Compliant</p>
+                <p className="m-0 mt-1 flex flex-wrap items-baseline justify-end gap-x-1.5 text-[22px] font-semibold leading-none tracking-[-0.02em] text-[#1d1d1f]">
+                  <span>{selectedCompliantTotal.toLocaleString()}</span>
+                  <span className="text-[14px] font-semibold text-[#86868b]">({selectedComplianceRate}%)</span>
+                </p>
+              </div>
+            </div>
+            {analyticsLoading ? (
+              <div className="flex h-[300px] items-center justify-center gap-3 text-[14px] text-[var(--muted)]" role="status">
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#d2d2d7] border-t-[#0066cc]" aria-hidden="true" />
+                Loading analytics…
+              </div>
+            ) : dailyData.length === 0 ? (
+              <div className="flex h-[300px] flex-col items-center justify-center px-4 text-center" role="status">
+                <Activity size={32} className="mb-3 text-[#b7b7bb]" strokeWidth={1.5} aria-hidden="true" />
+                <p className="m-0 text-[15px] font-semibold text-[#1d1d1f]">No compliance data yet</p>
+                <p className="mt-1 text-[13px] leading-[1.47] text-[var(--muted)]">Data will appear after detections are processed.</p>
+              </div>
+            ) : (
+              <div className="mt-6 h-[300px]" aria-label="Compliance bar chart">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={dailyData} margin={{ top: 10, right: 18, left: 2, bottom: 6 }} barCategoryGap="28%">
+                    <CartesianGrid stroke="#e8e8ed" vertical={false} />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fill: '#6e6e73', fontSize: 12 }}
+                      tickLine={false}
+                      axisLine={{ stroke: '#d2d2d7' }}
+                      minTickGap={18}
+                    />
+                    <YAxis
+                      width={44}
+                      tick={{ fill: '#6e6e73', fontSize: 12 }}
+                      tickLine={false}
+                      axisLine={false}
+                      domain={[0, 100]}
+                      ticks={[0, 25, 50, 75, 100]}
+                      tickFormatter={(value) => `${value}%`}
+                    />
+                    <Tooltip
+                      cursor={{ fill: 'rgba(0, 102, 204, 0.06)' }}
+                      contentStyle={chartTooltipStyle.contentStyle}
+                      labelStyle={chartTooltipStyle.labelStyle}
+                      formatter={(value) => [`${Number(value).toFixed(1)}%`, 'Compliance']}
+                    />
+                    <Bar
+                      dataKey="compliance"
+                      fill="#0066cc"
+                      radius={[6, 6, 0, 0]}
+                      maxBarSize={44}
+                      name="Compliance"
+                    />
+                  </BarChart>
                 </ResponsiveContainer>
               </div>
             )}

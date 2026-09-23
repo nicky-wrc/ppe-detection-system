@@ -5,6 +5,7 @@ import numpy as np
 from pathlib import Path
 from typing import Any, Optional, List, Tuple
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, Date, String, and_, or_
 from datetime import timedelta, date as date_type
@@ -13,8 +14,10 @@ from app.core.config import settings
 from app.models import Detection, Alert
 from app.ml.detector import get_detector
 from app.services.detection_preferences import (
+    get_detection_record_mode,
     normalize_violation_label,
     resolve_detection_preferences,
+    should_save_detection_record,
     summarize_detection_settings,
 )
 from app.services.websocket_manager import ws_manager
@@ -62,6 +65,9 @@ class DetectionService:
             "settings": settings_summary,
         }
 
+    def _allows_detection_record(self, user_id: Optional[int], has_violation: bool) -> bool:
+        return should_save_detection_record(get_detection_record_mode(self.db, user_id), has_violation)
+
     @staticmethod
     def _violation_flags(violations: Any) -> tuple[bool, bool]:
         values = violations if isinstance(violations, list) else []
@@ -74,7 +80,8 @@ class DetectionService:
         self,
         file: UploadFile,
         user_id: Optional[int] = None,
-        zone_id: Optional[int] = None
+        zone_id: Optional[int] = None,
+        enforce_record_mode: bool = False,
     ) -> Detection:
         original_path = await self.save_upload_file(file)
         
@@ -90,6 +97,12 @@ class DetectionService:
             confidence_threshold=confidence,
             person_confidence=person_confidence,
         )
+
+        has_violation = detection_result.get("has_violation", False)
+        if enforce_record_mode and not self._allows_detection_record(user_id, has_violation):
+            Path(original_path).unlink(missing_ok=True)
+            Path(result_path).unlink(missing_ok=True)
+            raise ValueError("Detection record type is disabled by user settings")
         
         detection = Detection(
             user_id=user_id,
@@ -101,7 +114,7 @@ class DetectionService:
             violations=[normalize_violation_label(item) for item in detection_result.get("violations", [])],
             person_count=detection_result.get("person_count", 0),
             violation_count=detection_result.get("violation_count", 0),
-            has_violation=detection_result.get("has_violation", False),
+            has_violation=has_violation,
             processing_time_ms=detection_result.get("processing_time_ms", 0),
             summary=self._summary_with_settings(detection_result, settings_summary)
         )
@@ -160,6 +173,9 @@ class DetectionService:
         user_id: Optional[int] = None,
         zone_id: Optional[int] = None,
     ) -> Detection:
+        if not self._allows_detection_record(user_id, False):
+            raise ValueError("Detection record type is disabled by user settings")
+
         original_path = await self.save_upload_file(file)
 
         result_filename = f"result_{uuid.uuid4()}.jpg"
@@ -420,14 +436,15 @@ class DetectionService:
         - Else: use last N days (days).
         - hourly is only meaningful when range is a single day.
         """
-        now = datetime.now()
+        analytics_tz = ZoneInfo("Asia/Bangkok")
+        now = datetime.now(analytics_tz)
         if start_date and end_date:
             if end_date < start_date:
                 start_date, end_date = end_date, start_date
             range_days = (end_date - start_date).days + 1
             range_days = max(1, min(range_days, 30))
-            start_dt = datetime.combine(start_date, datetime.min.time())
-            end_dt = datetime.combine(end_date, datetime.max.time())
+            start_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=analytics_tz)
+            end_dt = datetime.combine(end_date, datetime.max.time(), tzinfo=analytics_tz)
             # Ensure range is not above 30 days even if user passes longer
             if range_days > 30:
                 end_dt = start_dt + timedelta(days=29, hours=23, minutes=59, seconds=59, microseconds=999999)
@@ -435,14 +452,14 @@ class DetectionService:
             range_days = days
             # Include "today" in the last N-day window.
             end_dt = now
-            start_dt = datetime.combine((end_dt - timedelta(days=range_days - 1)).date(), datetime.min.time())
+            start_dt = datetime.combine((end_dt - timedelta(days=range_days - 1)).date(), datetime.min.time(), tzinfo=analytics_tz)
         
         # Get daily stats
         daily_data = []
         for i in range(range_days):
             d = (start_dt + timedelta(days=i)).date()
-            date_start = datetime.combine(d, datetime.min.time())
-            date_end = datetime.combine(d, datetime.max.time())
+            date_start = datetime.combine(d, datetime.min.time(), tzinfo=analytics_tz)
+            date_end = datetime.combine(d, datetime.max.time(), tzinfo=analytics_tz)
             
             query = self.db.query(Detection).filter(
                 Detection.created_at >= date_start,
@@ -473,8 +490,8 @@ class DetectionService:
         if range_days == 1:
             day_start = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
             for hour in range(24):
-                hour_start = day_start.replace(hour=hour)
-                hour_end = day_start.replace(hour=hour, minute=59, second=59, microsecond=999999)
+                hour_start = day_start + timedelta(hours=hour)
+                hour_end = hour_start + timedelta(hours=1, microseconds=-1)
 
                 q = self.db.query(Detection).filter(
                     Detection.created_at >= hour_start,
@@ -506,6 +523,7 @@ class DetectionService:
             "period": {
                 "start": start_dt.strftime("%Y-%m-%d"),
                 "end": end_dt.strftime("%Y-%m-%d"),
-                "days": range_days
+                "days": range_days,
+                "timezone": "Asia/Bangkok"
             }
         }

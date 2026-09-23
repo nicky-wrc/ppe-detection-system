@@ -41,12 +41,15 @@ export interface DetectionHistoryFilters {
 }
 
 export const detectionService = {
-  async uploadImage(file: File, zoneId?: number): Promise<Detection> {
+  async uploadImage(file: File, zoneId?: number, recordKind?: 'violation'): Promise<Detection> {
     const formData = new FormData()
     formData.append('file', file)
     
-    const params = zoneId ? `?zone_id=${zoneId}` : ''
-    const response = await api.post(`/detection/image${params}`, formData, {
+    const params = new URLSearchParams()
+    if (zoneId) params.set('zone_id', String(zoneId))
+    if (recordKind) params.set('record_kind', recordKind)
+    const query = params.toString()
+    const response = await api.post(`/detection/image${query ? `?${query}` : ''}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     return response.data

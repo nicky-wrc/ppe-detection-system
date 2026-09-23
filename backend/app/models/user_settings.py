@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Boolean, DateTime, JSON, ForeignKey
+from sqlalchemy import Column, Integer, Boolean, DateTime, JSON, ForeignKey, String
 from sqlalchemy.sql import func
 from app.core.database import Base
 
@@ -19,6 +19,9 @@ class UserSettings(Base):
 
     # PPE rules toggles (keys like "helmet", "safety-vest", "glasses"...)
     active_ppe_rules = Column(JSON, default=dict)
+
+    # Which detection outcomes should be saved to Detection records.
+    detection_record_mode = Column(String(32), default="both")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
