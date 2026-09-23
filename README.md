@@ -545,7 +545,7 @@ JWT ใน query string อาจถูกบันทึกโดย proxy ห�
 รายละเอียดการประมวลผล:
 
 - `INFERENCE_DEVICE=auto` เลือก CUDA device `0` เมื่อพร้อม มิฉะนั้นใช้ CPU
-- Person-crop refinement ปิดอัตโนมัติเมื่อใช้ CPU
+- Person-crop refinement บน CPU เปิดได้ด้วย `PPE_CROP_REFINEMENT_ON_CPU=true` ร่วมกับ `PPE_CROP_REFINEMENT=true`; ค่าเริ่มต้นปิดเพื่อจำกัด latency
 - Low-light enhancement ทำงานเมื่อค่าเฉลี่ย luma ต่ำกว่า threshold
 - กฎ PPE ของ Zone มีลำดับความสำคัญเหนือ preference ของผู้ใช้
 - หากไม่ได้เลือกโซนที่ active ระบบใช้ Helmet/Vest rule จาก User Settings; โซนที่ปิดกฎทั้งสองรายการหมายถึงไม่ตรวจการฝ่าฝืน PPE ไม่ใช่กลับไปใช้ค่าเริ่มต้น
@@ -554,6 +554,24 @@ JWT ใน query string อาจถูกบันทึกโดย proxy ห�
 - ระบบเลือกบุคคลเข้า Zone จากจุดกึ่งกลางด้านล่างของ bounding box
 - วิดีโอวิเคราะห์ตาม frame stride และจำกัดจำนวนเฟรมที่วิเคราะห์
 - หาก OpenCV ไม่มี encoder ที่รองรับ ระบบอาจคืนภาพ JPEG ของเฟรมที่ดีที่สุดแทนไฟล์วิดีโอผลลัพธ์
+
+### Mac ที่ MPS ใช้งานไม่ได้: เปิดตรวจ PPE ซ้ำบน CPU
+
+ต้องอัปเดตโค้ดที่รองรับ `PPE_CROP_REFINEMENT_ON_CPU` ก่อน แล้วแก้เฉพาะบรรทัดที่เกี่ยวข้องใน `backend/.env` ของเครื่อง Mac:
+
+```env
+INFERENCE_DEVICE=cpu
+PPE_CROP_REFINEMENT=true
+PPE_CROP_REFINEMENT_ON_CPU=true
+PPE_CROP_MAX_PERSONS=1
+CAMERA_ANALYSIS_FPS=2
+```
+
+เก็บ `MODEL_PATH` และ `PERSON_MODEL_PATH` เดิม แล้วเริ่ม Backend ใหม่จากโฟลเดอร์ `backend` ด้วย `python run_local.py` หลัง activate virtual environment ที่ใช้งานอยู่ จะเห็น `device: cpu` และ `crop_refinement: true` ในข้อความเริ่มระบบ ใช้ `python run_local.py --check` ตรวจการโหลดได้ แต่ต้องเปิดกล้องเพื่อทดสอบ inference จริง
+
+ค่าข้างต้นเป็นจุดเริ่มทดลองสำหรับหนึ่งคน ไม่ใช่ผล benchmark ของ Mac: ระบบเลือกตรวจครอปคนที่ confidence สูงที่สุดได้ไม่เกินหนึ่งคนต่อเฟรม หากมีหลายคนสามารถเพิ่ม `PPE_CROP_MAX_PERSONS` โดยวัดความหน่วงร่วมด้วย ค่า FPS เป็นเพดานที่ต้องการ ไม่รับประกันความเร็วจริง การลด FPS อาจทำให้ยืนยันเหตุการณ์ช้าลง เกณฑ์ยืนยันหลายเฟรมยังเหมือนเดิม หากช้าเกินไปให้ตั้ง `PPE_CROP_REFINEMENT_ON_CPU=false` แล้วเริ่ม Backend ใหม่
+
+การเปิด crop refinement เพิ่มขั้นตอนตรวจจับ แต่ยังต้องวัดผลกับ PPE สีส้มและกล้องจริงของผู้ใช้ ไม่รับประกันผลเท่ากับ CUDA
 
 ### การใช้งานหน้า Settings
 

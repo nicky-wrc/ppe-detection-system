@@ -1,4 +1,7 @@
 import numpy as np
+import pytest
+
+from app.core.config import settings
 
 from app.ml.detector import (
     PPEDetector,
@@ -9,6 +12,54 @@ from app.ml.detector import (
     open_browser_video_writer,
     ppe_sensitivity_to_confidence,
 )
+
+
+@pytest.mark.parametrize("device,enabled,cpu_opt_in,expected", [
+    ("cpu", True, False, False),
+    ("cpu", True, True, True),
+    ("cpu", False, True, False),
+    ("0", True, False, True),
+    ("mps", True, False, True),
+    ("0", False, True, False),
+])
+def test_crop_refinement_cpu_opt_in_preserves_gpu_behavior(monkeypatch, device, enabled, cpu_opt_in, expected):
+    monkeypatch.setattr(settings, "PPE_CROP_REFINEMENT", enabled)
+    monkeypatch.setattr(settings, "PPE_CROP_REFINEMENT_ON_CPU", cpu_opt_in)
+    monkeypatch.setattr(PPEDetector, "_resolve_device", staticmethod(lambda _: device))
+    monkeypatch.setattr(PPEDetector, "_load_models", lambda self: None)
+    monkeypatch.setattr(PPEDetector, "_load_font", lambda self: None)
+    detector = PPEDetector()
+    assert detector.engine_metadata["crop_refinement"] is expected
+
+
+def test_cpu_refinement_runs_inference_and_respects_person_limit(monkeypatch):
+    monkeypatch.setattr(settings, "PPE_CROP_REFINEMENT", True)
+    monkeypatch.setattr(settings, "PPE_CROP_REFINEMENT_ON_CPU", True)
+    monkeypatch.setattr(settings, "PPE_CROP_MAX_PERSONS", 1)
+    monkeypatch.setattr(PPEDetector, "_resolve_device", staticmethod(lambda _: "cpu"))
+    monkeypatch.setattr(PPEDetector, "_load_models", lambda self: None)
+    monkeypatch.setattr(PPEDetector, "_load_font", lambda self: None)
+    detector = PPEDetector()
+    detector.ppe_model = object()
+    calls = []
+
+    def predict(model, crops, confidence, **kwargs):
+        calls.append((len(crops), confidence))
+        return [object() for _ in crops]
+
+    monkeypatch.setattr(detector, "_predict", predict)
+    monkeypatch.setattr(detector, "_parse_ppe_result", lambda *args, **kwargs: (
+        [], [{"class": "helmet", "confidence": 0.8, "bbox": [10, 10, 60, 60]}],
+    ))
+    frame = np.zeros((400, 400, 3), dtype=np.uint8)
+    persons = [{"bbox": [20, 20, 140, 300], "confidence": 0.9},
+               {"bbox": [180, 20, 310, 300], "confidence": 0.8}]
+    result = detector._refine_ppe_in_person_crops(frame, persons, 0.24)
+    assert calls == [(1, 0.144)]
+    assert result[0]["source"] == "yolov8-person-crop"
+    detector.crop_refinement_enabled = False
+    assert detector._refine_ppe_in_person_crops(frame, persons, 0.24) == []
+    assert len(calls) == 1
 
 
 def test_ppe_sensitivity_lowers_ppe_confidence_floor():

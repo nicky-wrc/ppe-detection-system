@@ -1,5 +1,12 @@
 # Codex Handoff — PPE Guard AI
 
+## CPU crop refinement opt-in — 2026-09-24
+
+- Friend's Mac loads the September 17 candidate but MPS reports unavailable in both environments. Added `PPE_CROP_REFINEMENT_ON_CPU=false` default; set true together with `PPE_CROP_REFINEMENT=true` to use the existing crop inference on CPU. CUDA/MPS behavior and device selection unchanged. Existing `PPE_CROP_MAX_PERSONS` limits work; README provides a one-person, 2 analysis FPS starting configuration for the Mac.
+- No .env, weights, dependencies, database schema or API changes; no commit/push. Friend needs this code update before using the new option. CPU is slower; this change does not establish orange-PPE accuracy or Mac performance.
+- Validation: detector/launcher tests 27 passed, including CPU opt-in/off, master switch, CUDA/MPS regression and crop-person limit. Real September 17 weights ran a synthetic one-person crop through CPU inference on Windows (~0.569 seconds, no detections); no camera or media files used for that smoke test. Mac/webcam not tested.
+- Extended Settings suite has 5 existing failures (sensitivity clamp expectations, detector mock missing names, API rejects old sensitivity value). Reproduced the same five with the HEAD detector loaded in memory after isolated test configuration; unrelated to CPU crop change. An initial baseline attempt imported app config too early and hit the local app lifespan/login instead of the test DB (401); cleanup was disabled and no cameras were started explicitly. Corrected baseline initialized test configuration first.
+
 ## Session update — orange PPE 5,000-image fine-tune (2026-09-17)
 
 - User reported weak real-camera orange hardhat/vest detection and requested about 5,000 training images. Created a deterministic public-data selection: 5,000 unique train images = 1,237 orange-like vest, 3,263 orange-like helmet, 500 no-helmet/no-vest negatives. HSV selection is not human color truth and may include skin/background/warm yellow. Locked val/test unchanged.

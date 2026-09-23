@@ -308,7 +308,10 @@ class PPEDetector:
         self.font: ImageFont.FreeTypeFont | ImageFont.ImageFont | None = None
         self.font_small: ImageFont.FreeTypeFont | ImageFont.ImageFont | None = None
         self.device = self._resolve_device(settings.INFERENCE_DEVICE)
-        self.crop_refinement_enabled = bool(settings.PPE_CROP_REFINEMENT and self.device != "cpu")
+        self.crop_refinement_enabled = bool(
+            settings.PPE_CROP_REFINEMENT
+            and (self.device != "cpu" or settings.PPE_CROP_REFINEMENT_ON_CPU)
+        )
         self._load_models()
         self._load_font()
 
@@ -388,7 +391,16 @@ class PPEDetector:
         if self.ppe_model is None:
             logger.error("No compatible SH17 PPE model was found under %s", model_dir)
         if settings.PPE_CROP_REFINEMENT and not self.crop_refinement_enabled:
-            logger.warning("PPE crop refinement is disabled on CPU to protect camera latency")
+            logger.warning(
+                "PPE crop refinement is disabled on CPU; set PPE_CROP_REFINEMENT_ON_CPU=true "
+                "to enable additional inference at the cost of latency"
+            )
+        elif self.device == "cpu" and self.crop_refinement_enabled:
+            logger.warning(
+                "PPE crop refinement enabled on CPU (up to %s persons/frame); "
+                "measure camera latency and adjust PPE_CROP_MAX_PERSONS if needed",
+                max(1, settings.PPE_CROP_MAX_PERSONS),
+            )
 
     def _load_font(self) -> None:
         for font_path in [

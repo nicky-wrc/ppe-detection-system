@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     LOW_LIGHT_ENHANCEMENT: bool = True
     LOW_LIGHT_LUMA_THRESHOLD: float = 72.0
     PPE_CROP_REFINEMENT: bool = True
+    PPE_CROP_REFINEMENT_ON_CPU: bool = False
     PPE_CROP_MAX_PERSONS: int = 8
 
     UPLOAD_DIR: str = "./uploads"
