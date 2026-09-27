@@ -76,9 +76,15 @@ export function DetectionDetailsDialog({
     })
 
     return {
-      mode: settings.ppe_check_enabled
-        ? text('ตรวจจับบุคคลและตรวจ PPE', 'Person and PPE detection')
-        : text('ตรวจจับบุคคลเท่านั้น', 'Person detection only'),
+      mode: settings.detection_record_mode === 'violations_only'
+        ? text('เฉพาะมีการฝ่าฝืน', 'Violations only')
+        : settings.detection_record_mode === 'compliant_only'
+          ? text('เฉพาะสวมใส่ครบ', 'Compliant only')
+          : settings.detection_record_mode === 'both'
+            ? text('บันทึกสองแบบ', 'Record both')
+            : settings.ppe_check_enabled
+              ? text('ตรวจจับบุคคลและตรวจ PPE', 'Person and PPE detection')
+              : text('ตรวจจับบุคคลเท่านั้น', 'Person detection only'),
       rules: ppeNames.length > 0
         ? ppeNames.join(', ')
         : text('ไม่มีกฎ PPE ที่เปิดใช้งาน', 'No active PPE rules'),

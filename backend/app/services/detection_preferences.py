@@ -6,7 +6,7 @@ from app.models import UserSettings, Zone
 SAFE_PERSON_CONFIDENCE_MIN = 30
 SAFE_PERSON_CONFIDENCE_MAX = 90
 SAFE_PPE_SENSITIVITY_MIN = 35
-SAFE_PPE_SENSITIVITY_MAX = 75
+SAFE_PPE_SENSITIVITY_MAX = 100
 PPE_LABELS = {
     "helmet": "หมวกนิรภัย",
     "safety-vest": "เสื้อสะท้อนแสง",
@@ -66,6 +66,7 @@ def summarize_detection_settings(
     required_ppe: list[str],
     confidence: float,
     person_confidence: float,
+    detection_record_mode: str | None = None,
 ) -> dict[str, str | list[str] | int | bool]:
     labels = [PPE_LABELS[item] for item in required_ppe if item in PPE_LABELS]
     person_percent = round(person_confidence * 100)
@@ -79,6 +80,7 @@ def summarize_detection_settings(
             "confidence_settings": f"ตรวจคนอย่างน้อย {person_percent}%",
             "person_confidence_percent": person_percent,
             "ppe_confidence_percent": ppe_percent,
+            "detection_record_mode": normalize_detection_record_mode(detection_record_mode),
         }
     return {
         "ppe_check_enabled": True,
@@ -88,6 +90,7 @@ def summarize_detection_settings(
         "confidence_settings": f"ตรวจคนอย่างน้อย {person_percent}%, ตรวจ PPE อย่างน้อย {ppe_percent}%",
         "person_confidence_percent": person_percent,
         "ppe_confidence_percent": ppe_percent,
+        "detection_record_mode": normalize_detection_record_mode(detection_record_mode),
     }
 
 

@@ -337,7 +337,9 @@ class PPEDetector:
 
     @staticmethod
     def _model_names(model: YOLO) -> dict[int, str]:
-        names = model.names
+        names = getattr(model, "names", None)
+        if names is None:
+            return {}
         if isinstance(names, dict):
             return {int(key): str(value) for key, value in names.items()}
         return {index: str(value) for index, value in enumerate(names)}
@@ -497,7 +499,10 @@ class PPEDetector:
 
         required_set = set(required)
         class_ids: list[int] = []
-        for class_id, name in self._model_names(self.ppe_model).items():
+        names = self._model_names(self.ppe_model)
+        if not names:
+            return None
+        for class_id, name in names.items():
             if include_person and name == "person":
                 class_ids.append(class_id)
                 continue
@@ -755,12 +760,18 @@ class PPEDetector:
         ppe_objects: list[dict[str, Any]] = []
 
         if self.ppe_model is not None:
-            full_frame_results = self._predict(
-                self.ppe_model,
-                inference_frame,
-                min(ppe_confidence, minimum_person_confidence),
-                classes=self._ppe_model_class_ids(required),
-            )
+            class_ids = self._ppe_model_class_ids(required)
+            if class_ids is None:
+                full_frame_results = self._predict(
+                    self.ppe_model, inference_frame, min(ppe_confidence, minimum_person_confidence),
+                )
+            else:
+                full_frame_results = self._predict(
+                    self.ppe_model,
+                    inference_frame,
+                    min(ppe_confidence, minimum_person_confidence),
+                    classes=class_ids,
+                )
             for result in full_frame_results:
                 persons, ppe = self._parse_ppe_result(
                     result,

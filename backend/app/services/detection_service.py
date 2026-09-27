@@ -51,12 +51,18 @@ class DetectionService:
         self,
         user_id: Optional[int],
         zone_id: Optional[int],
-    ) -> tuple[list[str], float, float, dict]:
+    ) -> tuple[list[str], float, float]:
         required_ppe, confidence, person_confidence, _ = resolve_detection_preferences(
             self.db, user_id, zone_id,
         )
-        settings_summary = summarize_detection_settings(required_ppe, confidence, person_confidence)
-        return required_ppe, confidence, person_confidence, settings_summary
+        return required_ppe, confidence, person_confidence
+
+    def _settings_summary(
+        self, user_id: Optional[int], required_ppe: list[str], confidence: float, person_confidence: float,
+    ) -> dict:
+        return summarize_detection_settings(
+            required_ppe, confidence, person_confidence, get_detection_record_mode(self.db, user_id),
+        )
 
     @staticmethod
     def _summary_with_settings(detection_result: dict, settings_summary: dict) -> dict:
@@ -88,7 +94,8 @@ class DetectionService:
         result_filename = f"result_{uuid.uuid4()}.jpg"
         result_path = str(self.upload_dir / result_filename)
         
-        required_ppe, confidence, person_confidence, settings_summary = self._get_detection_options(user_id, zone_id)
+        required_ppe, confidence, person_confidence = self._get_detection_options(user_id, zone_id)
+        settings_summary = self._settings_summary(user_id, required_ppe, confidence, person_confidence)
 
         detection_result = self.detector.process_image(
             original_path,
@@ -142,7 +149,8 @@ class DetectionService:
         if image is None:
             raise ValueError("ไม่สามารถอ่านเฟรมจากกล้องได้")
 
-        required_ppe, confidence, person_confidence, settings_summary = self._get_detection_options(user_id, zone_id)
+        required_ppe, confidence, person_confidence = self._get_detection_options(user_id, zone_id)
+        settings_summary = self._settings_summary(user_id, required_ppe, confidence, person_confidence)
 
         detection_result = self.detector.detect(
             image,
@@ -181,7 +189,8 @@ class DetectionService:
         result_filename = f"result_{uuid.uuid4()}.jpg"
         result_path = str(self.upload_dir / result_filename)
 
-        required_ppe, confidence, person_confidence, settings_summary = self._get_detection_options(user_id, zone_id)
+        required_ppe, confidence, person_confidence = self._get_detection_options(user_id, zone_id)
+        settings_summary = self._settings_summary(user_id, required_ppe, confidence, person_confidence)
 
         detection_result = self.detector.process_image(
             original_path,
@@ -243,7 +252,8 @@ class DetectionService:
         result_filename = f"result_{uuid.uuid4()}.avi"
         result_path = str(self.upload_dir / result_filename)
         
-        required_ppe, confidence, person_confidence, settings_summary = self._get_detection_options(user_id, zone_id)
+        required_ppe, confidence, person_confidence = self._get_detection_options(user_id, zone_id)
+        settings_summary = self._settings_summary(user_id, required_ppe, confidence, person_confidence)
 
         detection_result = self.detector.process_video(
             original_path,

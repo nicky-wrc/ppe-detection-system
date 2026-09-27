@@ -41,12 +41,14 @@ async def detect_from_image(
     service = DetectionService(db)
     
     try:
-        detection = await service.process_image(
-            file=file,
-            user_id=current_user.id,
-            zone_id=zone_id,
-            enforce_record_mode=record_kind == "violation",
-        )
+        process_kwargs = {
+            "file": file,
+            "user_id": current_user.id,
+            "zone_id": zone_id,
+        }
+        if record_kind == "violation":
+            process_kwargs["enforce_record_mode"] = True
+        detection = await service.process_image(**process_kwargs)
         return detection
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

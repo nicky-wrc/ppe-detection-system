@@ -530,7 +530,9 @@ class CameraRuntimeManager:
         confidence: float,
         person_confidence: float,
     ) -> None:
-        settings_summary = summarize_detection_settings(required, confidence, person_confidence)
+        settings_summary = summarize_detection_settings(
+            required, confidence, person_confidence, get_detection_record_mode(db, camera.owner_id),
+        )
         grouped: dict[int, list[ConfirmedViolation]] = defaultdict(list)
         for event in events:
             grouped[event.track_id].append(event)
@@ -643,7 +645,9 @@ class CameraRuntimeManager:
         person_confidence: float,
     ) -> None:
         """Keep periodic compliant camera results visible in the shared reports history."""
-        settings_summary = summarize_detection_settings(required, confidence, person_confidence)
+        settings_summary = summarize_detection_settings(
+            required, confidence, person_confidence, get_detection_record_mode(db, camera.owner_id),
+        )
         ppe_check_enabled = bool(settings_summary.get("ppe_check_enabled"))
         detection = Detection(
             user_id=camera.owner_id,

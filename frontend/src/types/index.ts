@@ -71,6 +71,7 @@ export interface DetectionSummary {
     confidence_settings: string
     person_confidence_percent: number
     ppe_confidence_percent: number
+    detection_record_mode?: 'both' | 'violations_only' | 'compliant_only'
   }
 }
 
