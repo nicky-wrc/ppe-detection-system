@@ -21,6 +21,8 @@ import { detectionService } from '../services/detection'
 import { eventsService } from '../services/events'
 import { useAuthStore } from '../stores/authStore'
 import type { Alert, Detection } from '../types'
+import { useLanguage } from '../i18n/LanguageContext'
+import { DetectionDetailsDialog } from '../components/detections/DetectionDetailsDialog'
 
 interface AlertGroup extends Alert {
   alert_ids: number[]
@@ -28,20 +30,21 @@ interface AlertGroup extends Alert {
 }
 
 const ALERTS_PER_PAGE = 20
+const renderLegacyDetailsDialog: boolean = false
 
 const statusPresentation = {
   new: {
-    label: 'ใหม่ล่าสุด',
+    labelTh: 'ใหม่ล่าสุด', labelEn: 'New',
     className: 'border-[#f0c3c8] bg-[#fff8f8] text-[#d70015]',
     dotClassName: 'bg-[#d70015]',
   },
   acknowledged: {
-    label: 'รับทราบแล้ว',
+    labelTh: 'รับทราบแล้ว', labelEn: 'Acknowledged',
     className: 'border-[#efd39c] bg-[#fffaf0] text-[#b45309]',
     dotClassName: 'bg-[#d97706]',
   },
   resolved: {
-    label: 'แก้ไขเรียบร้อย',
+    labelTh: 'แก้ไขเรียบร้อย', labelEn: 'Resolved',
     className: 'border-[#b9dfc2] bg-[#f3fbf5] text-[#15803d]',
     dotClassName: 'bg-[#34c759]',
   },
@@ -52,6 +55,7 @@ interface AlertsPageProps {
 }
 
 export function AlertsPage({ embedded = false }: AlertsPageProps = {}) {
+  const { text } = useLanguage()
   const canManageAlerts = useAuthStore((state) => (
     state.user?.role === 'admin' || state.user?.role === 'safety_officer'
   ))
@@ -126,11 +130,11 @@ export function AlertsPage({ embedded = false }: AlertsPageProps = {}) {
       if (listRequestRef.current !== requestId) return
       console.error(error)
       setLoadError(true)
-      toast.error('โหลดการแจ้งเตือนไม่สำเร็จ')
+      toast.error(text('โหลดการแจ้งเตือนไม่สำเร็จ', 'Unable to load alerts'))
     } finally {
       if (listRequestRef.current === requestId) setLoading(false)
     }
-  }, [activeStatus, page])
+  }, [activeStatus, page, text])
 
   useEffect(() => {
     void load()
@@ -146,10 +150,10 @@ export function AlertsPage({ embedded = false }: AlertsPageProps = {}) {
       setAlerts((previous) => previous.map((alert) => (
         alert.detection_id === alertGroup.detection_id ? { ...alert, status: 'acknowledged' } : alert
       )))
-      toast.success('รับทราบแล้ว')
+      toast.success(text('รับทราบแล้ว', 'Alert acknowledged'))
     } catch (error) {
       console.error(error)
-      toast.error('ทำรายการไม่สำเร็จ')
+      toast.error(text('ทำรายการไม่สำเร็จ', 'Action failed'))
     }
   }
 
@@ -160,10 +164,10 @@ export function AlertsPage({ embedded = false }: AlertsPageProps = {}) {
       setAlerts((previous) => previous.map((alert) => (
         alert.detection_id === alertGroup.detection_id ? { ...alert, status: 'resolved' } : alert
       )))
-      toast.success('ปิดการแจ้งเตือนแล้ว')
+      toast.success(text('ปิดการแจ้งเตือนแล้ว', 'Alert resolved'))
     } catch (error) {
       console.error(error)
-      toast.error('ทำรายการไม่สำเร็จ')
+      toast.error(text('ทำรายการไม่สำเร็จ', 'Action failed'))
     }
   }
 
@@ -191,7 +195,7 @@ export function AlertsPage({ embedded = false }: AlertsPageProps = {}) {
     } catch (error) {
       if (detailRequestRef.current !== requestId) return
       console.error(error)
-      toast.error('โหลดรายละเอียดการตรวจจับไม่สำเร็จ')
+      toast.error(text('โหลดรายละเอียดการตรวจจับไม่สำเร็จ', 'Unable to load detection details'))
     } finally {
       if (detailRequestRef.current === requestId) setLoadingDetail(false)
     }
@@ -210,26 +214,28 @@ export function AlertsPage({ embedded = false }: AlertsPageProps = {}) {
     <>
       <div className={`${embedded ? '' : 'mx-auto max-w-[1240px] '}flex flex-col gap-8 sm:gap-10`}>
         {!embedded && <header className="page-heading flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--ink)] text-white" aria-hidden="true">
+          <div className="flex items-start gap-4">
+            <div className="mt-3 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ink)] text-white" aria-hidden="true">
               <Bell size={20} strokeWidth={1.8} />
             </div>
-            <h1>ศูนย์การแจ้งเตือน</h1>
-            <p className="max-w-3xl !mt-3 !text-[17px] !leading-[1.47]">รายการแจ้งเตือนและเหตุการณ์ฝ่าฝืนกฎความปลอดภัย</p>
+            <div className="min-w-0">
+              <h1>{text('ศูนย์การแจ้งเตือน', 'Alert center')}</h1>
+              <p className="max-w-3xl !mt-2 !text-[17px] !leading-[1.47]">{text('รายการแจ้งเตือนและเหตุการณ์ฝ่าฝืนกฎความปลอดภัย', 'Safety rule alerts and violation events')}</p>
+            </div>
           </div>
           {newAlertsCount > 0 && (
             <div className="inline-flex min-h-11 w-fit items-center gap-2 rounded-full border border-[#f0c3c8] bg-[#fff8f8] px-4 text-[14px] font-semibold text-[#d70015]" role="status">
               <span className="h-2 w-2 rounded-full bg-[#d70015]" aria-hidden="true" />
-              พบ {newAlertsCount} แจ้งเตือนใหม่
+              {text(`พบ ${newAlertsCount} แจ้งเตือนใหม่`, `${newAlertsCount} new alerts`)}
             </div>
           )}
         </header>}
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6" aria-label="Alert summary">
           {[
-            { label: 'แจ้งเตือนใหม่', value: newAlertsCount, icon: Bell, iconClassName: 'text-[#d70015]' },
-            { label: 'รับทราบ / รอดำเนินการ', value: acknowledgedAlertsCount, icon: Clock, iconClassName: 'text-[#b45309]' },
-            { label: 'แก้ไขเรียบร้อยแล้ว', value: resolvedAlertsCount, icon: CheckCircle, iconClassName: 'text-[#15803d]' },
+            { label: text('แจ้งเตือนใหม่', 'New alerts'), value: newAlertsCount, icon: Bell, iconClassName: 'text-[#d70015]' },
+            { label: text('รับทราบ / รอดำเนินการ', 'Acknowledged / pending'), value: acknowledgedAlertsCount, icon: Clock, iconClassName: 'text-[#b45309]' },
+            { label: text('แก้ไขเรียบร้อยแล้ว', 'Resolved'), value: resolvedAlertsCount, icon: CheckCircle, iconClassName: 'text-[#15803d]' },
           ].map((stat) => (
             <div key={stat.label} className="surface-card min-h-36 p-6 sm:p-7">
               <div className="flex items-start justify-between gap-4">
@@ -244,15 +250,15 @@ export function AlertsPage({ embedded = false }: AlertsPageProps = {}) {
         <section className="surface-card overflow-hidden" aria-labelledby="alerts-list-title">
           <div className="flex flex-col gap-5 border-b border-[var(--line)] px-6 py-6 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h2 id="alerts-list-title" className="text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">รายการแจ้งเตือน</h2>
+              <h2 id="alerts-list-title" className="text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">{text('รายการแจ้งเตือน', 'Alerts')}</h2>
               <p className="mt-1 text-[14px] text-[var(--muted)]">{total.toLocaleString()} total alerts</p>
             </div>
             <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Filter alerts by status">
               {[
-                { label: 'ทั้งหมด', value: undefined },
-                { label: 'ใหม่', value: 'new' },
-                { label: 'รับทราบ', value: 'acknowledged' },
-                { label: 'ปิดแล้ว', value: 'resolved' },
+                { label: text('ทั้งหมด', 'All'), value: undefined },
+                { label: text('ใหม่', 'New'), value: 'new' },
+                { label: text('รับทราบ', 'Acknowledged'), value: 'acknowledged' },
+                { label: text('ปิดแล้ว', 'Resolved'), value: 'resolved' },
               ].map((filter) => {
                 const isActive = activeStatus === filter.value
                 return (
@@ -278,20 +284,20 @@ export function AlertsPage({ embedded = false }: AlertsPageProps = {}) {
           {loading ? (
             <div className="flex min-h-72 items-center justify-center gap-3 text-[15px] text-[var(--muted)]" role="status">
               <Loader2 size={21} className="animate-spin text-[var(--blue)]" aria-hidden="true" />
-              กำลังโหลดการแจ้งเตือน…
+              {text('กำลังโหลดการแจ้งเตือน…', 'Loading alerts…')}
             </div>
           ) : loadError ? (
             <div className="flex min-h-72 flex-col items-center justify-center gap-4 px-6 text-center" role="alert">
               <AlertTriangle size={28} className="text-[#d70015]" strokeWidth={1.6} aria-hidden="true" />
-              <p className="text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">โหลดการแจ้งเตือนไม่สำเร็จ</p>
-              <p className="max-w-md text-[15px] leading-relaxed text-[var(--muted)]">ตรวจสอบการเชื่อมต่อกับ backend แล้วลองอีกครั้ง</p>
-              <button type="button" onClick={() => void load()} className="btn-apple-secondary !min-h-11 text-[var(--blue)]">ลองอีกครั้ง</button>
+              <p className="text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">{text('โหลดการแจ้งเตือนไม่สำเร็จ', 'Unable to load alerts')}</p>
+              <p className="max-w-md text-[15px] leading-relaxed text-[var(--muted)]">{text('ตรวจสอบการเชื่อมต่อกับ backend แล้วลองอีกครั้ง', 'Check the backend connection and try again.')}</p>
+              <button type="button" onClick={() => void load()} className="btn-apple-secondary !min-h-11 text-[var(--blue)]">{text('ลองอีกครั้ง', 'Try again')}</button>
             </div>
           ) : alerts.length === 0 ? (
             <div className="flex min-h-72 flex-col items-center justify-center gap-4 px-6 text-center">
               <Bell size={30} className="text-[var(--muted)]" strokeWidth={1.5} aria-hidden="true" />
-              <p className="text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">ไม่มีการแจ้งเตือนในสถานะนี้</p>
-              <p className="max-w-sm text-[15px] leading-relaxed text-[var(--muted)]">เมื่อระบบพบเหตุการณ์ รายการที่ตรงกับตัวกรองจะปรากฏที่นี่</p>
+              <p className="text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">{text('ไม่มีการแจ้งเตือนในสถานะนี้', 'No alerts with this status')}</p>
+              <p className="max-w-sm text-[15px] leading-relaxed text-[var(--muted)]">{text('เมื่อระบบพบเหตุการณ์ รายการที่ตรงกับตัวกรองจะปรากฏที่นี่', 'Matching events will appear here when detected.')}</p>
             </div>
           ) : (
             <div className="divide-y divide-[var(--line)]">
@@ -306,10 +312,10 @@ export function AlertsPage({ embedded = false }: AlertsPageProps = {}) {
                         </span>
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="text-[17px] font-semibold leading-snug text-[var(--ink)]">ตรวจพบ: {alert.alert_types.join(', ')}</h3>
+                            <h3 className="text-[17px] font-semibold leading-snug text-[var(--ink)]">{text('ตรวจพบ:', 'Detected:')} {alert.alert_types.join(', ')}</h3>
                             <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-semibold ${presentation.className}`}>
                               <span className={`h-1.5 w-1.5 rounded-full ${presentation.dotClassName}`} aria-hidden="true" />
-                              {presentation.label}
+                              {text(presentation.labelTh, presentation.labelEn)}
                             </span>
                           </div>
                           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-[14px] text-[var(--muted)]">
@@ -332,13 +338,13 @@ export function AlertsPage({ embedded = false }: AlertsPageProps = {}) {
                       <div className="flex flex-wrap gap-2 lg:justify-end">
                         <button type="button" onClick={() => void handleViewDetail(alert)} className="btn-apple-secondary !min-h-11 text-[var(--blue)] active:scale-95">
                           <Eye size={16} aria-hidden="true" />
-                          ดูรายละเอียด
+                          {text('ดูรายละเอียด', 'View details')}
                         </button>
                         {canManageAlerts && alert.status === 'new' && (
-                          <button type="button" onClick={() => void handleAcknowledge(alert)} className="btn-apple-secondary !min-h-11 text-[var(--blue)] active:scale-95">รับทราบ</button>
+                          <button type="button" onClick={() => void handleAcknowledge(alert)} className="btn-apple-secondary !min-h-11 text-[var(--blue)] active:scale-95">{text('รับทราบ', 'Acknowledge')}</button>
                         )}
                         {canManageAlerts && alert.status !== 'resolved' && (
-                          <button type="button" onClick={() => void handleResolve(alert)} className="btn-apple-primary !min-h-11 active:scale-95">ปิดจ็อบ</button>
+                          <button type="button" onClick={() => void handleResolve(alert)} className="btn-apple-primary !min-h-11 active:scale-95">{text('ปิดเหตุการณ์', 'Resolve')}</button>
                         )}
                       </div>
                     </div>
@@ -348,7 +354,7 @@ export function AlertsPage({ embedded = false }: AlertsPageProps = {}) {
 
               {totalPages > 1 && (
                 <div className="flex flex-col items-center justify-between gap-4 bg-[#f5f5f7] px-6 py-5 sm:flex-row sm:px-8">
-                  <span className="text-[14px] text-[var(--muted)]">หน้า <strong className="font-semibold text-[var(--ink)]">{page}</strong> / {totalPages}</span>
+                  <span className="text-[14px] text-[var(--muted)]">{text('หน้า', 'Page')} <strong className="font-semibold text-[var(--ink)]">{page}</strong> / {totalPages}</span>
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -357,7 +363,7 @@ export function AlertsPage({ embedded = false }: AlertsPageProps = {}) {
                       className="btn-apple-secondary !min-h-11 active:scale-95"
                     >
                       <ChevronLeft size={16} aria-hidden="true" />
-                      ก่อนหน้า
+                      {text('ก่อนหน้า', 'Previous')}
                     </button>
                     <button
                       type="button"
@@ -365,7 +371,7 @@ export function AlertsPage({ embedded = false }: AlertsPageProps = {}) {
                       disabled={loading || page === totalPages}
                       className="btn-apple-secondary !min-h-11 active:scale-95"
                     >
-                      ถัดไป
+                      {text('ถัดไป', 'Next')}
                       <ChevronRight size={16} aria-hidden="true" />
                     </button>
                   </div>
@@ -376,7 +382,16 @@ export function AlertsPage({ embedded = false }: AlertsPageProps = {}) {
         </section>
       </div>
 
-      {selectedAlert && (
+      <DetectionDetailsDialog
+        open={Boolean(selectedAlert)}
+        detection={selectedDetection}
+        onClose={closeDetail}
+        loading={loadingDetail}
+        violationOnly
+        clipUrl={clipUrl}
+      />
+
+      {renderLegacyDetailsDialog && selectedAlert && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6">
           <button
             type="button"
@@ -416,7 +431,7 @@ export function AlertsPage({ embedded = false }: AlertsPageProps = {}) {
               {loadingDetail ? (
                 <div className="flex min-h-64 items-center justify-center gap-3 text-[15px] text-[var(--muted)]" role="status">
                   <Loader2 size={21} className="animate-spin text-[var(--blue)]" aria-hidden="true" />
-                  กำลังโหลดรายละเอียด…
+                  {text('กำลังโหลดรายละเอียด…', 'Loading details…')}
                 </div>
               ) : selectedDetection ? (
                 <div className="mx-auto flex max-w-[780px] flex-col gap-6">
@@ -465,7 +480,7 @@ export function AlertsPage({ embedded = false }: AlertsPageProps = {}) {
                           : selectedAlert.alert_type
                             ? [selectedAlert.alert_type]
                             : []
-                        if (types.length > 0) return `ตรวจพบ: ${types.join(' และ ')}`
+                        if (types.length > 0) return text(`ตรวจพบ: ${types.join(' และ ')}`, `Detected: ${types.join(' and ')}`)
                         return selectedDetection.summary?.message || selectedAlert.message || '—'
                       })()}
                     </p>
@@ -498,7 +513,7 @@ export function AlertsPage({ embedded = false }: AlertsPageProps = {}) {
               ) : (
                 <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-center" role="alert">
                   <AlertTriangle size={28} className="text-[#d70015]" strokeWidth={1.6} aria-hidden="true" />
-                  <p className="text-[17px] font-semibold text-[var(--ink)]">ไม่พบข้อมูล detection</p>
+                  <p className="text-[17px] font-semibold text-[var(--ink)]">{text('ไม่พบข้อมูลการตรวจจับ', 'Detection data not found')}</p>
                 </div>
               )}
             </div>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Camera,
+  ChevronDown,
   CircleDot,
   Loader2,
   Play,
@@ -19,6 +20,7 @@ import { settingsService } from '../services/settings'
 import { zonesService } from '../services/zones'
 import { useAuthStore } from '../stores/authStore'
 import type { Detection, EdgeCamera, Zone } from '../types'
+import { useLanguage } from '../i18n/LanguageContext'
 
 interface CameraSocketMessage {
   type?: string
@@ -216,16 +218,16 @@ const mergeCameraDeviceOptions = (
   return [...merged.values()].sort((first, second) => first.device_index - second.device_index)
 }
 
-const describeCameraSource = (camera: EdgeCamera) => {
-  if (camera.source_type === 'rtsp') return `Network camera${camera.location ? ` · ${camera.location}` : ''}`
-  if (camera.source_type === 'file') return `Video source${camera.location ? ` · ${camera.location}` : ''}`
-  return `Local camera ${camera.device_index ?? 0}${camera.location ? ` · ${camera.location}` : ''}`
+const describeCameraSource = (camera: EdgeCamera, text: (thai: string, english: string) => string) => {
+  if (camera.source_type === 'rtsp') return `${text('กล้องเครือข่าย', 'Network camera')}${camera.location ? ` · ${camera.location}` : ''}`
+  if (camera.source_type === 'file') return `${text('วิดีโอ', 'Video source')}${camera.location ? ` · ${camera.location}` : ''}`
+  return `${text('กล้องในเครื่อง', 'Local camera')} ${camera.device_index ?? 0}${camera.location ? ` · ${camera.location}` : ''}`
 }
 
-const getCameraChooseLabel = (camera: EdgeCamera, devices: CameraDeviceOption[]) => {
-  if (camera.source_type !== 'usb') return describeCameraSource(camera)
+const getCameraChooseLabel = (camera: EdgeCamera, devices: CameraDeviceOption[], text: (thai: string, english: string) => string) => {
+  if (camera.source_type !== 'usb') return describeCameraSource(camera, text)
   const device = devices.find((item) => item.device_index === (camera.device_index ?? 0))
-  return device ? getCameraDeviceLabel(device) : `Camera ${camera.device_index ?? 0}`
+  return device ? getCameraDeviceLabel(device) : `${text('กล้อง', 'Camera')} ${camera.device_index ?? 0}`
 }
 
 const isRegisteredUsbDeviceMissing = (camera: EdgeCamera, devices: CameraDeviceOption[]) => (
@@ -322,12 +324,15 @@ const normalizeRtspUrl = (value: string) => {
   }
 }
 
-const getCameraActionErrorMessage = (error: unknown, fallback: string) => {
+const getCameraActionErrorMessage = (error: unknown, fallback: string, deviceNotFoundMessage = CAMERA_DEVICE_NOT_FOUND_MESSAGE) => {
+  if (error instanceof Error && error.message === CAMERA_DEVICE_NOT_FOUND_MESSAGE) {
+    return deviceNotFoundMessage
+  }
   if (
     error instanceof DOMException
     && ['NotFoundError', 'DevicesNotFoundError', 'OverconstrainedError'].includes(error.name)
   ) {
-    return CAMERA_DEVICE_NOT_FOUND_MESSAGE
+    return deviceNotFoundMessage
   }
   if (typeof error === 'object' && error !== null && 'response' in error) {
     const response = (error as { response?: { data?: { detail?: unknown } } }).response
@@ -338,6 +343,7 @@ const getCameraActionErrorMessage = (error: unknown, fallback: string) => {
 }
 
 function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
+  const { text } = useLanguage()
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const captureCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -631,7 +637,11 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
         setSummary({
           persons: 0,
           violations: 0,
-          message: getCameraActionErrorMessage(error, 'เปิดกล้องไม่ได้ กรุณากด Allow หรือเลือกกล้องใหม่'),
+          message: getCameraActionErrorMessage(
+            error,
+            text('เปิดกล้องไม่ได้ กรุณาอนุญาตการเข้าถึงหรือเลือกกล้องใหม่', 'Unable to open the camera. Allow access or select another camera.'),
+            text(CAMERA_DEVICE_NOT_FOUND_MESSAGE, 'Unable to open the camera because no device was found. Reconnect the device and try again.'),
+          ),
         })
       }
     }
@@ -643,9 +653,9 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
       sessionRef.current += 1
       stop()
     }
-  }, [camera.device_index, captureAndDetect, renderLoop])
+  }, [camera.device_index, captureAndDetect, renderLoop, text])
 
-  const statusLabel = status === 'live' ? 'LIVE DETECTION' : status.toUpperCase()
+  const statusLabel = status === 'live' ? text('กำลังตรวจจับ', 'LIVE DETECTION') : status === 'waiting' ? text('กำลังเชื่อมต่อ', 'WAITING') : text('ออฟไลน์', 'OFFLINE')
 
   return (
     <div className="mt-5">
@@ -663,14 +673,14 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
           {statusLabel}
         </div>
         <div className="absolute bottom-3 left-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-normal text-white backdrop-blur-sm">
-          Browser camera · AI frame detect
+          {text('กล้องเบราว์เซอร์ · ตรวจจับด้วย AI', 'Browser camera · AI frame detect')}
         </div>
       </div>
       <canvas ref={captureCanvasRef} className="hidden" />
       <dl className="mt-3 grid grid-cols-3 gap-2">
-        <div className="rounded-[18px] bg-[#f5f5f7] p-3"><dt className="text-[11px] font-semibold text-[var(--muted)]">Live frames</dt><dd className="mb-0 mt-1 text-[18px] font-semibold text-[#1d1d1f]">{frameCount.toLocaleString()}</dd></div>
-        <div className="rounded-[18px] bg-[#f5f5f7] p-3"><dt className="text-[11px] font-semibold text-[var(--muted)]">Persons</dt><dd className="mb-0 mt-1 text-[18px] font-semibold text-[#1d1d1f]">{summary.persons}</dd></div>
-        <div className="rounded-[18px] bg-[#f5f5f7] p-3"><dt className="text-[11px] font-semibold text-[var(--muted)]">Violations</dt><dd className={`mb-0 mt-1 text-[18px] font-semibold ${summary.violations > 0 ? 'text-[#b4232f]' : 'text-[#15803d]'}`}>{summary.violations}</dd></div>
+        <div className="rounded-[18px] bg-[#f5f5f7] p-3"><dt className="text-[11px] font-semibold text-[var(--muted)]">{text('ภาพสด', 'Live frames')}</dt><dd className="mb-0 mt-1 text-[18px] font-semibold text-[#1d1d1f]">{frameCount.toLocaleString()}</dd></div>
+        <div className="rounded-[18px] bg-[#f5f5f7] p-3"><dt className="text-[11px] font-semibold text-[var(--muted)]">{text('จำนวนคน', 'Persons')}</dt><dd className="mb-0 mt-1 text-[18px] font-semibold text-[#1d1d1f]">{summary.persons}</dd></div>
+        <div className="rounded-[18px] bg-[#f5f5f7] p-3"><dt className="text-[11px] font-semibold text-[var(--muted)]">{text('การฝ่าฝืน', 'Violations')}</dt><dd className={`mb-0 mt-1 text-[18px] font-semibold ${summary.violations > 0 ? 'text-[#b4232f]' : 'text-[#15803d]'}`}>{summary.violations}</dd></div>
       </dl>
       <p className="mb-0 mt-3 rounded-[18px] border border-[#d8e7ff] bg-[#f6faff] px-4 py-3 text-[13px] leading-5 text-[#1455a0]" role="status">
         {summary.message}
@@ -680,6 +690,7 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
 }
 
 function CameraPreview({ camera, deviceLabel, forceBrowserPreview = false }: { camera: EdgeCamera; deviceLabel: string; forceBrowserPreview?: boolean }) {
+  const { text } = useLanguage()
   const videoRef = useRef<HTMLVideoElement>(null)
   const [streamUrl, setStreamUrl] = useState<string | null>(null)
   const [streamFailed, setStreamFailed] = useState(false)
@@ -801,10 +812,10 @@ function CameraPreview({ camera, deviceLabel, forceBrowserPreview = false }: { c
   }, [camera.id, camera.is_active, forceBrowserPreview, streamFailed, streamUrl, useBrowserPreview])
 
   const statusLabel = preview.status === 'live'
-    ? 'LIVE'
+    ? text('ออนไลน์', 'LIVE')
     : preview.status === 'stale'
-      ? 'RECONNECTING'
-      : preview.status.toUpperCase()
+      ? text('กำลังเชื่อมต่อใหม่', 'RECONNECTING')
+      : preview.status === 'waiting' ? text('กำลังเชื่อมต่อ', 'WAITING') : text('ออฟไลน์', 'OFFLINE')
   const shouldMirrorPreview = camera.source_type === 'usb'
 
   return (
@@ -829,7 +840,7 @@ function CameraPreview({ camera, deviceLabel, forceBrowserPreview = false }: { c
         <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center text-[#cccccc]">
           {preview.status === 'waiting' ? <Loader2 size={26} className="animate-spin" aria-hidden="true" /> : <Camera size={28} aria-hidden="true" />}
           <p className="m-0 text-[14px] font-semibold">
-            {preview.status === 'waiting' ? 'กำลังเชื่อมต่อกล้องและรอเฟรมแรก…' : 'กด Start เพื่อเปิดกล้อง'}
+            {preview.status === 'waiting' ? text('กำลังเชื่อมต่อกล้องและรอภาพแรก…', 'Connecting to the camera and waiting for the first frame…') : text('กดเริ่มเพื่อต่อกล้อง', 'Select Start to connect the camera.')}
           </p>
         </div>
       ) : null}
@@ -838,16 +849,17 @@ function CameraPreview({ camera, deviceLabel, forceBrowserPreview = false }: { c
         {statusLabel}
       </div>
       <div className="absolute right-3 top-3 max-w-[60%] truncate rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-semibold text-white backdrop-blur-sm" title={deviceLabel}>
-        Choose camera: {deviceLabel}
+        {text('กล้องที่เลือก', 'Selected camera')}: {deviceLabel}
       </div>
       <div className="absolute bottom-3 right-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-normal text-white backdrop-blur-sm">
-        {useBrowserPreview ? 'Browser live view · memory only' : streamUrl && !streamFailed ? 'Backend MJPEG stream · memory only' : 'Backend live view · memory only'}
+        {useBrowserPreview ? text('ภาพสดจากเบราว์เซอร์ · ไม่บันทึก', 'Browser live view · memory only') : streamUrl && !streamFailed ? text('ภาพสด MJPEG · ไม่บันทึก', 'Backend MJPEG stream · memory only') : text('ภาพสดจากระบบ · ไม่บันทึก', 'Backend live view · memory only')}
       </div>
     </div>
   )
 }
 
 export function CameraPage() {
+  const { text } = useLanguage()
   const user = useAuthStore((state) => state.user)
   const isAdmin = user?.role === 'admin'
   const canOperateCameras = user?.role === 'admin' || user?.role === 'safety_officer'
@@ -869,6 +881,7 @@ export function CameraPage() {
   const [cameraPermissionError, setCameraPermissionError] = useState<string | null>(null)
   const [zoneId, setZoneId] = useState<number | undefined>()
   const [browserPreviewCameraId, setBrowserPreviewCameraId] = useState<number | null>(null)
+  const [isRegisterCameraExpanded, setIsRegisterCameraExpanded] = useState(false)
   const loadRequestRef = useRef(0)
 
   const applyCameraDevices = useCallback((devices: CameraDeviceOption[]) => {
@@ -908,11 +921,11 @@ export function CameraPage() {
     } catch (error) {
       console.error('Camera device discovery failed:', error)
       applyCameraDevices([])
-      setCameraPermissionError('ไม่พบกล้องจากทั้ง backend และ browser กรุณาตรวจสิทธิ์ Camera, สาย USB, hub และแอปอื่นที่กำลังใช้กล้อง')
+      setCameraPermissionError(text('ไม่พบกล้องจากทั้ง backend และ browser กรุณาตรวจสิทธิ์กล้อง สาย USB, hub และแอปอื่นที่กำลังใช้กล้อง', 'No cameras were found from the backend or browser. Check camera permissions, USB cables, hubs, and other apps using the camera.'))
     } finally {
       setIsRefreshingDevices(false)
     }
-  }, [applyCameraDevices, isAdmin])
+  }, [applyCameraDevices, isAdmin, text])
 
   const load = useCallback(async (silent = false) => {
     const requestId = loadRequestRef.current + 1
@@ -930,12 +943,12 @@ export function CameraPage() {
     } catch (error) {
       if (loadRequestRef.current !== requestId) return
       console.error(error)
-      setLoadError('เชื่อมต่อข้อมูลกล้องไม่ได้ ข้อมูลที่แสดงอาจไม่เป็นปัจจุบัน')
-      if (!silent) toast.error('โหลดข้อมูลกล้องไม่สำเร็จ')
+      setLoadError(text('เชื่อมต่อข้อมูลกล้องไม่ได้ ข้อมูลที่แสดงอาจไม่เป็นปัจจุบัน', 'Unable to connect to camera data. The displayed information may be outdated.'))
+      if (!silent) toast.error(text('โหลดข้อมูลกล้องไม่สำเร็จ', 'Unable to load cameras'))
     } finally {
       if (loadRequestRef.current === requestId) setLoading(false)
     }
-  }, [])
+  }, [text])
 
   useEffect(() => {
     let cancelled = false
@@ -999,23 +1012,23 @@ export function CameraPage() {
 
   const createCamera = async () => {
     if (!isNameValid) {
-      setFormError('ชื่อกล้องต้องมีความยาว 2–100 ตัวอักษร')
+      setFormError(text('ชื่อกล้องต้องมีความยาว 2–100 ตัวอักษร', 'Camera name must be 2–100 characters.'))
       return
     }
     if (sourceType === 'usb' && !isDeviceIndexValid) {
-      setFormError('กรุณาเลือกกล้องที่พร้อมใช้งาน')
+      setFormError(text('กรุณาเลือกกล้องที่พร้อมใช้งาน', 'Select an available camera.'))
       return
     }
     if (sourceType === 'usb' && duplicateDeviceIndex) {
-      setFormError('กล้องนี้ถูกเพิ่มไว้แล้ว กรุณาเลือกกล้องอื่น')
+      setFormError(text('กล้องนี้ถูกเพิ่มไว้แล้ว กรุณาเลือกกล้องอื่น', 'This camera has already been added. Select another camera.'))
       return
     }
     if (sourceType === 'rtsp' && !isRtspUrlValid) {
-      setFormError('กรุณากรอก RTSP URL ที่ขึ้นต้นด้วย rtsp://')
+      setFormError(text('กรุณากรอก RTSP URL ที่ขึ้นต้นด้วย rtsp://', 'Enter an RTSP URL beginning with rtsp://.'))
       return
     }
     if (sourceType === 'rtsp' && duplicateRtspUrl) {
-      setFormError('Network camera URL นี้ถูกเพิ่มไว้แล้ว')
+      setFormError(text('URL ของกล้องเครือข่ายนี้ถูกเพิ่มไว้แล้ว', 'This network camera URL has already been added.'))
       return
     }
 
@@ -1038,17 +1051,17 @@ export function CameraPage() {
       })
       if (createdCamera.source_type === 'usb') {
         setBrowserPreviewCameraId(createdCamera.id)
-        toast.success('เพิ่มกล้องและเริ่มตรวจจับผ่าน browser แล้ว')
+        toast.success(text('เพิ่มกล้องและเริ่มตรวจจับผ่านเบราว์เซอร์แล้ว', 'Camera added and browser detection started.'))
       } else {
         setBrowserPreviewCameraId(null)
-        toast.success('เพิ่ม network camera แล้ว กด Start เพื่อเริ่มผ่าน backend stream')
+        toast.success(text('เพิ่มกล้องเครือข่ายแล้ว กดเริ่มเพื่อเปิดสตรีมผ่าน backend', 'Network camera added. Select Start to begin the backend stream.'))
       }
       setName(`Production Camera ${cameras.length + 2}`)
       setRtspUrl('')
       await load(true)
     } catch (error) {
       console.error(error)
-      const message = getCameraActionErrorMessage(error, 'เพิ่มกล้องไม่สำเร็จ')
+      const message = getCameraActionErrorMessage(error, text('เพิ่มกล้องไม่สำเร็จ', 'Unable to add camera'), text(CAMERA_DEVICE_NOT_FOUND_MESSAGE, 'Unable to open the camera because no device was found. Reconnect the device and try again.'))
       setFormError(message)
       toast.error(message)
     } finally {
@@ -1090,7 +1103,7 @@ export function CameraPage() {
             }
             return item
           }))
-          toast.success(`เปิดกล้อง ${camera.name} ผ่าน browser แล้ว`)
+          toast.success(text(`เปิดกล้อง ${camera.name} ผ่านเบราว์เซอร์แล้ว`, `Opened ${camera.name} in the browser.`))
           return
         }
         setBrowserPreviewCameraId(null)
@@ -1104,17 +1117,17 @@ export function CameraPage() {
           }
           return item
         }))
-        toast.success(`เริ่มวิเคราะห์ ${camera.name}`)
+        toast.success(text(`เริ่มวิเคราะห์ ${camera.name}`, `Started analyzing ${camera.name}.`))
       } else if (action === 'stop') {
         if (browserPreviewCameraId === camera.id && !camera.is_active) {
           setBrowserPreviewCameraId(null)
-          toast.success(`หยุด ${camera.name}`)
+          toast.success(text(`หยุด ${camera.name}`, `Stopped ${camera.name}.`))
           return
         }
         setBrowserPreviewCameraId((current) => current === camera.id ? null : current)
         const updated = await camerasService.stop(camera.id)
         setCameras((current) => current.map((item) => item.id === camera.id ? updated : item))
-        toast.success(`หยุด ${camera.name}`)
+        toast.success(text(`หยุด ${camera.name}`, `Stopped ${camera.name}.`))
       } else if (action === 'delete') {
         setBrowserPreviewCameraId((current) => current === camera.id ? null : current)
         setCameras((current) => current.map((item) => (
@@ -1122,19 +1135,19 @@ export function CameraPage() {
         )))
         await camerasService.remove(camera.id)
         setCameras((current) => current.filter((item) => item.id !== camera.id))
-        toast.success(`ลบ ${camera.name} แล้ว`)
+        toast.success(text(`ลบ ${camera.name} แล้ว`, `Deleted ${camera.name}.`))
       }
       await load(true)
     } catch (error) {
       console.error(error)
-      toast.error(getCameraActionErrorMessage(error, 'ดำเนินการไม่สำเร็จ'))
+      toast.error(getCameraActionErrorMessage(error, text('ดำเนินการไม่สำเร็จ', 'Action failed'), text(CAMERA_DEVICE_NOT_FOUND_MESSAGE, 'Unable to open the camera because no device was found. Reconnect the device and try again.')))
     } finally {
       clearCamerasBusy([camera.id])
     }
   }
 
   const deleteCamera = async (camera: EdgeCamera) => {
-    const confirmed = window.confirm(`ลบกล้อง "${camera.name}" ออกจากระบบใช่ไหม?`)
+    const confirmed = window.confirm(text(`ลบกล้อง "${camera.name}" ออกจากระบบใช่ไหม?`, `Delete camera "${camera.name}" from the system?`))
     if (!confirmed) return
     await runAction(camera, 'delete')
   }
@@ -1153,10 +1166,10 @@ export function CameraPage() {
       const failed = outcomes.length - succeeded
       await load(true)
       if (succeeded > 0) {
-        toast.success(`หยุดกล้องสำเร็จ ${succeeded} ตัว`)
+        toast.success(text(`หยุดกล้องสำเร็จ ${succeeded} ตัว`, `Stopped ${succeeded} camera${succeeded === 1 ? '' : 's'}.`))
       }
       if (failed > 0) {
-        toast.error(`ดำเนินการไม่สำเร็จ ${failed} ตัว กรุณาลองใหม่ทีละกล้อง`)
+        toast.error(text(`ดำเนินการไม่สำเร็จ ${failed} ตัว กรุณาลองใหม่ทีละกล้อง`, `${failed} camera action${failed === 1 ? '' : 's'} failed. Try each camera individually.`))
       }
     } finally {
       clearCamerasBusy(cameraIds)
@@ -1170,22 +1183,27 @@ export function CameraPage() {
   const hasBusyCamera = Object.keys(busyActions).length > 0
   const previewCameraId = cameras.find((camera) => camera.is_active)?.id ?? browserPreviewCameraId ?? cameras[0]?.id
   const validationMessage = formError
-    || (!isNameValid ? 'ชื่อกล้องต้องมีความยาว 2–100 ตัวอักษร' : null)
-    || (sourceType === 'usb' && !isDeviceIndexValid ? 'กรุณาเลือกกล้องที่พร้อมใช้งาน' : null)
-    || (sourceType === 'rtsp' && duplicateRtspUrl ? 'Network camera URL นี้ถูกเพิ่มไว้แล้ว' : null)
-    || (sourceType === 'rtsp' && !isRtspUrlValid ? 'กรุณากรอก RTSP URL ที่ขึ้นต้นด้วย rtsp://' : null)
+    || (!isNameValid ? text('ชื่อกล้องต้องมีความยาว 2–100 ตัวอักษร', 'Camera name must be 2–100 characters.') : null)
+    || (sourceType === 'usb' && !isDeviceIndexValid ? text('กรุณาเลือกกล้องที่พร้อมใช้งาน', 'Select an available camera.') : null)
+    || (sourceType === 'rtsp' && duplicateRtspUrl ? text('URL ของกล้องเครือข่ายนี้ถูกเพิ่มไว้แล้ว', 'This network camera URL has already been added.') : null)
+    || (sourceType === 'rtsp' && !isRtspUrlValid ? text('กรุณากรอก RTSP URL ที่ขึ้นต้นด้วย rtsp://', 'Enter an RTSP URL beginning with rtsp://.') : null)
 
   return (
     <Layout>
-      <div className="flex flex-col gap-8">
-        <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="page-heading max-w-3xl">
-            <h1>กล้องตรวจจับหน้างาน</h1>
-            <p className="max-w-2xl text-[17px] leading-7">
-              {isAdmin
-                ? 'ลงทะเบียนและควบคุมกล้องหน้างาน พร้อม live preview ที่ยืนยันตัวตนและเก็บภาพไว้ในหน่วยความจำเท่านั้น'
-                : 'ตรวจสอบ ทดสอบ เริ่ม และหยุดการตรวจจับจากกล้องที่ผู้ดูแลระบบลงทะเบียนไว้'}
-            </p>
+      <div className="flex flex-col gap-5">
+        <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="page-heading flex max-w-3xl items-start gap-4">
+            <div className="mt-3 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ink)] text-white" aria-hidden="true">
+              <Camera size={20} strokeWidth={1.8} />
+            </div>
+            <div className="min-w-0">
+              <h1>{text('กล้องตรวจจับ', 'Site detection cameras')}</h1>
+              <p className="max-w-2xl !mt-2 text-[17px] leading-7">
+                {isAdmin
+                  ? text('เพิ่มและควบคุมกล้อง พร้อมดูภาพสดโดยไม่บันทึกภาพลงเครื่อง', 'Register and control site cameras with authenticated, memory-only live previews.')
+                  : text('ตรวจสอบ ทดสอบ เริ่ม และหยุดการตรวจจับจากกล้องที่ผู้ดูแลเพิ่มไว้', 'Inspect, test, start, and stop detection on registered cameras.')}
+              </p>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             {canOperateCameras && cameras.length > 0 && (
@@ -1196,51 +1214,69 @@ export function CameraPage() {
                 className="btn-apple-secondary min-h-11"
               >
                 {bulkAction === 'stop' ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Square size={15} aria-hidden="true" />}
-                Stop all
+                {text('หยุดทั้งหมด', 'Stop all')}
               </button>
             )}
             <button type="button" onClick={() => void load()} disabled={loading} className="btn-apple-secondary min-h-11">
-              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} aria-hidden="true" /> Refresh
+              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} aria-hidden="true" /> {text('รีเฟรช', 'Refresh')}
             </button>
           </div>
         </header>
 
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Camera fleet summary">
           {[
-            { label: 'Registered', value: cameras.length, valueClass: 'text-[#1d1d1f]' },
-            { label: 'Active', value: activeCount, valueClass: 'text-[#1d1d1f]' },
-            { label: 'Online', value: onlineCount, valueClass: onlineCount > 0 ? 'text-[#15803d]' : 'text-[#1d1d1f]' },
-            { label: 'Analyzed frames', value: analyzedFrames, valueClass: 'text-[#1d1d1f]' },
+            { label: text('กล้องทั้งหมด', 'Registered'), value: cameras.length, valueClass: 'text-[#1d1d1f]' },
+            { label: text('กำลังทำงาน', 'Active'), value: activeCount, valueClass: 'text-[#1d1d1f]' },
+            { label: text('ออนไลน์', 'Online'), value: onlineCount, valueClass: onlineCount > 0 ? 'text-[#15803d]' : 'text-[#1d1d1f]' },
+            { label: text('ภาพที่วิเคราะห์', 'Analyzed frames'), value: analyzedFrames, valueClass: 'text-[#1d1d1f]' },
           ].map((item) => (
-            <article key={item.label} className="surface-card p-5 sm:p-6">
+            <article key={item.label} className="surface-card p-4 sm:p-5">
               <p className="m-0 text-[13px] font-semibold text-[#6e6e73]">{item.label}</p>
-              <p className={`mb-0 mt-3 text-[34px] font-semibold tracking-[-0.04em] ${item.valueClass}`}>{item.value.toLocaleString()}</p>
+              <p className={`mb-0 mt-2 text-[30px] font-semibold tracking-[-0.04em] ${item.valueClass}`}>{item.value.toLocaleString()}</p>
             </article>
           ))}
         </section>
 
         {isAdmin && (
-          <section className="surface-card p-5 sm:p-8" aria-labelledby="register-camera-title">
-            <div className="mb-6 flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f5f5f7] text-[#0066cc]">
-                <Plus size={19} aria-hidden="true" />
-              </div>
-              <div>
-                <h2 id="register-camera-title" className="m-0 text-[21px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">Register camera</h2>
-                <p className="mb-0 mt-1 text-[14px] leading-5 text-[#6e6e73]">เลือกกล้องจาก browser/backend หรือเพิ่มกล้อง network ด้วย RTSP URL</p>
-              </div>
-            </div>
-            <form
-              className="grid grid-cols-1 items-end gap-4 lg:grid-cols-[minmax(0,1fr)_180px_minmax(260px,1fr)_minmax(0,1fr)_auto]"
-              onSubmit={(event) => { event.preventDefault(); void createCamera() }}
-              aria-describedby={validationMessage ? 'camera-form-error' : undefined}
+          <section className="surface-card overflow-hidden" aria-labelledby="register-camera-title">
+            <button
+              type="button"
+              onClick={() => setIsRegisterCameraExpanded((current) => !current)}
+              aria-expanded={isRegisterCameraExpanded}
+              aria-controls="register-camera-content"
+              className={`group flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-[#f8f8fa] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#0066cc] sm:px-8 sm:py-5 ${isRegisterCameraExpanded ? 'border-b border-[var(--line)]' : ''}`}
             >
+              <span className="flex min-w-0 items-center gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f5f5f7] text-[#0066cc] transition-colors group-hover:bg-[#eaf2ff]">
+                  <Plus size={19} aria-hidden="true" />
+                </span>
+                <span className="min-w-0">
+                  <span id="register-camera-title" className="block text-[21px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">{text('เพิ่มกล้อง', 'Register camera')}</span>
+                  <span className="mt-1 block text-[14px] leading-5 text-[#6e6e73]">{text('เลือกกล้องที่เชื่อมต่ออยู่ หรือเพิ่มกล้องเครือข่ายด้วย RTSP URL', 'Choose a connected camera or add a network camera with an RTSP URL.')}</span>
+                </span>
+              </span>
+              <span className="flex shrink-0 items-center gap-2 rounded-full border border-[#d2d2d7] bg-white px-3 py-2 text-[13px] font-semibold text-[#424245] transition-colors group-hover:border-[#0066cc] group-hover:text-[#0066cc]">
+                {isRegisterCameraExpanded ? text('พับ', 'Collapse') : text('เปิด', 'Expand')}
+                <ChevronDown
+                  size={17}
+                  className={`transition-transform duration-200 ${isRegisterCameraExpanded ? 'rotate-180' : ''}`}
+                  aria-hidden="true"
+                />
+              </span>
+            </button>
+            {isRegisterCameraExpanded && (
+              <div id="register-camera-content" className="px-5 pb-5 pt-6 sm:px-8 sm:pb-8">
+                <form
+                  className="grid grid-cols-1 items-end gap-4 lg:grid-cols-[minmax(0,1fr)_180px_minmax(260px,1fr)_minmax(0,1fr)_auto]"
+                  onSubmit={(event) => { event.preventDefault(); void createCamera() }}
+                  aria-describedby={validationMessage ? 'camera-form-error' : undefined}
+                >
               <label className="text-[13px] font-semibold text-[#424245]">
-                Camera name
+                {text('ชื่อกล้อง', 'Camera name')}
                   <input
                   value={name}
                   onChange={(event) => { setName(event.target.value); setFormError(null) }}
-                  placeholder="e.g. Assembly line 1"
+                  placeholder={text('เช่น กล้องสายการผลิต 1', 'e.g. Assembly line 1')}
                   minLength={2}
                   maxLength={100}
                   required
@@ -1250,19 +1286,19 @@ export function CameraPage() {
                 />
               </label>
               <label className="text-[13px] font-semibold text-[#424245]">
-                Source
+                {text('แหล่งสัญญาณ', 'Source')}
                 <select
                   value={sourceType}
                   onChange={(event) => { setSourceType(event.target.value as CameraSourceType); setFormError(null) }}
                   disabled={loading || Boolean(loadError) || creating}
                   className="mt-2 min-h-12 w-full rounded-full border border-[#d2d2d7] bg-white px-4 text-[15px] text-[#1d1d1f]"
                 >
-                  <option value="usb">USB / Browser</option>
-                  <option value="rtsp">Network RTSP</option>
+                  <option value="usb">{text('USB / เบราว์เซอร์', 'USB / Browser')}</option>
+                  <option value="rtsp">{text('กล้องเครือข่าย RTSP', 'Network RTSP')}</option>
                 </select>
               </label>
               <label className="text-[13px] font-semibold text-[#424245]">
-                {sourceType === 'usb' ? 'Choose camera' : 'RTSP URL'}
+                {sourceType === 'usb' ? text('เลือกกล้อง', 'Choose camera') : 'RTSP URL'}
                 {sourceType === 'usb' ? (
                   <select
                     value={deviceIndex}
@@ -1272,14 +1308,14 @@ export function CameraPage() {
                     disabled={loading || Boolean(loadError) || availableCameraDevices.length === 0 || isRefreshingDevices}
                   >
                     {availableCameraDevices.length === 0 ? (
-                      <option value={0}>ไม่พบกล้องที่พร้อมใช้งาน</option>
+                      <option value={0}>{text('ไม่พบกล้องที่พร้อมใช้งาน', 'No available camera found')}</option>
                     ) : availableCameraDevices.map((device) => {
                       const isRegistered = cameras.some((camera) => (
                         camera.source_type === 'usb' && camera.device_index === device.device_index
                       ))
                       return (
                         <option key={device.device_index} value={device.device_index} disabled={isRegistered}>
-                          {getCameraDeviceLabel(device)}{isRegistered ? ' — ลงทะเบียนแล้ว' : ''}
+                          {getCameraDeviceLabel(device)}{isRegistered ? text(' — เพิ่มแล้ว', ' — already registered') : ''}
                         </option>
                       )
                     })}
@@ -1298,9 +1334,9 @@ export function CameraPage() {
                 )}
               </label>
               <label className="text-[13px] font-semibold text-[#424245]">
-                Safety zone
+                {text('พื้นที่ความปลอดภัย', 'Safety zone')}
                 <select value={zoneId ?? ''} onChange={(event) => setZoneId(event.target.value ? Number(event.target.value) : undefined)} disabled={loading || Boolean(loadError)} className="mt-2 min-h-12 w-full rounded-full border border-[#d2d2d7] bg-white px-4 text-[15px] text-[#1d1d1f]">
-                  <option value="">Default PPE rules</option>
+                  <option value="">{text('ใช้กฎ PPE เริ่มต้น', 'Default PPE rules')}</option>
                   {zones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)}
                 </select>
               </label>
@@ -1316,7 +1352,7 @@ export function CameraPage() {
                 }
                 className="btn-apple-primary min-h-12 px-6"
               >
-                {creating ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Plus size={16} aria-hidden="true" />} Add camera
+                {creating ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Plus size={16} aria-hidden="true" />} {text('เพิ่มกล้อง', 'Add camera')}
               </button>
             </form>
             <div className="mt-4 flex justify-end">
@@ -1326,7 +1362,7 @@ export function CameraPage() {
                 className="btn-apple-secondary min-h-11 shrink-0 px-4"
                 disabled={loading || isRefreshingDevices}
               >
-                <RefreshCw size={16} className={isRefreshingDevices ? 'animate-spin' : ''} aria-hidden="true" /> Reconnect devices
+                <RefreshCw size={16} className={isRefreshingDevices ? 'animate-spin' : ''} aria-hidden="true" /> {text('ค้นหากล้องใหม่', 'Reconnect devices')}
               </button>
             </div>
             {cameraPermissionError && (
@@ -1334,11 +1370,13 @@ export function CameraPage() {
             )}
             {!cameraPermissionError && !isRefreshingDevices && availableCameraDevices.length === 0 && (
               <p className="mb-0 mt-3 text-[13px] leading-5 text-[#9a5b00]" role="status">
-                backend ยังเปิดกล้องไม่ได้ บน macOS ให้เปิด Camera permission ให้แอปที่ใช้รัน backend เช่น Terminal, iTerm, VS Code หรือ Python แล้วปิด-เปิด backend ใหม่ หากเคยกดไม่อนุญาต ให้รัน tccutil reset Camera ก่อน
+                {text('Backend ยังเปิดกล้องไม่ได้ บน macOS ให้เปิดสิทธิ์กล้องสำหรับแอปที่ใช้รัน backend แล้วเริ่ม backend ใหม่', 'The backend still cannot open the camera. On macOS, grant camera permission to the app running the backend, then restart the backend.')}
               </p>
             )}
             {validationMessage && (
               <p id="camera-form-error" className="mb-0 mt-4 text-[13px] text-[#b4232f]" role="alert">{validationMessage}</p>
+            )}
+              </div>
             )}
           </section>
         )}
@@ -1347,20 +1385,20 @@ export function CameraPage() {
           <div className="flex items-start gap-3 rounded-[18px] border border-[#f0c3c8] bg-[#fff8f8] px-4 py-3 text-[14px] leading-5 text-[#b4232f]" role="alert">
             <CircleDot size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
             <span>{loadError}</span>
-            <button type="button" onClick={() => void load()} className="ml-auto inline-flex min-h-11 shrink-0 items-center rounded-full border-0 bg-transparent px-3 font-semibold text-[#0066cc]">ลองอีกครั้ง</button>
+            <button type="button" onClick={() => void load()} className="ml-auto inline-flex min-h-11 shrink-0 items-center rounded-full border-0 bg-transparent px-3 font-semibold text-[#0066cc]">{text('ลองอีกครั้ง', 'Try again')}</button>
           </div>
         )}
 
         {loading ? (
           <div className="surface-card flex min-h-64 flex-col items-center justify-center gap-4 px-6 text-center text-[#6e6e73]" role="status" aria-live="polite">
             <Loader2 className="animate-spin text-[#0066cc]" size={28} aria-hidden="true" />
-            <div><p className="m-0 text-[17px] font-semibold text-[#1d1d1f]">Loading cameras…</p><p className="mb-0 mt-2 text-[14px]">กำลังเชื่อมต่อสถานะกล้องล่าสุด</p></div>
+            <div><p className="m-0 text-[17px] font-semibold text-[#1d1d1f]">{text('กำลังโหลดกล้อง…', 'Loading cameras…')}</p><p className="mb-0 mt-2 text-[14px]">{text('กำลังตรวจสอบสถานะกล้องล่าสุด', 'Checking the latest camera status.')}</p></div>
           </div>
         ) : cameras.length === 0 ? (
           <div className="surface-card flex min-h-64 flex-col items-center justify-center border-dashed px-6 text-center">
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#f5f5f7] text-[#86868b]"><Camera size={28} aria-hidden="true" /></div>
-            <p className="m-0 text-[17px] font-semibold text-[#1d1d1f]">ยังไม่มีกล้อง Edge ในระบบ</p>
-            <p className="mb-0 mt-2 max-w-md text-[14px] leading-6 text-[#6e6e73]">{isAdmin ? 'ลงทะเบียนกล้องด้านบน แล้วทดสอบการเชื่อมต่อก่อนเริ่มวิเคราะห์' : 'โปรดติดต่อผู้ดูแลระบบเพื่อเพิ่มกล้อง'}</p>
+            <p className="m-0 text-[17px] font-semibold text-[#1d1d1f]">{text('ยังไม่มีกล้องในระบบ', 'No cameras registered')}</p>
+            <p className="mb-0 mt-2 max-w-md text-[14px] leading-6 text-[#6e6e73]">{isAdmin ? text('เพิ่มกล้องด้านบน แล้วทดสอบก่อนเริ่มวิเคราะห์', 'Register a camera above, then test it before starting analysis.') : text('โปรดติดต่อผู้ดูแลระบบเพื่อเพิ่มกล้อง', 'Contact an administrator to add a camera.')}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
@@ -1368,7 +1406,7 @@ export function CameraPage() {
               const busyAction = busyActions[camera.id]
               const isBusy = busyAction !== undefined
               const isBrowserPreviewActive = browserPreviewCameraId === camera.id && !camera.is_active
-              const chooseCameraLabel = getCameraChooseLabel(camera, availableCameraDevices)
+              const chooseCameraLabel = getCameraChooseLabel(camera, availableCameraDevices, text)
               const isUsbDeviceMissing = isRegisteredUsbDeviceMissing(camera, availableCameraDevices)
               const shouldShowBackendError = Boolean(camera.last_error) && !isBrowserPreviewActive && !isOpenCameraSourceError(camera.last_error)
               return (
@@ -1380,7 +1418,7 @@ export function CameraPage() {
                       </div>
                       <div className="min-w-0">
                         <h2 className="m-0 truncate text-[21px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">{camera.name}</h2>
-                        <p className="mb-0 mt-1 text-[13px] text-[#6e6e73]">{describeCameraSource(camera)}</p>
+                        <p className="mb-0 mt-1 text-[13px] text-[#6e6e73]">{describeCameraSource(camera, text)}</p>
                         <p className="mb-0 mt-1 truncate text-[12px] font-semibold text-[#0066cc]" title={chooseCameraLabel}>
                           {chooseCameraLabel}
                         </p>
@@ -1388,7 +1426,7 @@ export function CameraPage() {
                     </div>
                     <span className={`inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-[11px] font-semibold ${camera.is_online ? 'bg-[#edf8ef] text-[#15803d]' : camera.is_active ? 'bg-[#fff7e8] text-[#9a5b00]' : 'bg-[#f0f0f2] text-[#6e6e73]'}`}>
                       {isBusy ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <CircleDot size={12} aria-hidden="true" />}
-                      {isBusy ? 'UPDATING' : isUsbDeviceMissing ? 'DISCONNECTED' : camera.is_online ? 'ONLINE' : camera.is_active && camera.last_error && !isOpenCameraSourceError(camera.last_error) ? 'RECONNECTING' : camera.is_active ? 'STARTING' : 'OFFLINE'}
+                      {isBusy ? text('กำลังอัปเดต', 'UPDATING') : isUsbDeviceMissing ? text('ไม่ได้เชื่อมต่อ', 'DISCONNECTED') : camera.is_online ? text('ออนไลน์', 'ONLINE') : camera.is_active && camera.last_error && !isOpenCameraSourceError(camera.last_error) ? text('กำลังเชื่อมต่อใหม่', 'RECONNECTING') : camera.is_active ? text('กำลังเริ่ม', 'STARTING') : text('ออฟไลน์', 'OFFLINE')}
                     </span>
                   </div>
 
@@ -1402,16 +1440,16 @@ export function CameraPage() {
                     </>
                   ) : canViewPreview ? (
                     <div className="mt-5 flex aspect-video items-center justify-center rounded-[18px] border border-[#333336] bg-black px-4 text-center text-[13px] leading-5 text-[#cccccc]">
-                      Live preview is paused here so this page only renders one camera stream at a time.
+                      {text('พักภาพสดของกล้องนี้ไว้ เพื่อให้หน้าเว็บแสดงภาพสดครั้งละหนึ่งกล้อง', 'Live preview is paused here so this page only renders one camera stream at a time.')}
                     </div>
                   ) : (
-                    <div className="mt-5 rounded-[18px] bg-[#f5f5f7] px-4 py-5 text-center text-[13px] leading-5 text-[#6e6e73]">Live preview is available to admins and safety officers.</div>
+                    <div className="mt-5 rounded-[18px] bg-[#f5f5f7] px-4 py-5 text-center text-[13px] leading-5 text-[#6e6e73]">{text('ผู้ดูแลระบบและเจ้าหน้าที่ความปลอดภัยเท่านั้นที่ดูภาพสดได้', 'Live preview is available to administrators and safety officers.')}</div>
                   )}
 
                   <dl className="mt-5 grid grid-cols-3 gap-2">
                     <div className="rounded-[18px] bg-[#f5f5f7] p-3 sm:p-4"><dt className="text-[11px] font-semibold text-[var(--muted)]">AI FPS</dt><dd className="mb-0 mt-1 text-[20px] font-semibold text-[#1d1d1f]">{camera.measured_fps.toFixed(1)}</dd></div>
-                    <div className="rounded-[18px] bg-[#f5f5f7] p-3 sm:p-4"><dt className="text-[11px] font-semibold text-[var(--muted)]">Frames</dt><dd className="mb-0 mt-1 text-[20px] font-semibold text-[#1d1d1f]">{camera.frames_analyzed.toLocaleString()}</dd></div>
-                    <div className="min-w-0 rounded-[18px] bg-[#f5f5f7] p-3 sm:p-4"><dt className="text-[11px] font-semibold text-[var(--muted)]">Zone</dt><dd className="mb-0 mt-1 truncate text-[15px] font-semibold text-[#1d1d1f]">{zones.find((zone) => zone.id === camera.zone_id)?.name || 'Default'}</dd></div>
+                    <div className="rounded-[18px] bg-[#f5f5f7] p-3 sm:p-4"><dt className="text-[11px] font-semibold text-[var(--muted)]">{text('ภาพที่วิเคราะห์', 'Frames')}</dt><dd className="mb-0 mt-1 text-[20px] font-semibold text-[#1d1d1f]">{camera.frames_analyzed.toLocaleString()}</dd></div>
+                    <div className="min-w-0 rounded-[18px] bg-[#f5f5f7] p-3 sm:p-4"><dt className="text-[11px] font-semibold text-[var(--muted)]">{text('พื้นที่', 'Zone')}</dt><dd className="mb-0 mt-1 truncate text-[15px] font-semibold text-[#1d1d1f]">{zones.find((zone) => zone.id === camera.zone_id)?.name || text('ค่าเริ่มต้น', 'Default')}</dd></div>
                   </dl>
 
                   {shouldShowBackendError && <p className="mb-0 mt-4 rounded-[18px] border border-[#f0c3c8] bg-[#fff8f8] px-4 py-3 text-[13px] leading-5 text-[#b4232f]" role="alert">{camera.last_error}</p>}
@@ -1420,29 +1458,29 @@ export function CameraPage() {
                     <div className="mt-5 border-t border-[#e0e0e0] pt-5">
                       <div className="flex flex-wrap items-center gap-2">
                         {camera.is_active || isBrowserPreviewActive ? (
-                          <button type="button" title="หยุดวิเคราะห์ชั่วคราว กล้องยังอยู่ในรายการ" onClick={() => void runAction(camera, 'stop')} disabled={isBusy || bulkAction !== null} className="btn-apple-secondary min-h-11 px-4">
-                            {busyAction === 'stop' ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Square size={14} aria-hidden="true" />} Stop
+                          <button type="button" title={text('หยุดวิเคราะห์ชั่วคราว กล้องยังอยู่ในรายการ', 'Pause analysis while keeping the camera registered')} onClick={() => void runAction(camera, 'stop')} disabled={isBusy || bulkAction !== null} className="btn-apple-secondary min-h-11 px-4">
+                            {busyAction === 'stop' ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Square size={14} aria-hidden="true" />} {text('หยุด', 'Stop')}
                           </button>
                         ) : (
-                          <button type="button" title="ทดสอบการเชื่อมต่อก่อน แล้วจึงเปิดกล้องนี้เพื่อวิเคราะห์แบบกล้องเดียว" onClick={() => void runAction(camera, 'start')} disabled={isBusy || bulkAction !== null} className="btn-apple-primary min-h-11 px-4">
-                            {busyAction === 'start' ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Play size={15} aria-hidden="true" />} Test & Start
+                          <button type="button" title={text('ทดสอบการเชื่อมต่อ แล้วเปิดกล้องนี้เพื่อวิเคราะห์', 'Test the connection, then open this camera for analysis')} onClick={() => void runAction(camera, 'start')} disabled={isBusy || bulkAction !== null} className="btn-apple-primary min-h-11 px-4">
+                            {busyAction === 'start' ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Play size={15} aria-hidden="true" />} {text('ทดสอบและเริ่ม', 'Test & Start')}
                           </button>
                         )}
                         {isAdmin && (
                           <button
                             type="button"
-                            title="ลบกล้องนี้ออกจากระบบ"
+                            title={text('ลบกล้องนี้ออกจากระบบ', 'Delete this camera')}
                             onClick={() => void deleteCamera(camera)}
                             disabled={isBusy || bulkAction !== null}
                             className="ml-auto inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-[#f0c3c8] bg-white px-4 text-[14px] font-semibold text-[#b4232f] transition hover:bg-[#fff8f8] disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            {busyAction === 'delete' ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Trash2 size={15} aria-hidden="true" />} Delete
+                            {busyAction === 'delete' ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Trash2 size={15} aria-hidden="true" />} {text('ลบ', 'Delete')}
                           </button>
                         )}
                       </div>
                       {isUsbDeviceMissing && (
                         <p className="mb-0 mt-3 rounded-[18px] border border-[#ffd599] bg-[#fff9ed] px-4 py-3 text-[13px] leading-5 text-[#9a5b00]" role="alert">
-                          {CAMERA_DEVICE_NOT_FOUND_MESSAGE}
+                          {text(CAMERA_DEVICE_NOT_FOUND_MESSAGE, 'Unable to open the camera because no device was found. Reconnect the device and try again.')}
                         </p>
                       )}
                     </div>

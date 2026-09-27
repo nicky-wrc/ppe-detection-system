@@ -1,8 +1,10 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
 import { LogOut, Shield, Home, /* Upload, */ History /* Bell */ } from 'lucide-react'
+import { useLanguage } from '../../i18n/LanguageContext'
 
 export function Navbar() {
+  const { text } = useLanguage()
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
 
@@ -23,7 +25,7 @@ export function Navbar() {
           <div className="flex items-center gap-5 text-[12px]">
             <Link to="/" className="flex min-h-11 items-center gap-1.5 text-[#d1d1d6] no-underline">
               <Home className="h-4 w-4" />
-              <span>หน้าหลัก</span>
+              <span>{text('หน้าหลัก', 'Home')}</span>
             </Link>
             {/* Detect page is temporarily hidden; keep this link for easy restoration. */}
             {/* <Link to="/detection" className="flex min-h-11 items-center gap-1.5 text-[#d1d1d6] no-underline">
@@ -32,7 +34,7 @@ export function Navbar() {
             </Link> */}
             <Link to="/reports" className="flex min-h-11 items-center gap-1.5 text-[#d1d1d6] no-underline">
               <History className="h-4 w-4" />
-              <span>ประวัติ</span>
+              <span>{text('ประวัติ', 'History')}</span>
             </Link>
             {/* Alerts navigation is temporarily hidden; retain this link for restoration.
             <Link to="/alerts" className="flex min-h-11 items-center gap-1.5 text-[#d1d1d6] no-underline">
@@ -49,7 +51,7 @@ export function Navbar() {
               className="flex min-h-11 items-center gap-1.5 rounded-full border-0 bg-[#272729] px-4 text-white"
             >
               <LogOut className="h-4 w-4" />
-              <span>ออก</span>
+              <span>{text('ออก', 'Sign out')}</span>
             </button>
           </div>
         </div>

@@ -6,6 +6,7 @@ import { useAuthStore } from './stores/authStore'
 import { authService } from './services/auth'
 import { LoginPage } from './pages/LoginPage'
 import type { UserRole } from './types'
+import { LanguageProvider, useLanguage } from './i18n/LanguageContext'
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })))
 // Detect page is temporarily hidden from the web application.
@@ -16,11 +17,12 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage').then((module) => 
 const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage').then((module) => ({ default: module.AdminUsersPage })))
 
 function AppLoading({ label = 'Loading workspace…' }: { label?: string }) {
+  const { text } = useLanguage()
   return (
     <div className="route-loader" role="status" aria-live="polite">
       <div>
         <span className="route-loader-mark"><Shield size={21} /></span>
-        <span>{label}</span>
+        <span>{label === 'Loading workspace…' ? text('กำลังเปิดระบบ…', label) : label}</span>
       </div>
     </div>
   )
@@ -77,9 +79,10 @@ const operationalRoles: readonly UserRole[] = ['admin', 'safety_officer']
 
 function App() {
   return (
-    <BrowserRouter>
-      <Suspense fallback={<AppLoading />}>
-        <Routes>
+    <LanguageProvider>
+      <BrowserRouter>
+        <Suspense fallback={<AppLoading />}>
+          <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
           {/* Detect page is temporarily disabled; keep this route for easy restoration. */}
@@ -93,9 +96,9 @@ function App() {
           <Route path="/settings" element={<PrivateRoute><RoleRoute allowedRoles={operationalRoles}><SettingsPage /></RoleRoute></PrivateRoute>} />
           <Route path="/admin/users" element={<PrivateRoute><RoleRoute allowedRoles={['admin']}><AdminUsersPage /></RoleRoute></PrivateRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
-      <Toaster
+          </Routes>
+        </Suspense>
+        <Toaster
         position="top-center"
         toastOptions={{
           duration: 3000,
@@ -108,8 +111,9 @@ function App() {
             fontSize: '14px',
           },
         }}
-      />
-    </BrowserRouter>
+        />
+      </BrowserRouter>
+    </LanguageProvider>
   )
 }
 

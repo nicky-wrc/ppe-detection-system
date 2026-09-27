@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   CalendarDays,
   CheckCircle,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -23,6 +24,10 @@ import { useDialogFocus } from '../hooks/useDialogFocus'
 import { detectionService } from '../services/detection'
 import type { Detection } from '../types'
 import { saveDetectionPdf } from '../utils/detectionPdfReport'
+import { useLanguage } from '../i18n/LanguageContext'
+import { DetectionRecordsTable } from '../components/detections/DetectionRecordsTable'
+import { DetectionDateRangePicker } from '../components/detections/DetectionDateRangePicker'
+import { DetectionDetailsDialog } from '../components/detections/DetectionDetailsDialog'
 
 interface HistoryPageProps {
   embedded?: boolean
@@ -34,6 +39,9 @@ type DateSelection = 'start' | 'end'
 
 const REPORTS_FILTER_STORAGE_KEY = 'ppe_reports_filter_query'
 const REPORTS_FILTER_PARAMS = ['result', 'missing_ppe', 'start_date', 'end_date', 'page']
+const renderLegacyDetectionTable: boolean = false
+const renderLegacyDatePicker: boolean = false
+const renderLegacyDetailsDialog: boolean = false
 
 const todayDate = () => {
   const now = new Date()
@@ -135,6 +143,7 @@ const formatViolationLabel = (value: string) => {
 }
 
 export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
+  const { text } = useLanguage()
   const [searchParams, setSearchParams] = useSearchParams()
   const initialFilterQueryRef = useRef<string | null>(null)
   const restoredStoredFilterRef = useRef(false)
@@ -158,6 +167,7 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
   const [endDate, setEndDate] = useState(initialFilters.endDate)
   const [ppeFilterMode, setPpeFilterMode] = useState<PpeFilterMode>(initialFilters.ppeFilterMode)
   const [missingPpe, setMissingPpe] = useState<MissingPpeFilter>(initialFilters.missingPpe)
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false)
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
   const [dateSelection, setDateSelection] = useState<DateSelection>('start')
   const [calendarMonth, setCalendarMonth] = useState(() => {
@@ -305,10 +315,10 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
     try {
       const detection = await detectionService.getDetection(detectionId)
       await saveDetectionPdf(detection, () => detectionService.getResultMediaBlob(detectionId))
-      toast.success('ดาวน์โหลดรายงาน PDF แล้ว')
+      toast.success(text('ดาวน์โหลดรายงาน PDF แล้ว', 'PDF report downloaded'))
     } catch (error) {
       console.error('PDF generation failed:', error)
-      toast.error('ไม่สามารถสร้างหรือดาวน์โหลด PDF ได้ กรุณาลองใหม่')
+      toast.error(text('ไม่สามารถสร้างหรือดาวน์โหลด PDF ได้ กรุณาลองใหม่', 'Unable to create or download the PDF. Please try again.'))
     } finally {
       setDownloadingId(null)
     }
@@ -318,18 +328,22 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
     <>
       <div className={`${embedded ? '' : 'mx-auto max-w-[1240px] '}flex flex-col gap-8 sm:gap-10`}>
         {!embedded && <header className="page-heading">
-          <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--ink)] text-white" aria-hidden="true">
-            <ShieldCheck size={20} strokeWidth={1.8} />
+          <div className="flex items-start gap-4">
+            <div className="mt-3 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ink)] text-white" aria-hidden="true">
+              <ShieldCheck size={20} strokeWidth={1.8} />
+            </div>
+            <div className="min-w-0">
+              <h1>Safety Reports &amp; Analytics</h1>
+              <p className="max-w-3xl !mt-2 !text-[17px] !leading-[1.47]">Detection history and safety compliance records.</p>
+            </div>
           </div>
-          <h1>Safety Reports &amp; Analytics</h1>
-          <p className="max-w-3xl !mt-3 !text-[17px] !leading-[1.47]">Detection history and safety compliance records.</p>
         </header>}
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6" aria-label="Detection summary">
           {[
-            { label: 'Violations', value: violationCount, note: 'On this page', icon: AlertTriangle, iconClassName: 'text-[#d70015]' },
-            { label: 'Compliant', value: complianceCount, note: 'On this page', icon: CheckCircle, iconClassName: 'text-[#15803d]' },
-            { label: 'Total records', value: total, note: 'All time', icon: FileText, iconClassName: 'text-[var(--muted)]' },
+            { label: text('พบการฝ่าฝืน', 'Violations'), value: violationCount, note: text('ในหน้านี้', 'On this page'), icon: AlertTriangle, iconClassName: 'text-[#d70015]' },
+            { label: text('สวมใส่ครบ', 'Compliant'), value: complianceCount, note: text('ในหน้านี้', 'On this page'), icon: CheckCircle, iconClassName: 'text-[#15803d]' },
+            { label: text('รายการทั้งหมด', 'Total records'), value: total, note: text('ทุกช่วงเวลา', 'All time'), icon: FileText, iconClassName: 'text-[var(--muted)]' },
           ].map((stat) => (
             <div key={stat.label} className="surface-card min-h-40 p-6 sm:p-7">
               <div className="flex items-start justify-between gap-4">
@@ -342,13 +356,35 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
           ))}
         </section>
 
-        <section className="surface-card flex flex-col gap-3 p-4" aria-label="ตัวกรองประวัติการตรวจจับ">
-          <div>
-            <h2 className="text-[16px] font-semibold text-[var(--ink)]">ตัวกรองประวัติการตรวจจับ</h2>
-            <p className="mt-0.5 text-[13px] text-[var(--muted)]">ค้นหาตามช่วงวัน แล้วเลือกว่าจะดูรายการสวมใส่ครบถ้วนหรือรายการที่ตรวจไม่พบ PPE</p>
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <div ref={datePickerRef} className="relative flex min-w-0 flex-col gap-1 text-[12px] font-medium text-[var(--muted)]">
+        <section className={`surface-card ${isFiltersExpanded ? 'overflow-visible' : 'overflow-hidden'}`} aria-labelledby="history-filters-title">
+          <button
+            type="button"
+            onClick={() => setIsFiltersExpanded((current) => !current)}
+            aria-expanded={isFiltersExpanded}
+            aria-controls="history-filters-content"
+            className={`group flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-[#f8f8fa] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--blue)] sm:px-6 ${isFiltersExpanded ? 'border-b border-[var(--line)]' : ''}`}
+          >
+            <span className="min-w-0">
+              <span id="history-filters-title" className="block text-[16px] font-semibold text-[var(--ink)]">{text('ตัวกรองประวัติ', 'History filters')}</span>
+              <span className="mt-0.5 block text-[13px] text-[var(--muted)]">{text('ค้นหาตามวันที่และผลการตรวจ', 'Filter by date and detection result.')}</span>
+            </span>
+            <span className="flex shrink-0 items-center gap-2">
+              {hasActiveFilters && <span className="rounded-full bg-[#e8f2ff] px-2.5 py-1 text-[11px] font-semibold text-[var(--blue)]">{text('ใช้ตัวกรองอยู่', 'Filtered')}</span>}
+              <span className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-white px-3 py-2 text-[13px] font-semibold text-[var(--ink)] group-hover:border-[var(--blue)] group-hover:text-[var(--blue)]">
+                {isFiltersExpanded ? text('พับ', 'Collapse') : text('เปิด', 'Expand')}
+                <ChevronDown size={17} className={`transition-transform duration-200 ${isFiltersExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
+              </span>
+            </span>
+          </button>
+          {isFiltersExpanded && (
+          <div id="history-filters-content" className="grid grid-cols-1 gap-2 p-4 sm:grid-cols-2 lg:grid-cols-4">
+            <DetectionDateRangePicker
+              startDate={startDate}
+              endDate={endDate}
+              disabled={loading}
+              onChange={(range) => updateFilters(range)}
+            />
+            {renderLegacyDatePicker && <div ref={datePickerRef} className="relative flex min-w-0 flex-col gap-1 text-[12px] font-medium text-[var(--muted)]">
               <span className="inline-flex items-center gap-1.5"><CalendarDays size={15} aria-hidden="true" /> ช่วงวันที่</span>
               <button type="button" onClick={openDatePicker} disabled={loading} aria-expanded={isDatePickerOpen} className="flex min-h-10 items-center justify-between rounded-lg border border-[var(--line)] bg-white px-3 text-left text-[14px] text-[var(--ink)] outline-none transition-colors hover:bg-[#f5f5f7] focus:border-[var(--blue)] disabled:cursor-not-allowed disabled:opacity-50">
                 <span className="truncate">{startDate || endDate ? `${displayDate(startDate)} - ${displayDate(endDate)}` : 'เลือกช่วงวัน'}</span>
@@ -388,72 +424,80 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
                   </div>
                 </div>
               )}
-            </div>
+            </div>}
             <label className="flex min-w-0 flex-col gap-1 text-[12px] font-medium text-[var(--muted)]">
-              <span>ประเภทผลตรวจ</span>
+              <span>{text('ประเภทผลตรวจ', 'Detection result type')}</span>
               <select value={ppeFilterMode} onChange={(event) => updatePpeFilterMode(event.target.value as PpeFilterMode)} disabled={loading} className="min-h-10 rounded-lg border border-[var(--line)] bg-white px-3 text-[14px] text-[var(--ink)] outline-none focus:border-[var(--blue)] disabled:cursor-not-allowed disabled:opacity-50">
-                <option value="">ทั้งหมด</option>
-                <option value="missing">ละเมิดการสวมใส่</option>
-                <option value="detected">สวมใส่ครบถ้วน</option>
+                <option value="">{text('ทั้งหมด', 'All')}</option>
+                <option value="missing">{text('พบการฝ่าฝืน', 'Violation')}</option>
+                <option value="detected">{text('สวมใส่ครบถ้วน', 'Compliant')}</option>
               </select>
             </label>
             {ppeFilterMode === 'missing' ? (
               <label className="flex min-w-0 flex-col gap-1 text-[12px] font-medium text-[var(--muted)]">
-                <span>รายการที่ตรวจไม่พบ</span>
+                <span>{text('รายการที่ตรวจไม่พบ', 'Missing PPE')}</span>
                 <select value={missingPpe} onChange={(event) => updateFilters({ missingPpe: event.target.value as MissingPpeFilter })} disabled={loading} className="min-h-10 rounded-lg border border-[var(--line)] bg-white px-3 text-[14px] text-[var(--ink)] outline-none focus:border-[var(--blue)] disabled:cursor-not-allowed disabled:opacity-50">
-                  <option value="">เลือก PPE ที่ตรวจไม่พบ</option>
-                  <option value="helmet">หมวกนิรภัย</option>
-                  <option value="vest">เสื้อสะท้อนแสง</option>
-                  <option value="both">ตรวจไม่พบทั้งคู่</option>
+                  <option value="">{text('เลือก PPE ที่ตรวจไม่พบ', 'Select missing PPE')}</option>
+                  <option value="helmet">{text('หมวกนิรภัย', 'Safety helmet')}</option>
+                  <option value="vest">{text('เสื้อสะท้อนแสง', 'Safety vest')}</option>
+                  <option value="both">{text('ตรวจไม่พบทั้งคู่', 'Both items missing')}</option>
                 </select>
               </label>
             ) : ppeFilterMode === 'detected' ? (
               <div className="flex min-w-0 flex-col gap-1 text-[12px] font-medium text-[var(--muted)]">
-                <span>รายการที่ตรวจพบ</span>
+                <span>{text('รายการที่ตรวจพบ', 'Detected PPE')}</span>
                 <div className="flex min-h-10 items-center rounded-lg border border-[#b9dfc2] bg-[#f3fbf5] px-3 text-[14px] font-semibold text-[#15803d]">
-                  สวมใส่ครบถ้วน
+                  {text('สวมใส่ครบถ้วน', 'Compliant')}
                 </div>
               </div>
             ) : (
               <div className="hidden lg:block" aria-hidden="true" />
             )}
             <div className="flex items-end">
-              <button type="button" onClick={clearFilters} disabled={loading || !hasActiveFilters} className="btn-apple-secondary min-h-10 w-full text-[var(--blue)] disabled:cursor-not-allowed disabled:opacity-50">ล้างการเลือก</button>
+              <button type="button" onClick={clearFilters} disabled={loading || !hasActiveFilters} className="btn-apple-secondary min-h-10 w-full text-[var(--blue)] disabled:cursor-not-allowed disabled:opacity-50">{text('ล้างการเลือก', 'Clear filters')}</button>
             </div>
           </div>
+          )}
         </section>
 
         {loading && detections.length === 0 ? (
           <div className="surface-card flex min-h-72 items-center justify-center gap-3 text-[15px] text-[var(--muted)]" role="status">
             <Loader2 size={21} className="animate-spin text-[var(--blue)]" aria-hidden="true" />
-            Loading records…
+            {text('กำลังโหลดประวัติการตรวจจับ…', 'Loading records…')}
           </div>
         ) : loadError ? (
           <div className="surface-card flex min-h-72 flex-col items-center justify-center gap-4 px-6 text-center" role="alert">
             <AlertTriangle size={28} className="text-[#d70015]" strokeWidth={1.6} aria-hidden="true" />
-            <p className="text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">Unable to load detection history</p>
-            <p className="max-w-md text-[15px] leading-relaxed text-[var(--muted)]">Check the backend connection, then try loading the records again.</p>
-            <button type="button" onClick={() => void loadHistory()} className="btn-apple-secondary !min-h-11 text-[var(--blue)]">Try again</button>
+            <p className="text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">{text('โหลดประวัติการตรวจจับไม่สำเร็จ', 'Unable to load detection history')}</p>
+            <p className="max-w-md text-[15px] leading-relaxed text-[var(--muted)]">{text('ตรวจสอบการเชื่อมต่อกับระบบ แล้วลองโหลดข้อมูลอีกครั้ง', 'Check the backend connection, then try loading the records again.')}</p>
+            <button type="button" onClick={() => void loadHistory()} className="btn-apple-secondary !min-h-11 text-[var(--blue)]">{text('ลองอีกครั้ง', 'Try again')}</button>
           </div>
         ) : detections.length === 0 ? (
           <div className="surface-card flex min-h-72 flex-col items-center justify-center gap-4 px-6 text-center">
             <Clock size={30} className="text-[var(--muted)]" strokeWidth={1.5} aria-hidden="true" />
-            <p className="text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">{hasActiveFilters ? 'ไม่พบรายการตามตัวกรองนี้' : 'ยังไม่มีประวัติการตรวจจับ'}</p>
+            <p className="text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">{hasActiveFilters ? text('ไม่พบรายการตามตัวกรองนี้', 'No records match these filters') : text('ยังไม่มีประวัติการตรวจจับ', 'No detection records yet')}</p>
             <p className="max-w-sm text-[15px] leading-relaxed text-[var(--muted)]">
-              {hasActiveFilters ? 'ลองปรับช่วงวันหรือชนิดอุปกรณ์ที่ต้องการค้นหา' : 'ผลการตรวจจับจะแสดงที่นี่หลังจากระบบประมวลผลรูปภาพ วิดีโอ หรือกล้อง'}
+              {hasActiveFilters ? text('ลองปรับช่วงวันหรือชนิดอุปกรณ์ที่ต้องการค้นหา', 'Try changing the date range or equipment filters.') : text('ผลการตรวจจับจะแสดงที่นี่หลังจากระบบประมวลผลรูปภาพ วิดีโอ หรือกล้อง', 'Detection results will appear here after the system processes an image, video, or camera feed.')}
             </p>
             {hasActiveFilters && (
-              <button type="button" onClick={clearFilters} className="btn-apple-secondary !min-h-11 text-[var(--blue)]">ล้างตัวกรอง</button>
+              <button type="button" onClick={clearFilters} className="btn-apple-secondary !min-h-11 text-[var(--blue)]">{text('ล้างตัวกรอง', 'Clear filters')}</button>
             )}
           </div>
         ) : (
           <section className="surface-card overflow-hidden" aria-labelledby="records-title">
             <div className="flex min-h-16 items-center justify-between gap-4 border-b border-[var(--line)] px-6 sm:px-8">
-              <h2 id="records-title" className="text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">Detection records</h2>
-              <span className="shrink-0 rounded-full bg-[#f5f5f7] px-4 py-2 text-[13px] text-[var(--muted)]">{total.toLocaleString()} total</span>
+              <h2 id="records-title" className="text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">{text('ประวัติการตรวจจับ', 'Detection records')}</h2>
+              <span className="shrink-0 rounded-full bg-[#f5f5f7] px-4 py-2 text-[13px] text-[var(--muted)]">{text(`ทั้งหมด ${total.toLocaleString()} รายการ`, `${total.toLocaleString()} total`)}</span>
             </div>
 
-            <div className="overflow-x-auto">
+            <DetectionRecordsTable
+              detections={detections}
+              onView={setSelectedDetection}
+              onDownload={(detection) => void handleDownloadPdf(detection.id)}
+              downloadingId={downloadingId}
+            />
+
+            {renderLegacyDetectionTable && <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] border-collapse">
                 <thead>
                   <tr className="bg-[#f5f5f7] text-left text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--muted)]">
@@ -553,11 +597,11 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </div>}
 
             {totalPages > 1 && (
               <div className="flex flex-col items-center justify-between gap-4 border-t border-[var(--line)] px-6 py-5 sm:flex-row sm:px-8">
-                <span className="text-[14px] text-[var(--muted)]">Page <strong className="font-semibold text-[var(--ink)]">{page}</strong> of {totalPages}</span>
+                <span className="text-[14px] text-[var(--muted)]">{text('หน้า', 'Page')} <strong className="font-semibold text-[var(--ink)]">{page}</strong> {text('จาก', 'of')} {totalPages}</span>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -566,7 +610,7 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
                     className="btn-apple-secondary !min-h-11 active:scale-95"
                   >
                     <ChevronLeft size={16} aria-hidden="true" />
-                    Previous
+                    {text('ก่อนหน้า', 'Previous')}
                   </button>
                   <button
                     type="button"
@@ -574,7 +618,7 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
                     disabled={loading || page === totalPages}
                     className="btn-apple-secondary !min-h-11 active:scale-95"
                   >
-                    Next
+                    {text('ถัดไป', 'Next')}
                     <ChevronRight size={16} aria-hidden="true" />
                   </button>
                 </div>
@@ -584,7 +628,15 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
         )}
       </div>
 
-      {selectedDetection && (
+      <DetectionDetailsDialog
+        open={Boolean(selectedDetection)}
+        detection={selectedDetection}
+        onClose={() => setSelectedDetection(null)}
+        onDownload={(detection) => void handleDownloadPdf(detection.id)}
+        downloading={downloadingId === selectedDetection?.id}
+      />
+
+      {renderLegacyDetailsDialog && selectedDetection && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6">
           <button
             type="button"
@@ -651,7 +703,7 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
                           ? 'border-[#c7d2fe] bg-[#eef2ff] text-[#1d4ed8]'
                           : 'border-[#b9dfc2] bg-[#f3fbf5] text-[#15803d]'
                     }`}>
-                      {selectedDetection.has_violation ? 'Violation detected' : isPersonOnlyDetection(selectedDetection) ? 'ตรวจพบบุคคลเท่านั้น' : 'ตรวจพบการสวมใส่ครบถ้วน'}
+                      {selectedDetection.has_violation ? text('พบการฝ่าฝืน', 'Violation detected') : isPersonOnlyDetection(selectedDetection) ? text('ตรวจพบบุคคลเท่านั้น', 'Person only') : text('ตรวจพบการสวมใส่ครบถ้วน', 'Compliant detection')}
                     </span>
                   </div>
                   <div className="grid grid-cols-1 divide-y divide-[var(--line)] sm:grid-cols-3 sm:divide-x sm:divide-y-0">

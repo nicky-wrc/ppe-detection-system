@@ -232,6 +232,33 @@ button,
   gap: 8px;
 }
 
+.language-switch {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: 1px solid #3a3a3c;
+  border-radius: 9999px;
+  background: #1c1c1e;
+}
+
+.language-switch button {
+  min-width: 38px;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: #a1a1a6;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.language-switch button.is-active {
+  background: var(--apple-white);
+  color: var(--apple-black);
+}
+
 .system-pill {
   display: inline-flex;
   align-items: center;
@@ -323,42 +350,6 @@ button,
   cursor: pointer;
 }
 
-.app-subnav {
-  position: sticky;
-  top: 44px;
-  z-index: 40;
-  min-height: 52px;
-  border-bottom: 1px solid var(--apple-line-soft);
-  background: rgba(245, 245, 247, 0.82);
-  backdrop-filter: saturate(180%) blur(20px);
-}
-
-.app-subnav-inner {
-  display: flex;
-  width: min(100%, 1440px);
-  min-height: 52px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  margin: 0 auto;
-  padding: 0 clamp(16px, 3.5vw, 52px);
-}
-
-.app-subnav-title {
-  color: var(--apple-ink);
-  font-family: "SF Pro Display", system-ui, -apple-system, sans-serif;
-  font-size: 21px;
-  font-weight: 600;
-  line-height: 1.19;
-  letter-spacing: -0.015em;
-}
-
-.app-subnav-meta {
-  color: var(--apple-muted);
-  font-size: 12px;
-  font-weight: 400;
-}
-
 .app-main {
   flex: 1;
 }
@@ -366,7 +357,7 @@ button,
 .app-content {
   width: min(100%, 1440px);
   margin: 0 auto;
-  padding: clamp(32px, 5vw, 72px) clamp(16px, 3.5vw, 52px) 80px;
+  padding: clamp(20px, 2.5vw, 32px) clamp(16px, 3.5vw, 52px) 64px;
 }
 
 .app-footer {
@@ -443,18 +434,6 @@ button,
   color: #f5f5f7;
   font-size: 13px;
   font-weight: 600;
-}
-
-.app-footer-note {
-  display: flex;
-  grid-column: 1 / -1;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px 24px;
-  padding-top: 18px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  color: #8e8e93;
-  line-height: 1.4;
 }
 
 .route-loader {
@@ -840,21 +819,15 @@ button,
     grid-row: 1;
   }
 
-  .app-subnav-inner { min-height: 52px; }
-  .app-subnav-meta { display: none; }
-  .app-content { padding-top: 48px; padding-bottom: 64px; }
+  .language-switch button { min-width: 34px; padding-inline: 6px; }
+
+  .app-content { padding-top: 24px; padding-bottom: 56px; }
   .app-footer-inner {
     grid-template-columns: minmax(0, 1fr);
     gap: 20px;
     padding-block: 24px 22px;
   }
   .app-footer-creators { justify-content: flex-start; }
-  .app-footer-note {
-    grid-column: 1;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 5px;
-  }
   .ppe-hero { min-height: 480px; grid-template-columns: 1fr; gap: 36px; padding: 48px 24px; }
   .hero-status { max-width: 280px; }
   .login-shell { display: block; }

@@ -19,6 +19,7 @@ import { camerasService } from '../../services/cameras'
 import { settingsService } from '../../services/settings'
 import { useAuthStore } from '../../stores/authStore'
 import type { UserRole } from '../../types'
+import { useLanguage } from '../../i18n/LanguageContext'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -42,6 +43,7 @@ const navItems: NavItem[] = [
 ]
 
 export function Layout({ children }: LayoutProps) {
+  const { language, setLanguage, text } = useLanguage()
   const location = useLocation()
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
@@ -59,16 +61,21 @@ export function Layout({ children }: LayoutProps) {
     || (path !== '/' && location.pathname.startsWith(path))
     || (path === '/reports' && location.pathname.startsWith('/alerts'))
   )
-  const activeNavItem = visibleNavItems.find((item) => (
-    isNavItemActive(item.path)
-  )) ?? visibleNavItems[0]
+  const navText: Record<string, { th: string; en: string; descriptionTh: string }> = {
+    '/': { th: 'ภาพรวม', en: 'Overview', descriptionTh: 'ภาพรวมความปลอดภัย' },
+    '/detect': { th: 'ตรวจจับ', en: 'Detect', descriptionTh: 'ติดตามกล้องหน้างาน' },
+    '/reports': { th: 'รายงาน', en: 'Reports', descriptionTh: 'ประวัติและหลักฐาน' },
+    '/settings': { th: 'ตั้งค่า', en: 'Settings', descriptionTh: 'ตั้งค่าการตรวจจับ' },
+    '/admin/users': { th: 'ผู้ใช้', en: 'Users', descriptionTh: 'จัดการสิทธิ์ผู้ใช้' },
+  }
+  const localizedNav = (item: NavItem) => navText[item.path]
 
   useEffect(() => {
     if (!user) return
     return settingsService.subscribe(user.id, (value) => setAlertSound(value.alert_sound), () => {
-      toast.error('โหลดค่าเสียงเตือนไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อ', { id: 'settings-sync-error' })
+      toast.error(text('โหลดค่าเสียงเตือนไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อ', 'Unable to load alert sound settings. Check the connection.'), { id: 'settings-sync-error' })
     })
-  }, [user])
+  }, [text, user])
 
   useEffect(() => {
     if (!user) return
@@ -112,7 +119,7 @@ export function Layout({ children }: LayoutProps) {
           <span className="brand-mark"><Shield size={20} /></span>
           <span className="brand-copy">
             <strong>PPE Detection System</strong>
-            <small>Edge safety</small>
+            <small>{text('ระบบความปลอดภัย', 'Edge safety')}</small>
           </span>
         </Link>
 
@@ -120,7 +127,7 @@ export function Layout({ children }: LayoutProps) {
           type="button"
           className="mobile-nav-button"
           onClick={() => setIsMobileNavOpen((open) => !open)}
-          aria-label={isMobileNavOpen ? 'Close navigation' : 'Open navigation'}
+          aria-label={isMobileNavOpen ? text('ปิดเมนู', 'Close navigation') : text('เปิดเมนู', 'Open navigation')}
           aria-expanded={isMobileNavOpen}
           aria-controls="primary-navigation"
         >
@@ -142,14 +149,18 @@ export function Layout({ children }: LayoutProps) {
                 }}
               >
                 <item.icon size={15} strokeWidth={2} />
-                <span>{item.label}</span>
+                <span>{language === 'th' ? localizedNav(item)?.th ?? item.label : localizedNav(item)?.en ?? item.label}</span>
               </Link>
             )
           })}
         </nav>
 
         <div className="header-actions">
-          <span className="system-pill"><i /> AI online</span>
+          <span className="system-pill"><i /> {text('AI พร้อมใช้งาน', 'AI online')}</span>
+          <div className="language-switch" role="group" aria-label={text('เลือกภาษา', 'Choose language')}>
+            <button type="button" onClick={() => setLanguage('th')} className={language === 'th' ? 'is-active' : ''} aria-pressed={language === 'th'}>ไทย</button>
+            <button type="button" onClick={() => setLanguage('en')} className={language === 'en' ? 'is-active' : ''} aria-pressed={language === 'en'}>EN</button>
+          </div>
           <div className="profile-menu">
             <button
               type="button"
@@ -169,20 +180,13 @@ export function Layout({ children }: LayoutProps) {
                     <span>{user?.email || ''}</span>
                     <small>{user?.role?.replace('_', ' ')}</small>
                   </div>
-                  <button type="button" onClick={handleLogout}><LogOut size={15} /> ออกจากระบบ</button>
+                  <button type="button" onClick={handleLogout}><LogOut size={15} /> {text('ออกจากระบบ', 'Sign out')}</button>
                 </div>
               </>
             )}
           </div>
         </div>
       </header>
-
-      <div className="app-subnav">
-        <div className="app-subnav-inner">
-          <span className="app-subnav-title">{activeNavItem.label}</span>
-          <span className="app-subnav-meta">{activeNavItem.description} · {user?.role?.replace('_', ' ') || 'workspace'}</span>
-        </div>
-      </div>
 
       <main className="app-main">
         <div className="app-content">{children}</div>
@@ -194,21 +198,17 @@ export function Layout({ children }: LayoutProps) {
             <span className="app-footer-mark" aria-hidden="true"><Shield size={18} strokeWidth={1.8} /></span>
             <span className="app-footer-copy">
               <strong>PPE Detection System</strong>
-              <small>Privacy-aware edge safety monitoring</small>
+              <small>{text('ตรวจจับความปลอดภัยโดยคำนึงถึงความเป็นส่วนตัว', 'Privacy-aware edge safety monitoring')}</small>
             </span>
           </div>
 
           <div className="app-footer-creators">
-            <span>Created by</span>
+            <span>{text('สร้างโดย', 'Created by')}</span>
             <strong>Nicky</strong>
-            <span>and</span>
+            <span>{text('และ', 'and')}</span>
             <strong>Krit</strong>
           </div>
 
-          <div className="app-footer-note">
-            <span>Hybrid YOLOv8m + YOLO11n</span>
-            <span>Safety-support system · Human review required</span>
-          </div>
         </div>
       </footer>
     </div>

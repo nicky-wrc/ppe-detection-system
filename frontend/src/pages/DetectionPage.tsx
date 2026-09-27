@@ -18,6 +18,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useLanguage } from '../i18n/LanguageContext'
 
 type TabType = 'image' | 'video' | 'camera'
 
@@ -131,6 +132,7 @@ const drawDetectionOverlay = (
 }
 
 export function DetectionPage() {
+  const { text } = useLanguage()
   const [activeTab, setActiveTab] = useState<TabType>('image')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
@@ -345,17 +347,17 @@ export function DetectionPage() {
       if (persisted.has_violation) {
         recordedViolationSignatureRef.current = signature
         persistedAtBySignatureRef.current[signature] = Date.now()
-        toast.success('บันทึกเหตุการณ์ฝ่าฝืนแล้ว')
+        toast.success(text('บันทึกเหตุการณ์ฝ่าฝืนแล้ว', 'Violation event saved'))
       }
     } catch (error) {
       if (sessionId !== liveSessionRef.current) return
       if (isRecordModeDisabledError(error)) return
       console.error('Live violation persist error:', error)
-      toast.error('บันทึกเหตุการณ์ฝ่าฝืนไม่สำเร็จ')
+      toast.error(text('บันทึกเหตุการณ์ฝ่าฝืนไม่สำเร็จ', 'Unable to save violation event'))
     } finally {
       if (sessionId === liveSessionRef.current) isPersistingViolationRef.current = false
     }
-  }, [])
+  }, [text])
 
   const updateLiveCompliantReport = useCallback(async (
     detection: Detection,
@@ -476,7 +478,7 @@ export function DetectionPage() {
 
   const startCamera = useCallback(async (preferredDeviceId?: string) => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      const message = 'เบราว์เซอร์นี้ไม่รองรับการเปิดกล้อง'
+      const message = text('เบราว์เซอร์นี้ไม่รองรับการเปิดกล้อง', 'This browser does not support camera access.')
       setOperationError(message)
       toast.error(message)
       return
@@ -527,18 +529,18 @@ export function DetectionPage() {
       setLiveFrameCount(0)
       startLiveDetection()
       const trackLabel = stream.getVideoTracks()[0]?.label
-      toast.success(`เปิดกล้อง${trackLabel ? ` ${trackLabel}` : ''}และเริ่มตรวจจับแล้ว`)
+      toast.success(text(`เปิดกล้อง${trackLabel ? ` ${trackLabel}` : ''}และเริ่มตรวจจับแล้ว`, `Camera${trackLabel ? ` ${trackLabel}` : ''} opened and detection started.`))
     } catch (error) {
       if (cameraRequestRef.current !== requestId) return
       console.error(error)
       stopCamera()
-      const message = 'ไม่สามารถเปิดกล้องได้ กรุณากด Allow หรือเชื่อมต่ออุปกรณ์กล้อง'
+      const message = text('ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตการเข้าถึงหรือเชื่อมต่อกล้อง', 'Unable to open the camera. Allow access or connect a camera device.')
       setOperationError(message)
       toast.error(message)
     } finally {
       if (cameraRequestRef.current === requestId) setIsCameraStarting(false)
     }
-  }, [availableCameraDevices, refreshAvailableCameraDevices, selectedCameraDeviceId, startLiveDetection, stopCamera])
+  }, [availableCameraDevices, refreshAvailableCameraDevices, selectedCameraDeviceId, startLiveDetection, stopCamera, text])
 
   useEffect(() => {
     if (activeTab !== 'camera') return
@@ -575,7 +577,7 @@ export function DetectionPage() {
       }
     }, [invalidateDetectionRequest]),
     onDropRejected: () => {
-      const message = 'ไฟล์ไม่รองรับ กรุณาเลือก JPG, PNG หรือ WebP เพียงหนึ่งไฟล์'
+      const message = text('ไฟล์ไม่รองรับ กรุณาเลือก JPG, PNG หรือ WebP เพียงหนึ่งไฟล์', 'Unsupported file. Select one JPG, PNG, or WebP image.')
       setOperationError(message)
       toast.error(message)
     },
@@ -599,7 +601,7 @@ export function DetectionPage() {
       }
     }, [invalidateDetectionRequest, stopLiveDetection]),
     onDropRejected: () => {
-      const message = 'ไฟล์ไม่รองรับ กรุณาเลือก MP4, AVI หรือ MOV เพียงหนึ่งไฟล์'
+      const message = text('ไฟล์ไม่รองรับ กรุณาเลือก MP4, AVI หรือ MOV เพียงหนึ่งไฟล์', 'Unsupported file. Select one MP4, AVI, or MOV video.')
       setOperationError(message)
       toast.error(message)
     },
@@ -654,19 +656,19 @@ export function DetectionPage() {
           if (videoBlob.type.startsWith('video/')) {
             setProcessedVideoUrl(URL.createObjectURL(videoBlob))
           } else {
-            setVideoPlaybackNotice('ได้ผลตรวจแบบภาพนิ่ง จึงกำลังแสดงวิดีโอต้นฉบับ')
+            setVideoPlaybackNotice(text('ได้ผลตรวจแบบภาพนิ่ง จึงกำลังแสดงวิดีโอต้นฉบับ', 'The result is a still image, so the original video is shown.'))
           }
         } catch (mediaError) {
           if (detectionRequestRef.current !== requestId) return
           console.error('Result video load error:', mediaError)
-          setVideoPlaybackNotice('โหลดวิดีโอผลลัพธ์ไม่สำเร็จ กำลังแสดงวิดีโอต้นฉบับ')
+          setVideoPlaybackNotice(text('โหลดวิดีโอผลลัพธ์ไม่สำเร็จ กำลังแสดงวิดีโอต้นฉบับ', 'Unable to load the processed video. Showing the original video.'))
         }
       }
-      toast.success('ตรวจจับสำเร็จ')
+      toast.success(text('ตรวจจับสำเร็จ', 'Detection completed'))
     } catch (error) {
       if (detectionRequestRef.current !== requestId) return
       console.error(error)
-      const message = 'การวิเคราะห์ไม่สำเร็จ กรุณาตรวจสอบไฟล์และลองใหม่อีกครั้ง'
+      const message = text('การวิเคราะห์ไม่สำเร็จ กรุณาตรวจสอบไฟล์และลองใหม่อีกครั้ง', 'Analysis failed. Check the file and try again.')
       setOperationError(message)
       toast.error(message)
     } finally {
@@ -696,11 +698,16 @@ export function DetectionPage() {
     <Layout>
       <div className="flex flex-col gap-8">
         <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="page-heading max-w-3xl">
-            <h1>ตรวจจับอุปกรณ์ PPE</h1>
-            <p className="max-w-2xl text-[17px] leading-7">
-              วิเคราะห์หมวกนิรภัยและเสื้อสะท้อนแสงจากภาพ วิดีโอ หรือกล้องแบบเรียลไทม์
-            </p>
+          <div className="page-heading flex max-w-3xl items-start gap-4">
+            <div className="mt-3 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ink)] text-white" aria-hidden="true">
+              <ShieldCheck size={20} strokeWidth={1.8} />
+            </div>
+            <div className="min-w-0">
+              <h1>{text('ตรวจจับอุปกรณ์ PPE', 'PPE detection')}</h1>
+              <p className="max-w-2xl !mt-2 text-[17px] leading-7">
+                {text('วิเคราะห์หมวกนิรภัยและเสื้อสะท้อนแสงจากภาพ วิดีโอ หรือกล้องแบบเรียลไทม์', 'Analyze safety helmets and vests from images, videos, or a live camera.')}
+              </p>
+            </div>
           </div>
           <div
             className="inline-flex w-full items-center gap-1 self-start rounded-full border border-[#e0e0e0] bg-white p-1 sm:w-auto"
@@ -758,7 +765,7 @@ export function DetectionPage() {
                    {activeTab === 'image' ? 'Upload Image' : activeTab === 'video' ? 'Upload Video' : 'Live Camera'}
                   </h2>
                   <p className="mb-0 mt-1 text-[14px] leading-5 text-[#6e6e73]">
-                    {activeTab === 'camera' ? 'กล้องทำงานในหน่วยความจำของเบราว์เซอร์ระหว่างเซสชันนี้' : 'เลือกไฟล์หนึ่งรายการเพื่อเริ่มวิเคราะห์ด้วย AI'}
+                    {activeTab === 'camera' ? text('กล้องทำงานในหน่วยความจำของเบราว์เซอร์ระหว่างเซสชันนี้', 'The camera runs in browser memory during this session.') : text('เลือกไฟล์หนึ่งรายการเพื่อเริ่มวิเคราะห์ด้วย AI', 'Select one file to start AI analysis.')}
                   </p>
                 </div>
                 {(selectedFile || isCameraOn) && (
@@ -816,7 +823,7 @@ export function DetectionPage() {
                       </p>
                       <div className="mx-auto mt-4 flex max-w-xl flex-col gap-3 rounded-[18px] border border-[#e0e0e0] bg-white p-4 text-left sm:flex-row sm:items-end">
                         <label className="min-w-0 flex-1 text-[13px] font-semibold text-[#424245]">
-                          เลือกอุปกรณ์กล้อง
+                          {text('เลือกอุปกรณ์กล้อง', 'Select camera device')}
                           <select
                             value={selectedCameraDeviceId}
                             onChange={(event) => {
@@ -831,7 +838,7 @@ export function DetectionPage() {
                             className="mt-2 min-h-11 w-full rounded-full border border-[#d2d2d7] bg-white px-4 text-[14px] text-[#1d1d1f]"
                           >
                             {availableCameraDevices.length === 0 ? (
-                              <option value="">ไม่พบกล้องที่พร้อมใช้งาน</option>
+                              <option value="">{text('ไม่พบกล้องที่พร้อมใช้งาน', 'No available cameras found')}</option>
                             ) : availableCameraDevices.map((device, index) => (
                               <option key={device.deviceId || index} value={device.deviceId}>
                                 {getCameraDeviceLabel(device, index)}
@@ -870,9 +877,9 @@ export function DetectionPage() {
                             onError={() => {
                               if (processedVideoUrl) {
                                 setProcessedVideoUrl(null)
-                                setVideoPlaybackNotice('เบราว์เซอร์เล่นวิดีโอผลลัพธ์ไม่ได้ จึงเปลี่ยนเป็นวิดีโอต้นฉบับ')
+                                setVideoPlaybackNotice(text('เบราว์เซอร์เล่นวิดีโอผลลัพธ์ไม่ได้ จึงเปลี่ยนเป็นวิดีโอต้นฉบับ', 'The browser cannot play the processed video, so the original is shown.'))
                               } else {
-                                setVideoPlaybackNotice('เบราว์เซอร์ไม่รองรับ codec ของไฟล์นี้ แนะนำใช้ MP4 (H.264)')
+                                setVideoPlaybackNotice(text('เบราว์เซอร์ไม่รองรับ codec ของไฟล์นี้ แนะนำใช้ MP4 (H.264)', 'The browser does not support this codec. MP4 (H.264) is recommended.'))
                               }
                             }}
                           />
@@ -1027,8 +1034,8 @@ export function DetectionPage() {
                 <div className="flex min-h-64 flex-col items-center justify-center gap-4 px-6 text-center" role="status">
                   <Loader2 size={28} className="animate-spin text-[#0066cc]" aria-hidden="true" />
                   <div>
-                    <p className="m-0 text-[17px] font-semibold text-[#1d1d1f]">กำลังเตรียมการวิเคราะห์</p>
-                    <p className="mb-0 mt-2 text-[14px] leading-5 text-[#6e6e73]">โปรดรอสักครู่ ระบบกำลังประมวลผลข้อมูลของคุณ</p>
+                    <p className="m-0 text-[17px] font-semibold text-[#1d1d1f]">{text('กำลังเตรียมการวิเคราะห์', 'Preparing analysis')}</p>
+                    <p className="mb-0 mt-2 text-[14px] leading-5 text-[#6e6e73]">{text('โปรดรอสักครู่ ระบบกำลังประมวลผลข้อมูลของคุณ', 'Please wait while the system processes your data.')}</p>
                   </div>
                 </div>
               ) : result ? (

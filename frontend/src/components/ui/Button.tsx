@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { useLanguage } from '../../i18n/LanguageContext'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode
@@ -14,6 +15,7 @@ export function Button({
   disabled,
   ...props 
 }: ButtonProps) {
+  const { text } = useLanguage()
   const variants = {
     primary: 'btn-apple-primary',
     secondary: 'btn-apple-secondary',
@@ -27,7 +29,7 @@ export function Button({
       aria-busy={isLoading || undefined}
       {...props}
     >
-      {isLoading ? 'กำลังดำเนินการ…' : children}
+      {isLoading ? text('กำลังดำเนินการ…', 'Processing…') : children}
     </button>
   )
 }

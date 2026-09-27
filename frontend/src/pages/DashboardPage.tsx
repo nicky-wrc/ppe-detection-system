@@ -29,6 +29,10 @@ import {
   X,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { useLanguage } from '../i18n/LanguageContext'
+import { DetectionRecordsTable } from '../components/detections/DetectionRecordsTable'
+import { DetectionDateRangePicker } from '../components/detections/DetectionDateRangePicker'
+import { DetectionDetailsDialog } from '../components/detections/DetectionDetailsDialog'
 
 interface DailySummary {
   detections: number
@@ -45,6 +49,9 @@ interface AnalyticsBucket {
   compliant: number
   compliance: number
 }
+
+const renderLegacyDetectionTable: boolean = false
+const renderLegacyDetailsDialog: boolean = false
 
 const chartTooltipStyle = {
   contentStyle: {
@@ -175,6 +182,7 @@ function pdfAddImageFitWidth(
 }
 
 export function DashboardPage() {
+  const { language, text } = useLanguage()
   const [stats, setStats] = useState<DetectionStats | null>(null)
   const [violations, setViolations] = useState<Detection[]>([])
   const [loading, setLoading] = useState(true)
@@ -422,7 +430,7 @@ export function DashboardPage() {
   }
 
   const renderTrend = (trend: DayTrend, favorableDirection: 'up' | 'down' | 'neutral') => {
-    const sub = <span className="font-normal text-[var(--muted)]">from yesterday</span>
+    const sub = <span className="font-normal text-[var(--muted)]">{text('จากเมื่อวาน', 'from yesterday')}</span>
     const directionColor = (isUp: boolean) => {
       if (favorableDirection === 'neutral') return 'text-[#6e6e73]'
       return (isUp && favorableDirection === 'up') || (!isUp && favorableDirection === 'down')
@@ -432,7 +440,7 @@ export function DashboardPage() {
     if (trend.kind === 'stable') {
       return (
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[13px] font-semibold text-[#6e6e73]">
-          Stable {sub}
+          {text('คงที่', 'Stable')} {sub}
         </div>
       )
     }
@@ -440,7 +448,7 @@ export function DashboardPage() {
       <div className={`mt-2 flex flex-wrap items-center gap-1.5 text-[13px] font-semibold ${directionColor(trend.isUp)}`}>
         {trend.isUp ? '↑' : '↓'} {trend.isUp ? '+' : '-'}
         {trend.unit === 'pts' ? trend.value.toFixed(1) : trend.value.toLocaleString()}
-        {trend.unit === 'pts' ? ' pts' : ' items'} {sub}
+        {trend.unit === 'pts' ? text(' จุด', ' pts') : text(' รายการ', ' items')} {sub}
       </div>
     )
   }
@@ -560,30 +568,21 @@ export function DashboardPage() {
   const formatViolationLabel = (value: string) => {
     const normalized = value.trim().toLowerCase()
     if (normalized === 'no_helmet' || normalized === 'no_hardhat' || normalized.includes('helmet') || normalized.includes('hardhat')) {
-      return 'ไม่สวมหมวกนิรภัย'
+      return text('ไม่สวมหมวกนิรภัย', 'No safety helmet')
     }
     if (normalized === 'no_safety_vest' || normalized === 'no_vest' || normalized.includes('vest')) {
-      return 'ไม่สวมเสื้อสะท้อนแสง'
+      return text('ไม่สวมเสื้อสะท้อนแสง', 'No safety vest')
     }
     return value
   }
 
-  const getViolationBadgeClass = (type: string) => {
-    const t = type.toUpperCase()
-    if (t.includes('HELMET') || t.includes('HARDHAT') || t.includes('หมวก'))
-      return 'inline-flex rounded-[8px] border border-[#f2b8bd] bg-[#fff5f5] px-2.5 py-1 text-[12px] font-semibold text-[#d70015]'
-    if (t.includes('VEST') || t.includes('เสื้อ'))
-      return 'inline-flex rounded-[8px] border border-[#f2d5a7] bg-[#fff9ed] px-2.5 py-1 text-[12px] font-semibold text-[#9a5b00]'
-    return 'inline-flex rounded-[8px] border border-[#f2d5a7] bg-[#fff9ed] px-2.5 py-1 text-[12px] font-semibold text-[#9a5b00]'
-  }
-
   const customRangeError = activeFilter === 'Custom'
     ? !customStartDate || !customEndDate
-      ? 'เลือกวันที่เริ่มต้นและสิ้นสุดเพื่อโหลดกราฟ'
+      ? text('เลือกวันที่เริ่มต้นและสิ้นสุดเพื่อโหลดกราฟ', 'Select a start and end date to load the charts')
       : customStartDate > customEndDate
-        ? 'วันที่เริ่มต้นต้องไม่อยู่หลังวันที่สิ้นสุด'
+        ? text('วันที่เริ่มต้นต้องไม่อยู่หลังวันที่สิ้นสุด', 'The start date cannot be after the end date')
         : (new Date(`${customEndDate}T12:00:00`).getTime() - new Date(`${customStartDate}T12:00:00`).getTime()) / 86_400_000 >= 30
-          ? 'เลือกช่วงเวลาได้สูงสุด 30 วัน'
+          ? text('เลือกช่วงเวลาได้สูงสุด 30 วัน', 'The date range can be up to 30 days')
           : null
     : null
   const averageCompliance = dailyData.length
@@ -598,7 +597,8 @@ export function DashboardPage() {
   const selectedViolationRate = selectedPersonsTotal
     ? Number(((selectedViolationTotal / selectedPersonsTotal) * 100).toFixed(2))
     : 0
-  const selectedPeriodLabel = getDashboardExportPeriod(activeFilter, customStartDate, customEndDate).labelTh
+  const selectedPeriod = getDashboardExportPeriod(activeFilter, customStartDate, customEndDate)
+  const selectedPeriodLabel = language === 'th' ? selectedPeriod.labelTh : selectedPeriod.labelEn
   const compliantPersons = Math.max(0, (stats?.total_persons ?? 0) - (stats?.total_violations ?? 0))
   const complianceRate = stats?.compliance_rate ?? 0
   const violationRate = stats?.total_persons
@@ -615,7 +615,7 @@ export function DashboardPage() {
         >
           <div className="text-center">
             <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-[3px] border-[#d2d2d7] border-t-[#0066cc]" />
-            <p className="m-0 text-[17px] leading-[1.47] text-[#6e6e73]">Loading dashboard…</p>
+            <p className="m-0 text-[17px] leading-[1.47] text-[#6e6e73]">{text('กำลังโหลดแดชบอร์ด…', 'Loading dashboard…')}</p>
           </div>
         </div>
       </Layout>
@@ -631,8 +631,8 @@ export function DashboardPage() {
             <div className="flex items-start gap-3">
               <AlertTriangle className="mt-0.5 shrink-0 text-[#d70015]" size={20} aria-hidden="true" />
               <div>
-                <p className="m-0 text-[17px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">โหลดข้อมูลบางส่วนไม่สำเร็จ</p>
-                <p className="mt-1 text-[15px] leading-[1.47] text-[#6e6e73]">ตรวจสอบการเชื่อมต่อกับ backend แล้วลองใหม่อีกครั้ง</p>
+                <p className="m-0 text-[17px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">{text('โหลดข้อมูลบางส่วนไม่สำเร็จ', 'Some data could not be loaded')}</p>
+                <p className="mt-1 text-[15px] leading-[1.47] text-[#6e6e73]">{text('ตรวจสอบการเชื่อมต่อกับ backend แล้วลองใหม่อีกครั้ง', 'Check the backend connection and try again.')}</p>
               </div>
             </div>
             <button
@@ -643,7 +643,7 @@ export function DashboardPage() {
                 void loadData()
               }}
             >
-              ลองอีกครั้ง
+              {text('ลองอีกครั้ง', 'Try again')}
             </button>
           </div>
         )}
@@ -652,7 +652,7 @@ export function DashboardPage() {
           {/* Total Detections */}
           <article className="surface-card flex min-h-[156px] flex-col justify-between p-6">
             <div className="flex items-start justify-between">
-              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">Total detections</p>
+              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">{text('การตรวจจับทั้งหมด', 'Total detections')}</p>
               <Activity size={20} className="text-[#86868b]" strokeWidth={1.75} aria-hidden="true" />
             </div>
             <div className="mt-5">
@@ -666,7 +666,7 @@ export function DashboardPage() {
           {/* Total Violations */}
           <article className="surface-card flex min-h-[156px] flex-col justify-between p-6">
             <div className="flex items-start justify-between">
-              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">Total violations</p>
+              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">{text('พบการฝ่าฝืน', 'Total violations')}</p>
               <AlertTriangle size={20} className="text-[#d70015]" strokeWidth={1.75} aria-hidden="true" />
             </div>
             <div className="mt-5">
@@ -681,7 +681,7 @@ export function DashboardPage() {
           {/* Compliant Persons */}
           <article className="surface-card flex min-h-[156px] flex-col justify-between p-6">
             <div className="flex items-start justify-between">
-              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">Compliant persons</p>
+              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">{text('ผู้ที่สวมใส่ครบ', 'Compliant persons')}</p>
               <CheckCircle size={20} className="text-[#248a3d]" strokeWidth={1.75} aria-hidden="true" />
             </div>
             <div className="mt-5">
@@ -696,14 +696,14 @@ export function DashboardPage() {
           {/* Active Cameras */}
           <article className="surface-card flex min-h-[156px] flex-col justify-between p-6">
             <div className="flex items-start justify-between">
-              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">Active cameras</p>
+              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">{text('กล้องที่กำลังทำงาน', 'Active cameras')}</p>
               <Camera size={20} className="text-[#86868b]" strokeWidth={1.75} aria-hidden="true" />
             </div>
             <div className="mt-5 flex flex-col gap-2">
               <p className="m-0 text-[38px] font-semibold leading-none tracking-[-0.035em] text-[#1d1d1f]">{activeCameras}</p>
               <p className="m-0 flex items-center gap-2 text-[13px] font-normal text-[#6e6e73]">
                 <span className={`h-2 w-2 rounded-full ${activeCameras > 0 ? 'bg-[#248a3d]' : 'bg-[#86868b]'}`} aria-hidden="true" />
-                {activeCameras > 0 ? 'Online now' : 'No camera online'}
+                {activeCameras > 0 ? text('ออนไลน์อยู่', 'Online now') : text('ไม่มีกล้องออนไลน์', 'No camera online')}
               </p>
             </div>
           </article>
@@ -711,12 +711,12 @@ export function DashboardPage() {
 
         <section className="surface-card flex flex-col gap-4 p-4 sm:p-5 xl:flex-row xl:items-center xl:justify-between" aria-label="Dashboard date controls">
           <div className="min-w-0">
-            <h1 className="m-0 text-[22px] font-semibold leading-tight tracking-[-0.02em] text-[#1d1d1f]">ภาพรวมความปลอดภัย</h1>
-            <p className="mt-1 text-[14px] leading-[1.45] text-[#6e6e73]">ตัวเลขและแนวโน้มจากข้อมูลส่วนกลางของทุกบัญชี</p>
+            <h1 className="m-0 text-[22px] font-semibold leading-tight tracking-[-0.02em] text-[#1d1d1f]">{text('ภาพรวมความปลอดภัย', 'Safety overview')}</h1>
+            <p className="mt-1 text-[14px] leading-[1.45] text-[#6e6e73]">{text('ตัวเลขและแนวโน้มจากข้อมูลของทุกบัญชี', 'Metrics and trends from all accounts.')}</p>
           </div>
           <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:justify-end">
-            <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full bg-[#f5f5f7] p-1" aria-label="Date range">
-              {['Today', '7 days', '30 days', 'Custom'].map((f) => (
+            <div className="flex max-w-full items-center gap-1 overflow-visible rounded-full bg-[#f5f5f7] p-1" aria-label="Date range">
+              {['Today', '7 days', '30 days'].map((f) => (
                 <button
                   type="button"
                   key={f}
@@ -728,40 +728,23 @@ export function DashboardPage() {
                       : 'min-h-11 shrink-0 cursor-pointer rounded-full border-0 bg-transparent px-5 text-[14px] font-semibold text-[#0066cc] transition active:scale-95'
                   }
                 >
-                  {f}
+                  {{ Today: text('วันนี้', 'Today'), '7 days': text('7 วัน', '7 days'), '30 days': text('30 วัน', '30 days') }[f]}
                 </button>
               ))}
+              <DetectionDateRangePicker
+                startDate={customStartDate}
+                endDate={customEndDate}
+                disabled={analyticsLoading}
+                maxRangeDays={30}
+                variant="segmented"
+                active={activeFilter === 'Custom'}
+                onOpen={() => setActiveFilter('Custom')}
+                onChange={({ startDate, endDate }) => {
+                  setCustomStartDate(startDate)
+                  setCustomEndDate(endDate)
+                }}
+              />
             </div>
-            {activeFilter === 'Custom' && (
-              <div className="flex flex-col gap-2 min-[480px]:flex-row min-[480px]:items-center">
-                <input
-                  type="date"
-                  value={customStartDate}
-                  onChange={(e) => setCustomStartDate(e.target.value)}
-                  max={customEndDate || undefined}
-                  aria-label="Start date"
-                  aria-invalid={Boolean(customRangeError)}
-                  className="min-h-11 rounded-full border border-black/10 bg-white px-4 text-[14px] font-normal text-[#1d1d1f] outline-none transition focus:border-[#0066cc] focus:ring-2 focus:ring-[#0066cc]/20"
-                />
-                <span className="hidden text-[14px] text-[var(--muted)] min-[480px]:inline" aria-hidden="true">to</span>
-                <input
-                  type="date"
-                  value={customEndDate}
-                  onChange={(e) => setCustomEndDate(e.target.value)}
-                  min={customStartDate || undefined}
-                  max={customStartDate
-                    ? (() => {
-                      const maxDate = new Date(`${customStartDate}T12:00:00`)
-                      maxDate.setDate(maxDate.getDate() + 29)
-                      return [maxDate.getFullYear(), String(maxDate.getMonth() + 1).padStart(2, '0'), String(maxDate.getDate()).padStart(2, '0')].join('-')
-                    })()
-                    : undefined}
-                  aria-label="End date"
-                  aria-invalid={Boolean(customRangeError)}
-                  className="min-h-11 rounded-full border border-black/10 bg-white px-4 text-[14px] font-normal text-[#1d1d1f] outline-none transition focus:border-[#0066cc] focus:ring-2 focus:ring-[#0066cc]/20"
-                />
-              </div>
-            )}
             {customRangeError && (
               <p className="text-[13px] leading-5 text-[#b4232f]" role="status">{customRangeError}</p>
             )}
@@ -772,7 +755,7 @@ export function DashboardPage() {
               className="btn-apple-primary w-full shrink-0 px-5 sm:w-auto"
             >
               <Download size={17} strokeWidth={2} aria-hidden="true" />
-              Export PDF
+              {text('ส่งออก PDF', 'Export PDF')}
             </button>
           </div>
         </section>
@@ -783,11 +766,11 @@ export function DashboardPage() {
           <article ref={violationChartRef} className="surface-card p-6 sm:p-7">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="m-0 text-[21px] font-semibold tracking-[-0.02em] text-[#1d1d1f]">Violation count</h2>
+                <h2 className="m-0 text-[21px] font-semibold tracking-[-0.02em] text-[#1d1d1f]">{text('จำนวนการฝ่าฝืน', 'Violation count')}</h2>
                 <p className="mt-1 text-[14px] leading-[1.47] text-[#6e6e73]">{selectedPeriodLabel}</p>
               </div>
               <div className="rounded-[10px] border border-[#f2b8bd] bg-[#fff7f7] px-3 py-2 text-right">
-                <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.05em] text-[#d70015]">Total</p>
+                <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.05em] text-[#d70015]">{text('ทั้งหมด', 'Total')}</p>
                 <p className="m-0 mt-1 flex flex-wrap items-baseline justify-end gap-x-1.5 text-[22px] font-semibold leading-none tracking-[-0.02em] text-[#1d1d1f]">
                   <span>{selectedViolationTotal.toLocaleString()}</span>
                   <span className="text-[14px] font-semibold text-[#86868b]">({selectedViolationRate}%)</span>
@@ -797,13 +780,13 @@ export function DashboardPage() {
             {analyticsLoading ? (
               <div className="flex h-[300px] items-center justify-center gap-3 text-[14px] text-[var(--muted)]" role="status">
                 <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#d2d2d7] border-t-[#0066cc]" aria-hidden="true" />
-                Loading analytics…
+                {text('กำลังโหลดข้อมูล…', 'Loading analytics…')}
               </div>
             ) : weeklyData.length === 0 ? (
               <div className="flex h-[300px] flex-col items-center justify-center px-4 text-center" role="status">
                 <ShieldAlert size={32} className="mb-3 text-[#b7b7bb]" strokeWidth={1.5} aria-hidden="true" />
-                <p className="m-0 text-[15px] font-semibold text-[#1d1d1f]">No violation data yet</p>
-                <p className="mt-1 text-[13px] leading-[1.47] text-[var(--muted)]">Choose another date range or wait for new activity.</p>
+                <p className="m-0 text-[15px] font-semibold text-[#1d1d1f]">{text('ยังไม่มีข้อมูลการฝ่าฝืน', 'No violation data yet')}</p>
+                <p className="mt-1 text-[13px] leading-[1.47] text-[var(--muted)]">{text('ลองเลือกช่วงวันที่อื่น หรือรอข้อมูลใหม่', 'Choose another date range or wait for new activity.')}</p>
               </div>
             ) : (
               <div className="mt-6 h-[300px]" aria-label="Violation bar chart">
@@ -828,14 +811,14 @@ export function DashboardPage() {
                       cursor={{ fill: 'rgba(215, 0, 21, 0.06)' }}
                       contentStyle={chartTooltipStyle.contentStyle}
                       labelStyle={chartTooltipStyle.labelStyle}
-                      formatter={(value) => [Number(value).toLocaleString(), 'Violations']}
+                      formatter={(value) => [Number(value).toLocaleString(), text('การฝ่าฝืน', 'Violations')]}
                     />
                     <Bar
                       dataKey="value"
                       fill="#d70015"
                       radius={[6, 6, 0, 0]}
                       maxBarSize={44}
-                      name="Violations"
+                      name={text('การฝ่าฝืน', 'Violations')}
                     />
                   </BarChart>
                 </ResponsiveContainer>
@@ -847,11 +830,11 @@ export function DashboardPage() {
           <article ref={complianceChartRef} className="surface-card p-6 sm:p-7">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="m-0 text-[21px] font-semibold tracking-[-0.02em] text-[#1d1d1f]">Compliance rate</h2>
+                <h2 className="m-0 text-[21px] font-semibold tracking-[-0.02em] text-[#1d1d1f]">{text('อัตราการสวมใส่ครบ', 'Compliance rate')}</h2>
                 <p className="mt-1 text-[14px] leading-[1.47] text-[#6e6e73]">{selectedPeriodLabel}</p>
               </div>
               <div className="rounded-[10px] border border-[#d6e8ff] bg-[#f3f8ff] px-3 py-2 text-right">
-                <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.05em] text-[#0066cc]">Compliant</p>
+                <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.05em] text-[#0066cc]">{text('สวมใส่ครบ', 'Compliant')}</p>
                 <p className="m-0 mt-1 flex flex-wrap items-baseline justify-end gap-x-1.5 text-[22px] font-semibold leading-none tracking-[-0.02em] text-[#1d1d1f]">
                   <span>{selectedCompliantTotal.toLocaleString()}</span>
                   <span className="text-[14px] font-semibold text-[#86868b]">({selectedComplianceRate}%)</span>
@@ -861,13 +844,13 @@ export function DashboardPage() {
             {analyticsLoading ? (
               <div className="flex h-[300px] items-center justify-center gap-3 text-[14px] text-[var(--muted)]" role="status">
                 <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#d2d2d7] border-t-[#0066cc]" aria-hidden="true" />
-                Loading analytics…
+                {text('กำลังโหลดข้อมูล…', 'Loading analytics…')}
               </div>
             ) : dailyData.length === 0 ? (
               <div className="flex h-[300px] flex-col items-center justify-center px-4 text-center" role="status">
                 <Activity size={32} className="mb-3 text-[#b7b7bb]" strokeWidth={1.5} aria-hidden="true" />
-                <p className="m-0 text-[15px] font-semibold text-[#1d1d1f]">No compliance data yet</p>
-                <p className="mt-1 text-[13px] leading-[1.47] text-[var(--muted)]">Data will appear after detections are processed.</p>
+                <p className="m-0 text-[15px] font-semibold text-[#1d1d1f]">{text('ยังไม่มีข้อมูลการสวมใส่ครบ', 'No compliance data yet')}</p>
+                <p className="mt-1 text-[13px] leading-[1.47] text-[var(--muted)]">{text('ข้อมูลจะแสดงหลังระบบตรวจจับเสร็จ', 'Data will appear after detections are processed.')}</p>
               </div>
             ) : (
               <div className="mt-6 h-[300px]" aria-label="Compliance bar chart">
@@ -894,14 +877,14 @@ export function DashboardPage() {
                       cursor={{ fill: 'rgba(0, 102, 204, 0.06)' }}
                       contentStyle={chartTooltipStyle.contentStyle}
                       labelStyle={chartTooltipStyle.labelStyle}
-                      formatter={(value) => [`${Number(value).toFixed(1)}%`, 'Compliance']}
+                      formatter={(value) => [`${Number(value).toFixed(1)}%`, text('สวมใส่ครบ', 'Compliance')]}
                     />
                     <Bar
                       dataKey="compliance"
                       fill="#0066cc"
                       radius={[6, 6, 0, 0]}
                       maxBarSize={44}
-                      name="Compliance"
+                      name={text('สวมใส่ครบ', 'Compliance')}
                     />
                   </BarChart>
                 </ResponsiveContainer>
@@ -916,37 +899,39 @@ export function DashboardPage() {
               <div className="flex items-center gap-2">
                 <ShieldAlert size={20} className="text-[#d70015]" strokeWidth={1.75} aria-hidden="true" />
                 <h2 id="recent-violations-title" className="m-0 text-[21px] font-semibold tracking-[-0.02em] text-[#1d1d1f]">
-                  Recent violations
+                  {text('การฝ่าฝืนล่าสุด', 'Recent violations')}
                 </h2>
               </div>
-              <p className="mt-1 text-[15px] leading-[1.47] text-[#6e6e73]">Latest events that require review</p>
+              <p className="mt-1 text-[15px] leading-[1.47] text-[#6e6e73]">{text('เหตุการณ์ล่าสุดที่ควรตรวจสอบ', 'Latest events that require review')}</p>
             </div>
             <button
               type="button"
               onClick={() => navigate('/reports')}
               className="min-h-11 self-start rounded-full border border-[#0066cc] bg-transparent px-5 text-[14px] font-semibold text-[#0066cc] transition active:scale-95 sm:self-auto"
             >
-              View all logs
+              {text('ดูประวัติทั้งหมด', 'View all logs')}
             </button>
           </div>
 
           {violations.length === 0 ? (
             <div className="px-6 py-16 text-center" role="status">
               <Clock size={40} className="mx-auto mb-4 text-[#b7b7bb]" strokeWidth={1.5} aria-hidden="true" />
-              <p className="m-0 text-[17px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">No violations recorded</p>
-              <p className="mt-1 text-[15px] leading-[1.47] text-[#6e6e73]">Violations will appear here when detected.</p>
+              <p className="m-0 text-[17px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">{text('ยังไม่พบการฝ่าฝืน', 'No violations recorded')}</p>
+              <p className="mt-1 text-[15px] leading-[1.47] text-[#6e6e73]">{text('เมื่อพบการฝ่าฝืน รายการจะแสดงที่นี่', 'Violations will appear here when detected.')}</p>
             </div>
           ) : (
-            <div className="max-h-[480px] overflow-auto">
+            <>
+            <DetectionRecordsTable detections={violations} onView={setSelectedViolation} maxHeightClassName="max-h-[480px]" />
+            {renderLegacyDetectionTable && <div className="max-h-[480px] overflow-auto">
               <table className="w-full min-w-[900px] border-collapse">
                 <thead>
                   <tr className="bg-[#f5f5f7] text-left text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--muted)]">
-                    <th scope="col" className="w-[110px] px-6 py-4 sm:pl-8">Preview</th>
-                    <th scope="col" className="min-w-[190px] px-6 py-4">Date &amp; time</th>
-                    <th scope="col" className="w-[110px] px-6 py-4">Persons</th>
-                    <th scope="col" className="px-6 py-4">Violations</th>
-                    <th scope="col" className="w-[140px] px-6 py-4">Status</th>
-                    <th scope="col" className="w-[140px] px-6 py-4 sm:pr-8">Actions</th>
+                    <th scope="col" className="w-[110px] px-6 py-4 sm:pl-8">{text('ภาพ', 'Preview')}</th>
+                    <th scope="col" className="min-w-[190px] px-6 py-4">{text('วันที่และเวลา', 'Date & time')}</th>
+                    <th scope="col" className="w-[110px] px-6 py-4">{text('จำนวนคน', 'Persons')}</th>
+                    <th scope="col" className="px-6 py-4">{text('รายการฝ่าฝืน', 'Violations')}</th>
+                    <th scope="col" className="w-[140px] px-6 py-4">{text('สถานะ', 'Status')}</th>
+                    <th scope="col" className="w-[140px] px-6 py-4 sm:pr-8">{text('ดำเนินการ', 'Actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -962,7 +947,7 @@ export function DashboardPage() {
                         </div>
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 align-middle text-[15px] text-[var(--ink)]">
-                        {new Date(detection.created_at).toLocaleString('en-GB', {
+                        {new Date(detection.created_at).toLocaleString(language === 'th' ? 'th-TH' : 'en-GB', {
                           day: '2-digit',
                           month: 'short',
                           year: 'numeric',
@@ -985,19 +970,19 @@ export function DashboardPage() {
                               </span>
                             ))}
                             {detection.violations.length > 2 && (
-                              <span className="inline-flex rounded-full bg-[#f5f5f7] px-3 py-1.5 text-[12px] text-[var(--muted)]">+{detection.violations.length - 2} more</span>
+                              <span className="inline-flex rounded-full bg-[#f5f5f7] px-3 py-1.5 text-[12px] text-[var(--muted)]">+{detection.violations.length - 2} {text('รายการ', 'more')}</span>
                             )}
                           </div>
                         ) : (
                           <span className="inline-flex rounded-full border border-[#b9dfc2] bg-[#f3fbf5] px-3 py-1.5 text-[12px] font-semibold text-[#15803d]">
-                            สวมใส่ครบถ้วน
+                            {text('สวมใส่ครบถ้วน', 'Compliant')}
                           </span>
                         )}
                       </td>
                       <td className="px-6 py-4 align-middle">
                         <span className="inline-flex items-center gap-2 text-[13px] font-semibold text-[#d70015]">
                           <span className="h-2 w-2 rounded-full bg-[#d70015]" aria-hidden="true" />
-                          Violation
+                          {text('พบการฝ่าฝืน', 'Violation')}
                         </span>
                       </td>
                       <td className="px-6 py-4 align-middle sm:pr-8">
@@ -1005,7 +990,7 @@ export function DashboardPage() {
                           <button
                             type="button"
                             onClick={(event) => { event.stopPropagation(); setSelectedViolation(detection) }}
-                            aria-label={`View detection ${detection.id}`}
+                            aria-label={text(`ดูการตรวจจับ ${detection.id}`, `View detection ${detection.id}`)}
                             className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--line)] bg-white text-[var(--blue)] transition-colors hover:bg-[#f5f5f7] active:scale-95"
                           >
                             <Eye size={16} strokeWidth={1.8} aria-hidden="true" />
@@ -1016,7 +1001,8 @@ export function DashboardPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </div>}
+            </>
           )}
         </section>
 
@@ -1097,91 +1083,104 @@ export function DashboardPage() {
         </div>
       )}
 
-      {selectedViolation && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <DetectionDetailsDialog
+        open={Boolean(selectedViolation)}
+        detection={fullDetectionDetails ?? selectedViolation}
+        onClose={closeViolationDialog}
+        loading={isLoadingDetails}
+        error={detailsError}
+        violationOnly
+      />
+
+      {renderLegacyDetailsDialog && selectedViolation && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6">
           <button
             type="button"
-            className="absolute inset-0 cursor-default border-0 bg-black/40 backdrop-blur-sm"
+            className="absolute inset-0 h-full w-full cursor-default border-0 bg-black/55 backdrop-blur-[2px]"
             onClick={() => setSelectedViolation(null)}
             aria-label="Close violation details"
           />
-          <div
+          <section
             ref={violationDialogRef}
             tabIndex={-1}
-            className="relative flex max-h-[95vh] w-full max-w-[900px] flex-col overflow-hidden rounded-[18px] border border-black/8 bg-white"
             role="dialog"
             aria-modal="true"
             aria-labelledby="violation-dialog-title"
+            className="relative flex max-h-[92vh] w-full max-w-[900px] flex-col overflow-hidden rounded-[18px] border border-[var(--line)] bg-white"
           >
-            <div className="flex items-center justify-between border-b border-black/8 px-5 py-5 sm:px-8">
-              <div className="flex items-center gap-2">
-                <ShieldAlert size={20} className="text-[#d70015]" aria-hidden="true" />
-                <h2 id="violation-dialog-title" className="m-0 text-[21px] font-semibold leading-none tracking-[-0.02em] text-[#1d1d1f]">Violation details</h2>
+            <header className="flex min-h-[72px] shrink-0 items-center justify-between gap-4 border-b border-[var(--line)] px-5 sm:px-8">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#f5f5f7] text-[#d70015]" aria-hidden="true">
+                  <ShieldAlert size={19} strokeWidth={1.8} />
+                </span>
+                <div>
+                  <h2 id="violation-dialog-title" className="text-[21px] font-semibold tracking-[-0.01em] text-[var(--ink)]">Violation details</h2>
+                  <p className="mt-0.5 text-[13px] text-[var(--muted)]">DET-{String(selectedViolation.id).padStart(5, '0')}</p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedViolation(null)}
-                className="btn-apple-secondary h-11 w-11 !p-0"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f5f5f7] text-[var(--ink)] transition-colors hover:text-[var(--blue)] active:scale-95"
                 aria-label="Close violation details"
               >
                 <X size={18} aria-hidden="true" />
               </button>
-            </div>
+            </header>
 
-            <div className="overflow-y-auto bg-[#f5f5f7] px-4 py-6 sm:px-8 sm:py-8">
+            <div className="flex-1 overflow-y-auto p-5 sm:p-8">
               {isLoadingDetails ? (
                 <div className="py-12 text-center text-[15px] text-[#6e6e73]" role="status">Loading details…</div>
               ) : (
-                <div className="flex justify-center">
-                  <div className="w-full max-w-[740px] space-y-5">
+                <div className="flex flex-col gap-6">
                     {detailsError && (
                       <div className="rounded-[11px] border border-[#f2b8bd] bg-[#fff5f5] px-4 py-3 text-[14px] leading-[1.47] text-[#d70015]" role="alert">
-                        โหลดรายละเอียดเพิ่มเติมไม่สำเร็จ ข้อมูลเหตุการณ์พื้นฐานยังแสดงด้านล่าง
+                        {text('โหลดรายละเอียดเพิ่มเติมไม่สำเร็จ ข้อมูลเหตุการณ์พื้นฐานยังแสดงด้านล่าง', 'Additional details could not be loaded. Basic event information is still shown below.')}
                       </div>
                     )}
 
-                    <div className="surface-card overflow-hidden">
+                    <div className="overflow-hidden rounded-[18px] border border-[var(--line)] bg-[#f5f5f7]">
                       <ProtectedDetectionImage
                         detectionId={selectedViolation.id}
                         alt={`Detection ${selectedViolation.id}`}
-                        className="h-[260px] w-full bg-[#fafafc] object-contain sm:h-[400px]"
+                        className="w-full max-h-[420px] object-contain"
                       />
                     </div>
 
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="surface-card p-5">
-                        <p className="m-0 mb-2 text-[12px] font-semibold tracking-[0.08em] text-[var(--muted)] uppercase">Date &amp; time</p>
-                        <p className="m-0 text-[20px] font-semibold leading-tight tracking-[-0.02em] text-[#1d1d1f]">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="rounded-[18px] border border-[var(--line)] bg-[#f5f5f7] p-5">
+                        <p className="text-[13px] text-[var(--muted)]">Date &amp; time</p>
+                        <p className="mt-2 text-[17px] font-semibold text-[var(--ink)]">
                           {new Date(selectedViolation.created_at).toLocaleString('th-TH')}
                         </p>
                       </div>
-                      <div className="surface-card p-5">
-                        <p className="m-0 mb-2 text-[12px] font-semibold tracking-[0.08em] text-[var(--muted)] uppercase">Reference ID</p>
-                        <p className="m-0 text-[24px] font-semibold leading-tight tracking-[-0.025em] text-[#1d1d1f]">DET-{String(selectedViolation.id).padStart(5, '0')}</p>
+                      <div className="rounded-[18px] border border-[var(--line)] bg-[#f5f5f7] p-5">
+                        <p className="text-[13px] text-[var(--muted)]">Reference ID</p>
+                        <p className="mt-2 text-[24px] font-semibold tracking-[-0.02em] text-[var(--ink)]">DET-{String(selectedViolation.id).padStart(5, '0')}</p>
                       </div>
                     </div>
 
-                    <div className="surface-card p-5">
-                      <p className="m-0 mb-3 text-[12px] font-semibold tracking-[0.08em] text-[var(--muted)] uppercase">Violation type</p>
+                    <div className="rounded-[18px] border border-[var(--line)] p-5 sm:p-6">
+                      <p className="mb-4 text-[14px] font-semibold text-[var(--ink)]">Violation type</p>
                       <div className="flex flex-wrap gap-2">
                         {selectedViolation.violations.map((type, idx) => (
-                          <span key={idx} className={getViolationBadgeClass(type)}>
+                          <span key={idx} className="inline-flex rounded-full border border-[#f0c3c8] bg-[#fff8f8] px-4 py-2 text-[13px] font-semibold text-[#d70015]">
                             {formatViolationLabel(type)}
                           </span>
                         ))}
                       </div>
                     </div>
 
-                    <div className="surface-card p-5">
-                      <p className="m-0 mb-3 text-[12px] font-semibold tracking-[0.08em] text-[var(--muted)] uppercase">Message</p>
-                      <div className="rounded-[11px] border border-black/8 bg-[#f5f5f7] px-5 py-4 text-[15px] leading-[1.47] text-[#424245]">
+                    <div className="rounded-[18px] border border-[var(--line)] p-5 sm:p-6">
+                      <p className="mb-3 text-[14px] font-semibold text-[var(--ink)]">Message</p>
+                      <p className="rounded-[11px] bg-[#f5f5f7] px-5 py-4 text-[15px] leading-relaxed text-[var(--ink)]">
                         {(() => {
                           const types =
                             (fullDetectionDetails?.violations?.length
                               ? fullDetectionDetails.violations
                               : selectedViolation.violations) ?? []
                           if (types.length > 0) {
-                            return `ตรวจพบ: ${types.map(formatViolationLabel).join(' และ ')}`
+                            return text(`ตรวจพบ: ${types.map(formatViolationLabel).join(' และ ')}`, `Detected: ${types.map(formatViolationLabel).join(' and ')}`)
                           }
                           return (
                             fullDetectionDetails?.summary?.message ||
@@ -1189,47 +1188,67 @@ export function DashboardPage() {
                             '—'
                           )
                         })()}
-                      </div>
+                      </p>
                     </div>
 
                     {fullDetectionDetails?.persons && (
-                      <div className="surface-card p-5">
-                        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <p className="m-0 text-[12px] font-semibold tracking-[0.08em] text-[var(--muted)] uppercase">Detailed breakdown</p>
-                          <span className="self-start rounded-[8px] bg-[#f5f5f7] px-3 py-1.5 text-[12px] font-semibold text-[#1d1d1f]">
-                            Total Persons Detected: {fullDetectionDetails.person_count}
+                      <div className="overflow-hidden rounded-[18px] border border-[var(--line)]">
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] bg-[#f5f5f7] px-5 py-4 sm:px-6">
+                          <p className="text-[14px] font-semibold text-[var(--ink)]">Detailed breakdown</p>
+                          <span className="rounded-full bg-white px-3 py-1.5 text-[12px] text-[var(--muted)]">
+                            {fullDetectionDetails.person_count} people detected
                           </span>
                         </div>
-                        {fullDetectionDetails.persons.filter((p) => !p.is_compliant).map((person) => (
-                          <div key={person.id} className="mb-3 rounded-[11px] border border-[#f2b8bd] bg-[#fff5f5] px-4 py-3">
-                            <p className="m-0 mb-1 text-[14px] font-semibold text-[#d70015]">Person {person.id} (Violation)</p>
-                            <div className="flex flex-wrap gap-2">
-                              {person.not_wearing?.map((item, idx) => (
-                                <span key={idx} className="text-[13px] text-[#d70015]">× Missing {item}</span>
-                              ))}
+                        <div className="space-y-3 p-5 sm:p-6">
+                          {fullDetectionDetails.persons.filter((person) => !person.is_compliant).map((person) => (
+                            <div key={person.id} className="rounded-[18px] border border-[#f0c3c8] bg-[#fff8f8] p-4">
+                              <p className="text-[15px] font-semibold text-[#d70015]">Person {person.id} · Violation</p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {person.not_wearing?.map((item, idx) => (
+                                  <span key={`${item}-${idx}`} className="rounded-full bg-white px-3 py-1.5 text-[12px] text-[var(--muted)]">Missing {item}</span>
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                        <p className="m-0 text-[14px] text-[#6e6e73]">
-                          + {fullDetectionDetails.persons.filter((p) => p.is_compliant).length} person(s) fully compliant
-                        </p>
+                          ))}
+                          <p className="pt-1 text-[14px] text-[var(--muted)]">
+                            + {fullDetectionDetails.persons.filter((p) => p.is_compliant).length} person(s) fully compliant
+                          </p>
+                        </div>
                       </div>
                     )}
 
-                    <div className="flex justify-end pt-2">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedViolation(null)}
-                        className="btn-apple-primary px-6"
-                      >
-                        Close
-                      </button>
-                    </div>
-                  </div>
+                    {(fullDetectionDetails?.summary?.settings || selectedViolation.summary?.settings) && (() => {
+                      const settings = fullDetectionDetails?.summary?.settings || selectedViolation.summary?.settings
+                      if (!settings) return null
+
+                      return (
+                        <div className="rounded-[18px] border border-[var(--line)] p-5 sm:p-6">
+                          <p className="mb-4 text-[14px] font-semibold text-[var(--ink)]">Settings used</p>
+                          <div className="grid gap-3 text-[14px] sm:grid-cols-3">
+                            <div>
+                              <p className="text-[var(--muted)]">Mode</p>
+                              <p className="mt-1 font-semibold text-[var(--ink)]">{settings.detection_mode}</p>
+                            </div>
+                            <div>
+                              <p className="text-[var(--muted)]">PPE rules</p>
+                              <p className="mt-1 font-semibold text-[var(--ink)]">{settings.ppe_rules_label}</p>
+                            </div>
+                            <div>
+                              <p className="text-[var(--muted)]">Confidence</p>
+                              <p className="mt-1 font-semibold text-[var(--ink)]">{settings.confidence_settings}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })()}
                 </div>
               )}
             </div>
-          </div>
+
+            <footer className="flex shrink-0 flex-col-reverse gap-3 border-t border-[var(--line)] bg-[#f5f5f7] px-5 py-5 sm:flex-row sm:justify-end sm:px-8">
+              <button type="button" onClick={() => setSelectedViolation(null)} className="btn-apple-secondary !min-h-11 active:scale-95">Close</button>
+            </footer>
+          </section>
         </div>
       )}
     </Layout>
