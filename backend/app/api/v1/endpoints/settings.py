@@ -11,6 +11,7 @@ from app.services.detection_preferences import (
     SAFE_PPE_SENSITIVITY_MIN,
     clamp_percent,
     normalize_detection_record_mode,
+    normalize_detection_cooldown,
     normalize_active_ppe_rules,
 )
 
@@ -45,6 +46,10 @@ def _get_or_create(db: Session, user_id: int) -> UserSettings:
         if s.detection_record_mode != normalized_record_mode:
             s.detection_record_mode = normalized_record_mode
             changed = True
+        normalized_cooldown = normalize_detection_cooldown(s.detection_cooldown_seconds)
+        if s.detection_cooldown_seconds != normalized_cooldown:
+            s.detection_cooldown_seconds = normalized_cooldown
+            changed = True
         if changed:
             db.commit()
             db.refresh(s)
@@ -55,6 +60,7 @@ def _get_or_create(db: Session, user_id: int) -> UserSettings:
         confidence_threshold=45,
         ppe_detection_sensitivity=60,
         detection_record_mode="both",
+        detection_cooldown_seconds=30,
         alert_sound=True,
         save_evidence=True,
     )
@@ -72,6 +78,7 @@ def _settings_snapshot(settings_row: UserSettings) -> dict:
         "ppe_detection_sensitivity": int(settings_row.ppe_detection_sensitivity or 60),
         "active_ppe_rules": normalize_active_ppe_rules(settings_row.active_ppe_rules),
         "detection_record_mode": normalize_detection_record_mode(settings_row.detection_record_mode),
+        "detection_cooldown_seconds": normalize_detection_cooldown(settings_row.detection_cooldown_seconds),
     }
 
 
@@ -93,6 +100,8 @@ def _normalize_update_payload(data: dict) -> dict:
         normalized["active_ppe_rules"] = normalize_active_ppe_rules(normalized["active_ppe_rules"])
     if "detection_record_mode" in normalized:
         normalized["detection_record_mode"] = normalize_detection_record_mode(normalized["detection_record_mode"])
+    if "detection_cooldown_seconds" in normalized:
+        normalized["detection_cooldown_seconds"] = normalize_detection_cooldown(normalized["detection_cooldown_seconds"])
     return normalized
 
 

@@ -22,6 +22,7 @@ class UserSettings(Base):
 
     # Which detection outcomes should be saved to Detection records.
     detection_record_mode = Column(String(32), default="both")
+    detection_cooldown_seconds = Column(Integer, default=30)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

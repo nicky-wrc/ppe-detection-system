@@ -12,6 +12,7 @@ PPE_LABELS = {
     "safety-vest": "เสื้อสะท้อนแสง",
 }
 DETECTION_RECORD_MODES = {"both", "violations_only", "compliant_only"}
+DETECTION_COOLDOWN_OPTIONS = {10, 15, 30, 45, 60}
 VIOLATION_LABELS = {
     "no_helmet": "ไม่สวมหมวกนิรภัย",
     "no_hardhat": "ไม่สวมหมวกนิรภัย",
@@ -55,6 +56,21 @@ def get_detection_record_mode(db: Session, user_id: int | None) -> str:
     if not preferences:
         return "both"
     return normalize_detection_record_mode(preferences.detection_record_mode)
+
+
+def normalize_detection_cooldown(value: int | None) -> int:
+    return value if value in DETECTION_COOLDOWN_OPTIONS else 30
+
+
+def get_detection_cooldown(db: Session, user_id: int | None) -> int:
+    if user_id is None:
+        return 30
+    preferences = db.query(UserSettings).populate_existing().filter(
+        UserSettings.user_id == user_id,
+    ).first()
+    if not preferences:
+        return 30
+    return normalize_detection_cooldown(preferences.detection_cooldown_seconds)
 
 
 def normalize_violation_label(value: str) -> str:

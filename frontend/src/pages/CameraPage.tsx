@@ -36,10 +36,8 @@ const LIVE_DETECT_INTERVAL_MS = 1000
 const LIVE_ALERT_SOUND_COOLDOWN_MS = 5000
 const LIVE_CONFIRM_FRAMES = 2
 const LIVE_CLEAR_FRAMES = 2
-const LIVE_EVENT_COOLDOWN_MS = 30_000
 const LIVE_PERSIST_RETRY_MS = 10_000
 const LIVE_COMPLIANT_CONFIRM_FRAMES = 2
-const LIVE_COMPLIANT_REPORT_COOLDOWN_MS = 30_000
 const CAMERA_DEVICE_NOT_FOUND_MESSAGE = 'ไม่สามารถเปิดกล้องได้เนื่องจากตรวจไม่พบอุปกรณ์ โปรดทำการเชื่อมต่ออุปกรณ์อีกครั้ง'
 const BROWSER_PREVIEW_CONSTRAINTS = {
   width: { ideal: 1280 },
@@ -368,6 +366,7 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
   const isPersistingCompliantRef = useRef(false)
   const [status, setStatus] = useState<PreviewStatus>('waiting')
   const alertSoundEnabledRef = useRef(false)
+  const detectionCooldownMsRef = useRef(30_000)
   const settingsUserId = useAuthStore((state) => state.user?.id)
   const [frameCount, setFrameCount] = useState(0)
   const [summary, setSummary] = useState<{ persons: number; violations: number; message: string }>({
@@ -380,6 +379,7 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
     if (!settingsUserId) return
     return settingsService.subscribe(settingsUserId, (settings) => {
       alertSoundEnabledRef.current = settings.alert_sound
+      detectionCooldownMsRef.current = settings.detection_cooldown_seconds * 1000
     }, () => {
       toast.error('โหลดค่าเสียงเตือนไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อ', { id: 'settings-sync-error' })
     })
@@ -440,7 +440,7 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
     if (
       violationStreakRef.current < LIVE_CONFIRM_FRAMES
       || recordedViolationSignatureRef.current === signature
-      || now - lastPersistedAt < LIVE_EVENT_COOLDOWN_MS
+      || now - lastPersistedAt < detectionCooldownMsRef.current
       || now - lastAttemptAt < LIVE_PERSIST_RETRY_MS
       || isPersistingViolationRef.current
       || sessionId !== sessionRef.current
@@ -482,7 +482,7 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
     const now = Date.now()
     if (
       compliantStreakRef.current < LIVE_COMPLIANT_CONFIRM_FRAMES
-      || now - lastCompliantReportAtRef.current < LIVE_COMPLIANT_REPORT_COOLDOWN_MS
+      || now - lastCompliantReportAtRef.current < detectionCooldownMsRef.current
       || now - lastCompliantReportAttemptAtRef.current < LIVE_PERSIST_RETRY_MS
       || isPersistingCompliantRef.current
       || sessionId !== sessionRef.current

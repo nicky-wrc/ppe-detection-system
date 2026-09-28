@@ -33,6 +33,14 @@ const DETECTION_RECORD_MODE_OPTIONS = [
   { key: 'violations_only', labelTh: 'เฉพาะมีการฝ่าฝืน', labelEn: 'Violations only', statusTh: 'บันทึกเฉพาะการฝ่าฝืน', statusEn: 'Record violations only', descriptionTh: 'ใช้เมื่อต้องการให้ประวัติและกราฟเน้นเหตุที่ต้องติดตาม', descriptionEn: 'Use when history and charts should focus on incidents requiring follow-up' },
 ] as const
 
+const DETECTION_COOLDOWN_OPTIONS = [
+  { value: 10, labelTh: 'ถี่มาก', labelEn: 'Very frequent', effectTh: 'บันทึกเหตุการณ์ใหม่ได้รวดเร็วที่สุด', effectEn: 'Records returning events as quickly as possible', useCaseTh: 'ทางเข้าออกหรือพื้นที่ที่คนเคลื่อนที่เร็ว', useCaseEn: 'Entrances or areas with fast-moving traffic' },
+  { value: 15, labelTh: 'ถี่', labelEn: 'Frequent', effectTh: 'ติดตามเหตุการณ์ใกล้ชิดโดยลดข้อมูลซ้ำเล็กน้อย', effectEn: 'Tracks events closely with light duplicate reduction', useCaseTh: 'พื้นที่ที่ต้องติดตามอย่างใกล้ชิด', useCaseEn: 'Areas requiring close monitoring' },
+  { value: 30, labelTh: 'สมดุล', labelEn: 'Balanced', effectTh: 'สมดุลระหว่างความต่อเนื่องและจำนวนรายการ', effectEn: 'Balances continuity and record volume', useCaseTh: 'การใช้งานทั่วไปในพื้นที่ส่วนใหญ่', useCaseEn: 'General use in most areas' },
+  { value: 45, labelTh: 'ห่าง', labelEn: 'Less frequent', effectTh: 'ลดรายการซ้ำจากเหตุการณ์ที่อยู่นาน', effectEn: 'Reduces duplicates from longer events', useCaseTh: 'จุดที่คนมักอยู่ตำแหน่งเดิม', useCaseEn: 'Locations where people remain in place' },
+  { value: 60, labelTh: 'ห่างมาก', labelEn: 'Least frequent', effectTh: 'ลดรายการซ้ำและการใช้พื้นที่จัดเก็บมากที่สุด', effectEn: 'Minimizes duplicates and storage usage', useCaseTh: 'กล้องประจำจุดหรือเหตุการณ์เปลี่ยนช้า', useCaseEn: 'Fixed cameras or slowly changing scenes' },
+] as const
+
 const SETTINGS_SECTION_NAV_ITEMS = [
   { href: '#ai-detection', icon: Cpu, labelTh: 'AI และการตรวจจับ', labelEn: 'AI & Detection' },
   { href: '#zones', icon: Shield, labelTh: 'กฎของพื้นที่', labelEn: 'Zone rules' },
@@ -199,6 +207,7 @@ export function SettingsPage() {
         ppe_detection_sensitivity: settings.ppe_detection_sensitivity,
         active_ppe_rules: settings.active_ppe_rules,
         detection_record_mode: settings.detection_record_mode,
+        detection_cooldown_seconds: settings.detection_cooldown_seconds,
       })
       setSettings(updatedSettings)
       setSavedSettings(updatedSettings)
@@ -444,11 +453,15 @@ export function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="lg:col-span-2">
-                  <p className="mb-2 text-[14px] font-semibold text-[var(--ink)]">{text('รูปแบบการบันทึกผล', 'Detection recording mode')}</p>
-                  <p className="mb-4 text-[14px] text-[var(--muted)]">{text('เลือกผลจากการตรวจจับแบบสดที่จะบันทึกลงประวัติ กราฟ และรายงาน', 'Choose which live detection results are saved to history, charts, and reports.')}</p>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {DETECTION_RECORD_MODE_OPTIONS.map((option) => {
+                <div className="border-t border-[var(--line)] pt-6 lg:col-span-2">
+                  <h3 className="text-[20px] font-semibold text-[var(--ink)]">{text('การบันทึกผลการตรวจจับ', 'Detection recording')}</h3>
+                  <p className="mt-2 text-[14px] text-[var(--muted)]">{text('กำหนดประเภทผลที่ต้องการเก็บและความถี่ในการบันทึกซ้ำ', 'Choose which results to keep and how frequently they may be recorded again.')}</p>
+
+                  <div className="mt-6">
+                    <p className="mb-2 text-[14px] font-semibold text-[var(--ink)]">{text('รูปแบบการบันทึกผล', 'Detection recording mode')}</p>
+                    <p className="mb-4 text-[14px] text-[var(--muted)]">{text('เลือกผลจากการตรวจจับแบบสดที่จะบันทึกลงประวัติ กราฟ และรายงาน', 'Choose which live detection results are saved to history, charts, and reports.')}</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {DETECTION_RECORD_MODE_OPTIONS.map((option) => {
                       const isSelected = settings.detection_record_mode === option.key
                       return (
                         <button
@@ -476,7 +489,37 @@ export function SettingsPage() {
                           <span className="mt-2 block text-[12px] leading-snug text-[var(--muted)]">{text(option.descriptionTh, option.descriptionEn)}</span>
                         </button>
                       )
-                    })}
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="mt-8 border-t border-[var(--line)] pt-6">
+                    <p className="mb-2 text-[14px] font-semibold text-[var(--ink)]">{text('เวลาคูลดาวน์ก่อนบันทึกซ้ำ', 'Cooldown before recording again')}</p>
+                    <p className="mb-4 text-[14px] text-[var(--muted)]">{text('กำหนดระยะเวลาขั้นต่ำก่อนบันทึกผลประเภทเดิมซ้ำอีกครั้ง', 'Set the minimum time before recording the same result type again.')}</p>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                      {DETECTION_COOLDOWN_OPTIONS.map((option) => {
+                      const isSelected = settings.detection_cooldown_seconds === option.value
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setSettings({ ...settings, detection_cooldown_seconds: option.value })}
+                          disabled={isSaving}
+                          aria-pressed={isSelected}
+                          className={`min-h-[210px] rounded-[16px] border p-4 text-left transition-colors active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 ${isSelected ? 'border-[var(--blue)] bg-white shadow-sm' : 'border-[var(--line)] bg-white/70 hover:bg-white'}`}
+                        >
+                          <span className="flex items-baseline gap-1.5 text-[var(--blue)]">
+                            <span className="text-[28px] font-semibold leading-none">{option.value}</span>
+                            <span className="text-[12px] font-medium">{text('วินาที', 'seconds')}</span>
+                          </span>
+                          <span className="mt-3 block text-[15px] font-semibold text-[var(--ink)]">{text(option.labelTh, option.labelEn)}</span>
+                          <span className="mt-3 block text-[12px] leading-snug text-[var(--muted)]"><strong className="text-[var(--ink)]">{text('ผลลัพธ์:', 'Result:')}</strong> {text(option.effectTh, option.effectEn)}</span>
+                          <span className="mt-2 block text-[12px] leading-snug text-[var(--muted)]"><strong className="text-[var(--ink)]">{text('เหมาะเมื่อ:', 'Best for:')}</strong> {text(option.useCaseTh, option.useCaseEn)}</span>
+                          {isSelected && <span className="mt-3 inline-flex rounded-full bg-[#e8f2ff] px-2.5 py-1 text-[11px] font-semibold text-[var(--blue)]">{text('กำลังใช้งาน', 'Active')}</span>}
+                        </button>
+                      )
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>

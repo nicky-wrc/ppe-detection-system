@@ -78,6 +78,16 @@ def test_camera_event_deduplication_handles_reassigned_track_id():
     reassigned = ConfirmedViolation(9, "helmet", [20, 0, 120, 200], 0.8, person("helmet", x=20))
     another_person = ConfirmedViolation(10, "helmet", [300, 0, 400, 200], 0.8, person("helmet", x=300))
 
-    assert manager._deduplicate_confirmed_events(1, [first], 100.0) == [first]
-    assert manager._deduplicate_confirmed_events(1, [reassigned], 101.0) == []
-    assert manager._deduplicate_confirmed_events(1, [another_person], 101.0) == [another_person]
+    assert manager._deduplicate_confirmed_events(1, [first], 100.0, 30) == [first]
+    assert manager._deduplicate_confirmed_events(1, [reassigned], 101.0, 30) == []
+    assert manager._deduplicate_confirmed_events(1, [another_person], 101.0, 30) == [another_person]
+
+
+def test_camera_event_deduplication_uses_selected_cooldown():
+    manager = CameraRuntimeManager()
+    first = ConfirmedViolation(1, "helmet", [0, 0, 100, 200], 0.9, person("helmet"))
+    returning = ConfirmedViolation(9, "helmet", [20, 0, 120, 200], 0.8, person("helmet", x=20))
+
+    assert manager._deduplicate_confirmed_events(1, [first], 100.0, 15) == [first]
+    assert manager._deduplicate_confirmed_events(1, [returning], 114.9, 15) == []
+    assert manager._deduplicate_confirmed_events(1, [returning], 115.0, 15) == [returning]

@@ -2,6 +2,8 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Layout } from '../components/layout/Layout'
 import { detectionService } from '../services/detection'
+import { settingsService } from '../services/settings'
+import { useAuthStore } from '../stores/authStore'
 import type { Detection } from '../types'
 import {
   Upload,
@@ -25,10 +27,8 @@ type TabType = 'image' | 'video' | 'camera'
 const LIVE_DETECT_INTERVAL_MS = 1000
 const LIVE_CONFIRM_FRAMES = 2
 const LIVE_CLEAR_FRAMES = 2
-const LIVE_EVENT_COOLDOWN_MS = 30_000
 const LIVE_PERSIST_RETRY_MS = 10_000
 const LIVE_COMPLIANT_CONFIRM_FRAMES = 2
-const LIVE_COMPLIANT_REPORT_COOLDOWN_MS = 30_000
 
 const getCameraDeviceLabel = (device: MediaDeviceInfo, index: number) => (
   device.label || `Camera ${index + 1}`
@@ -133,6 +133,7 @@ const drawDetectionOverlay = (
 
 export function DetectionPage() {
   const { text } = useLanguage()
+  const settingsUserId = useAuthStore((state) => state.user?.id)
   const [activeTab, setActiveTab] = useState<TabType>('image')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
@@ -210,12 +211,22 @@ export function DetectionPage() {
   const lastCompliantReportAtRef = useRef(0)
   const lastCompliantReportAttemptAtRef = useRef(0)
   const isPersistingCompliantRef = useRef(false)
+  const detectionCooldownMsRef = useRef(30_000)
   const [isLiveDetecting, setIsLiveDetecting] = useState(false)
   const [isCameraOn, setIsCameraOn] = useState(false)
   const [isCameraStarting, setIsCameraStarting] = useState(false)
   const [liveFrameCount, setLiveFrameCount] = useState(0)
   const [availableCameraDevices, setAvailableCameraDevices] = useState<MediaDeviceInfo[]>([])
   const [selectedCameraDeviceId, setSelectedCameraDeviceId] = useState('')
+
+  useEffect(() => {
+    if (!settingsUserId) return
+    return settingsService.subscribe(settingsUserId, (settings) => {
+      detectionCooldownMsRef.current = settings.detection_cooldown_seconds * 1000
+    }, () => {
+      toast.error(text('โหลดเวลาคูลดาวน์ไม่สำเร็จ ระบบจะใช้ 30 วินาที', 'Unable to load cooldown setting. Using 30 seconds.'))
+    })
+  }, [settingsUserId, text])
 
   const refreshAvailableCameraDevices = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) {
@@ -329,7 +340,7 @@ export function DetectionPage() {
     if (
       violationStreakRef.current < LIVE_CONFIRM_FRAMES
       || recordedViolationSignatureRef.current === signature
-      || now - lastPersistedAt < LIVE_EVENT_COOLDOWN_MS
+      || now - lastPersistedAt < detectionCooldownMsRef.current
       || now - lastAttemptAt < LIVE_PERSIST_RETRY_MS
       || isPersistingViolationRef.current
       || sessionId !== liveSessionRef.current
@@ -374,7 +385,7 @@ export function DetectionPage() {
     const now = Date.now()
     if (
       compliantStreakRef.current < LIVE_COMPLIANT_CONFIRM_FRAMES
-      || now - lastCompliantReportAtRef.current < LIVE_COMPLIANT_REPORT_COOLDOWN_MS
+      || now - lastCompliantReportAtRef.current < detectionCooldownMsRef.current
       || now - lastCompliantReportAttemptAtRef.current < LIVE_PERSIST_RETRY_MS
       || isPersistingCompliantRef.current
       || sessionId !== liveSessionRef.current

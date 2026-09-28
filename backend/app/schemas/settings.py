@@ -11,6 +11,7 @@ class UserSettingsBase(BaseModel):
     ppe_detection_sensitivity: int = Field(default=60, ge=35, le=100)
     active_ppe_rules: Dict[str, bool] = Field(default_factory=dict)
     detection_record_mode: Literal["both", "violations_only", "compliant_only"] = "both"
+    detection_cooldown_seconds: Literal[10, 15, 30, 45, 60] = 30
 
 
 class UserSettingsUpdate(BaseModel):
@@ -20,6 +21,7 @@ class UserSettingsUpdate(BaseModel):
     ppe_detection_sensitivity: int | None = Field(default=None, ge=35, le=100)
     active_ppe_rules: Dict[str, bool] | None = None
     detection_record_mode: Literal["both", "violations_only", "compliant_only"] | None = None
+    detection_cooldown_seconds: Literal[10, 15, 30, 45, 60] | None = None
 
 
 class UserSettingsResponse(UserSettingsBase):

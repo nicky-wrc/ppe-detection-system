@@ -15,6 +15,7 @@ function normalizeSettings(value: UserSettings): UserSettings {
     ppe_detection_sensitivity: value.ppe_detection_sensitivity ?? 60,
     active_ppe_rules: value.active_ppe_rules ?? { helmet: true, 'safety-vest': true },
     detection_record_mode: value.detection_record_mode ?? 'both',
+    detection_cooldown_seconds: value.detection_cooldown_seconds ?? 30,
   }
 }
 

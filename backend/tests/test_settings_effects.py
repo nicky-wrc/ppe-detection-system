@@ -9,7 +9,7 @@ from app.core.database import Base
 from app.ml.detector import PPEDetector
 from app.models import User, UserSettings, Zone
 from app.services.camera_runtime import CameraRuntimeManager
-from app.services.detection_preferences import resolve_detection_preferences
+from app.services.detection_preferences import get_detection_cooldown, resolve_detection_preferences
 from app.services.detection_service import DetectionService
 from app.services.evidence_recorder import EvidenceRecorder
 
@@ -23,6 +23,7 @@ def preferences_db():
         db.add(UserSettings(
             user_id=1, confidence_threshold=40, ppe_detection_sensitivity=80,
             active_ppe_rules={"helmet": False, "safety-vest": True}, save_evidence=False,
+            detection_cooldown_seconds=15,
         ))
         db.commit()
         yield db
@@ -36,6 +37,7 @@ def test_camera_and_upload_use_same_saved_detection_preferences(preferences_db):
     service = object.__new__(DetectionService)
     service.db = preferences_db
     assert service._get_detection_options(1, None) == options[:3]
+    assert get_detection_cooldown(preferences_db, 1) == 15
 
 
 def test_active_zone_overrides_personal_rules_including_empty_list(preferences_db):
@@ -128,6 +130,7 @@ def test_settings_api_saves_all_controls_and_reloads(client, admin_headers):
         "alert_sound": False, "save_evidence": False, "confidence_threshold": 55,
         "ppe_detection_sensitivity": 100,
         "active_ppe_rules": {"helmet": False, "safety-vest": False},
+        "detection_cooldown_seconds": 45,
     }
     try:
         response = client.put(endpoint, headers=admin_headers, json=changes)

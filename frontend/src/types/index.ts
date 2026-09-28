@@ -126,6 +126,7 @@ export interface UserSettings {
   ppe_detection_sensitivity: number
   active_ppe_rules: Record<string, boolean>
   detection_record_mode: 'both' | 'violations_only' | 'compliant_only'
+  detection_cooldown_seconds: 10 | 15 | 30 | 45 | 60
   created_at: string
 }
 

@@ -19,6 +19,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models import Alert, AlertDelivery, Camera, Detection, ViolationLog, Zone
 from app.services.detection_preferences import (
+    get_detection_cooldown,
     get_detection_record_mode,
     normalize_violation_label,
     resolve_detection_preferences,
@@ -388,11 +389,12 @@ class CameraRuntimeManager:
         camera_id: int,
         events: list[ConfirmedViolation],
         now_monotonic: float,
+        cooldown_seconds: int,
     ) -> list[ConfirmedViolation]:
         """Suppress duplicate alerts when a detector assigns a new track ID to the same person."""
 
         accepted: list[ConfirmedViolation] = []
-        cooldown = max(1, settings.EVENT_COOLDOWN_SECONDS)
+        cooldown = max(1, cooldown_seconds)
         for event in events:
             track_key = (camera_id, event.track_id, event.violation_type)
             if now_monotonic - self._last_events.get(track_key, float("-inf")) < cooldown:
@@ -785,6 +787,7 @@ class CameraRuntimeManager:
                         db.commit()
 
                 required, confidence, person_confidence, save_evidence = self._detection_options(db, camera)
+                detection_cooldown_seconds = get_detection_cooldown(db, camera.owner_id)
                 detection_options = (tuple(required), confidence, person_confidence)
                 if previous_detection_options != detection_options:
                     # Never confirm an event using frames evaluated under old rules.
@@ -806,7 +809,12 @@ class CameraRuntimeManager:
                 result = self._filter_to_zone(result, zone, frame.shape)
                 confirmed = tracker.update(result.get("persons", []))
                 now_monotonic = time.monotonic()
-                confirmed = self._deduplicate_confirmed_events(camera.id, confirmed, now_monotonic)
+                confirmed = self._deduplicate_confirmed_events(
+                    camera.id,
+                    confirmed,
+                    now_monotonic,
+                    detection_cooldown_seconds,
+                )
 
                 annotated_frame = None
                 privacy_frame = None
@@ -852,7 +860,7 @@ class CameraRuntimeManager:
                 if (
                     result.get("person_count", 0) > 0
                     and not result.get("has_violation", False)
-                    and report_now - last_compliant_report_at >= settings.CAMERA_COMPLIANT_REPORT_INTERVAL_SECONDS
+                    and report_now - last_compliant_report_at >= detection_cooldown_seconds
                 ):
                     if self._allows_detection_record(db, camera, False):
                         self._persist_compliant_detection(db, camera, result, required, confidence, person_confidence)
