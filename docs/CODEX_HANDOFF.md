@@ -1,5 +1,57 @@
 # Codex Handoff — PPE Guard AI
 
+## Deployment preparation and active model audit — 2026-10-04
+
+- User asked to prepare deployment and audit newest YOLOv8/YOLO11 models; no provider/domain chosen or public deployment performed. Existing local frontend/backend processes and private Supabase .env unchanged this turn.
+- Authenticated read-only active-model endpoint reports `orange-ppe-yolov8m-yolo11n-hybrid-20260917-v4`, best.pt and yolo11n.pt available. Existing bootstrap login used without logging credentials/tokens; login endpoint does not mutate accounts.
+- Configured v4 checkpoint SHA-256 matches training report `833fa3362afad19f27ff68ac44a52e598d26bd96f7f9f750b5469bd2382e0b9c`. YOLO11n SHA-256 `0ebbc80d4a7680d14987a577cd21342b65ecfd94632bd9a8da63ae6417644ee1`; it is existing pretrained person assist, not a newly fine-tuned YOLO11.
+- Running backend PID uses guarded run_local.py with --disable-wmi; separate check-only model load confirms CUDA:0, crop refinement true, low-light enhancement true, cleanup false. No new inference/camera run; API model metadata is configured settings, not an in-memory fingerprint.
+- v4 is latest successful local fine-tune, not best on every metric. Orange-like vest F1 75.17→76.06, helmet 84.76→84.79; full-test helmet F1 85.67→85.10. No new target-camera accuracy claim or license approval.
+- Added root/backend/frontend .dockerignore; service contexts source allowlists exclude env, venv, checkpoint/data/evidence files. Backend image now needs explicitly supplied runtime model mounts. Root guard handles accidental root contexts.
+- Frontend Dockerfile uses npm ci and build-time PUBLIC VITE_API_URL; no dependencies upgraded. README corrected model/test database notes and links new docs/DEPLOYMENT_PREPARATION.md.
+- Added deployment-asset regression tests. Focused tests 7 passed; full backend isolated SQLite suite 117 passed, 1 failed, 44 warnings. Failure reproduced alone: Viewer daily analytics ZoneInfoNotFoundError Asia/Bangkok, due to absent IANA timezone DB in Windows venv; backend application code and requirements unchanged by preparation.
+- Live read-only /health healthy, /ready database ok, Stats 200, daily analytics 500. Proposed tzdata dependency requires explicit approval under AGENTS.md; NOT added/installed or worked around.
+- Frontend lint zero errors/two existing CameraPage hook warnings; app TypeScript passed; isolated Vite production build with placeholder public API URL passed outside repo at private-backups/deployment-check-20261004/frontend-dist. Local dist not replaced.
+- Docker CLI exists but Linux daemon unavailable; Docker build/context enforcement/image contents NOT verified. Actual hosted browser/HTTPS/CORS/WebSocket/GPU/storage tests remain pending.
+- Blockers: approve timezone dependency, select hosting/architecture/domain, license/privacy gate (MODEL_LICENSE_APPROVED=false preserved), shared-media path migration if moving host, one native-camera runtime owner. Existing Compose overrides Supabase URL to local db; do not use unchanged for cloud.
+- No secrets in Git, no model/.env/data deletion, no commit/push or public deployment.
+
+## Supabase permissions and local configuration cutover — 2026-10-04
+
+- User authorized revoking Data API grants and changing backend connection. Transactionally revoked ALL privileges on the 12 migrated public app tables and their sequences from anon/authenticated/PUBLIC. Verified both roles have no inherited effective table/sequence privileges; postgres access and counts unchanged.
+- Applied schema-scoped postgres default-privilege revokes for future public tables/sequences; no RLS, app-role permissions, schema/model changes or Data API dashboard toggles. Existing permissions snapshot retained privately as `permissions-before-cutover.json`; do not equate this with verifying Dashboard Data API disabled.
+- Changed ONLY `DATABASE_URL` in ignored `backend/.env` using apply_patch, password URL-encoded and `sslmode=require`. Other parsed environment values unchanged, including model and `EVIDENCE_RETENTION_ENABLED=false`.
+- Prior complete `.env` retained in ACL-restricted private folder as `backend.env.before-supabase` for rollback. Contains secrets: never print, commit or share publicly. Private `cutover-result.json` records sanitized verification.
+- Actual backend Settings/SQLAlchemy engine connected read-only to intended project; all 12 table counts match and effective anon/authenticated grants absent. Verified client-to-pooler TLS through psycopg2 connection info.
+- Initial TLS audit incorrectly used pg_stat_ssl (pooler-to-Postgres leg) and returned false; corrected to actual driver ssl_in_use and verification passed. No data/schema mutation occurred in verification.
+- No port 8000 listener observed; did NOT launch app lifespan, cameras, inference, bootstrap or cleanup. User should run existing `run_local.py --disable-wmi` to test UI/login/camera. No end-to-end UI test performed.
+- Original local DB/uploads/models and both private backups preserved. Media NOT uploaded: current Windows backend can use local evidence; another machine needs shared backend or a separately reviewed media migration. Use only one owner for native-camera runtime.
+- Rollback requires stopping backend and restoring previous local connection; new Supabase writes do not automatically sync back to old local DB. No commit/push performed.
+
+## Supabase import completed, cutover pending — 2026-10-04
+
+- User explicitly approved starting cloud import and supplied password in a private local file (never logged). TLS-required connection to approved Singapore session-pooler project succeeded; target PostgreSQL 17.11 public tables/views/sequences were empty before restore.
+- Fresh backup retained outside Git at `D:\ppe-detection-system\private-backups\supabase-import-20261004-02`; 182 media files/601091690 bytes hash verified. Archive SHA-256 `e69010ac45582a64440a09842885a3b67ffd579ba94c230aeabaef22e17a2231`.
+- Transactional `pg_restore --no-owner --no-acl --exit-on-error --single-transaction` succeeded. All 12 table counts match source, no unvalidated public constraints; Alembic revision `20260729_01` preserved. Report `supabase-import-result.json` in private backup folder.
+- Source DB, uploads/models and backend `.env` unchanged; no app/camera start. Media was NOT uploaded. Native-camera multi-backend ownership/local Windows media paths remain constraints.
+- SECURITY FINDING: read-only `has_table_privilege` audit found anon and authenticated each have at least one CRUD privilege on all 12 app tables (24 role/table pairs). This does not establish that Data API is enabled or data exposed; its state has not been verified. Do not assert Data API is off based on the user's following earlier recommendations.
+- Pause cutover pending user approval to remove Data API role grants / verify Data API disabled. Existing backend auth uses direct PostgreSQL and its own JWT, not Supabase Auth. Do not change role grants, RLS or backend connection until authorized under AGENTS.md.
+- Private credential file retained in ACL-restricted backup directory as user-entered; never print/commit its contents. No new repository code changes or commit/push.
+
+## Local backup and Supabase preparation — 2026-10-04
+
+- User authorized backup/preparation, not connection cutover or cloud upload yet.
+- Private backup outside Git: `D:\ppe-detection-system\private-backups\supabase-prep-20261004-01`.
+- PostgreSQL 17.5 source `ppe_detection`; pg_dump 17 custom archive (106850 bytes), exported read-only snapshot shared with row-count audit. Source untouched.
+- Archive SHA-256: `20195492e504c56e290fdf40bda246ba9e8ca615ecd8cec0058362a40272b99a`.
+- Restored into newly created local `ppe_restore_verify_20261004_01`; all 12 table counts match and constraints validated. Verification DB retained, no DROP/cleanup.
+- Counts: users 8, detections 428, alerts 599, cameras 3, violation_logs 82, user_settings 4, alembic_version 1; remaining 5 tables empty.
+- Copied 182 media files, 601091690 bytes; each source/copy SHA-256 checked. No API listener on port 8000 observed, but final cutover must stop all writers and refresh backup if changed.
+- Folder ACL restricted to current user and SYSTEM; archive/media not encrypted and must not be committed/shared publicly. No credentials logged or copied into Git.
+- `.env` hash unchanged; no model/settings/schema/runtime edits, cloud connection or upload. Backup scripts avoid app imports/lifespan.
+- Private `NEXT_STEPS.md` covers target preflight, no destructive restore flags, count/constraint verification, one camera runtime owner, local-media limitations and rollback.
+- Next: user enters Supabase password locally, approves remote import of metadata; inspect empty target before transactional restore. Do not ask for password in chat. Preserve all source data and disabled cleanup.
+
 ## CPU crop refinement opt-in — 2026-09-24
 
 - Friend's Mac loads the September 17 candidate but MPS reports unavailable in both environments. Added `PPE_CROP_REFINEMENT_ON_CPU=false` default; set true together with `PPE_CROP_REFINEMENT=true` to use the existing crop inference on CPU. CUDA/MPS behavior and device selection unchanged. Existing `PPE_CROP_MAX_PERSONS` limits work; README provides a one-person, 2 analysis FPS starting configuration for the Mac.

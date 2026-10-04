@@ -1,0 +1,27 @@
+# Guard against accidental repository-root build contexts.
+.git
+**/.git
+.env
+.env.*
+**/.env
+**/.env.*
+**/node_modules
+**/.venv
+**/venv
+**/__pycache__
+**/.pytest_cache
+**/uploads
+**/datasets
+**/experiments
+**/runs
+**/private-backups
+**/*.pt
+**/*.onnx
+**/*.engine
+**/*.db
+**/*.dump
+**/*.pem
+**/*.key
+SH
+doc
+ActivityDiagram

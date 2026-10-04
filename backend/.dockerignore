@@ -1,0 +1,26 @@
+# Allow only application source and migration/dependency files into the image.
+# Checkpoints and evidence must be mounted separately at runtime.
+**
+!Dockerfile
+!.dockerignore
+!requirements.txt
+!requirements-gpu.txt
+!alembic.ini
+!alembic/
+!alembic/**
+!app/
+!app/**
+
+# Exclusions also apply inside allowed source directories.
+**/.env
+**/.env.*
+**/__pycache__
+**/__pycache__/**
+**/*.pyc
+**/*.pt
+**/*.onnx
+**/*.engine
+**/*.db
+**/*.dump
+**/*.pem
+**/*.key

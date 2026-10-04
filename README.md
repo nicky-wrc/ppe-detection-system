@@ -327,7 +327,7 @@ python -c "import torch; print(torch.cuda.is_available())"
 
 #### คำสั่งสำหรับทดสอบโมเดลใหม่บนเครื่อง Windows นี้
 
-ใน `backend/.env` ของเครื่องทดสอบเลือกโมเดล `orange-ppe-yolov8m-yolo11n-hybrid-20260909-v2`
+ใน `backend/.env` ของเครื่องทดสอบปัจจุบันใช้โมเดล `orange-ppe-yolov8m-yolo11n-hybrid-20260917-v4`
 และตั้ง `EVIDENCE_RETENTION_ENABLED=false` ตามคำขอให้เก็บข้อมูลเดิมทั้งหมด
 อย่าคัดลอก `.env.example` ทับ `.env` เดิม เพราะจะทับการตั้งค่าเครื่องและเปิด cleanup กลับตามค่าเริ่มต้น
 
@@ -341,7 +341,9 @@ cd backend
 และรัน API ที่ `127.0.0.1:8000` แบบ process เดียวโดยไม่ใช้ reload
 `--disable-wmi` เลี่ยงอาการ Python 3.12 ค้างใน WMI เฉพาะ process นี้ ไม่แก้ Windows service หรือ Python ที่ติดตั้ง
 หากต้องการตรวจโมเดลและสถานะ cleanup โดยไม่เปิด API/กล้อง ให้เพิ่ม `--check`
-ต้องเปิด PostgreSQL ตามเดิมก่อนเริ่ม API; โมเดลนี้ยังเป็นการทดสอบ ไม่ใช่ production release
+ต้องเชื่อมฐานข้อมูลตาม `DATABASE_URL` ได้ก่อนเริ่ม API (เครื่องปัจจุบันใช้ Supabase);
+YOLOv8m เป็น PPE fine-tune รอบล่าสุด ส่วน YOLO11n เป็น person-assist pretrained เดิม
+โมเดลนี้ยังเป็นการทดสอบ ไม่ใช่ production release หรือหลักฐานว่าดีที่สุดทุกกรณี
 
 ### 3. ติดตั้ง Frontend
 
@@ -802,6 +804,7 @@ cd backend
 
 ## เอกสารที่เกี่ยวข้อง
 
+- [การเตรียม Deploy และผลตรวจโมเดลปัจจุบัน](docs/DEPLOYMENT_PREPARATION.md)
 - [คู่มือปฏิบัติการ Pilot](docs/pilot/OPERATIONS_RUNBOOK.md)
 - [ขั้นตอน Acceptance Test](docs/pilot/ACCEPTANCE_TEST_PROTOCOL.md)
 - [รายการตรวจสอบการอนุมัติข้อมูล](docs/pilot/DATA_APPROVAL_CHECKLIST.md)
