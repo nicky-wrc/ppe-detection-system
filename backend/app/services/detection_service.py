@@ -1,3 +1,5 @@
+import asyncio
+import threading
 import uuid
 import cv2
 import aiofiles
@@ -21,6 +23,9 @@ from app.services.detection_preferences import (
     summarize_detection_settings,
 )
 from app.services.websocket_manager import ws_manager
+
+
+frame_inference_lock = threading.Lock()
 
 
 class DetectionService:
@@ -152,12 +157,27 @@ class DetectionService:
         required_ppe, confidence, person_confidence = self._get_detection_options(user_id, zone_id)
         settings_summary = self._settings_summary(user_id, required_ppe, confidence, person_confidence)
 
-        detection_result = self.detector.detect(
-            image,
-            required_ppe=required_ppe,
-            confidence_threshold=confidence,
-            person_confidence=person_confidence,
-        )
+        # CPU inference must not block /ready, authentication or other API work.
+        # Keep the shared model serialized even outside the demo middleware.
+        def infer_frame():
+            with frame_inference_lock:
+                return self.detector.detect(
+                    image,
+                    required_ppe=required_ppe,
+                    confidence_threshold=confidence,
+                    person_confidence=person_confidence,
+                )
+
+        inference = asyncio.create_task(asyncio.to_thread(infer_frame))
+        try:
+            detection_result = await asyncio.shield(inference)
+        except asyncio.CancelledError:
+            # A thread cannot be cancelled: retain the demo's request lock until
+            # it finishes, so disconnects cannot launch overlapping inference.
+            try:
+                await inference
+            finally:
+                raise
 
         return {
             "id": 0,

@@ -1,13 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
+import { isAxiosError } from 'axios'
 import { Layout } from '../components/layout/Layout'
 import { detectionService } from '../services/detection'
 import type { Detection } from '../types'
+
+function detectionFailure(error: unknown): { message: string; retry: boolean } {
+  if (!isAxiosError(error)) return { message: 'ผลตรวจจับไม่สมบูรณ์ กรุณาลองใหม่', retry: false }
+  const status = error.response?.status
+  if (status === 401) return { message: 'หมดเวลาการเข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่', retry: false }
+  if (status === 403) return { message: 'บัญชีนี้ไม่มีสิทธิ์ตรวจจับ ต้องใช้ Administrator หรือ Safety officer', retry: false }
+  if (status === 429) return { message: 'เซิร์ฟเวอร์กำลังตรวจภาพของผู้ใช้อื่น จะลองใหม่ใน 5 วินาที', retry: true }
+  if (status === 413 || status === 400 || status === 422) return { message: 'เซิร์ฟเวอร์ไม่สามารถรับเฟรมนี้ได้ กรุณาหยุดแล้วเปิดกล้องใหม่', retry: false }
+  if (status && status >= 500) return { message: `Backend ไม่พร้อม (HTTP ${status}) อาจกำลังรีสตาร์ตหรือทรัพยากรไม่พอ`, retry: true }
+  if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') return { message: 'รอ Backend นานเกินไป อาจกำลังปลุกเซิร์ฟเวอร์หรือประมวลผลบน CPU', retry: true }
+  return { message: 'ติดต่อ Backend ไม่ได้ ตรวจอินเทอร์เน็ตและการตั้งค่า API/CORS', retry: true }
+}
 
 export function ResearchDemoPage() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const sessionRef = useRef(0)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const requestRef = useRef<AbortController | null>(null)
   const [accepted, setAccepted] = useState(false)
   const [running, setRunning] = useState(false)
   const [message, setMessage] = useState('พร้อมทดลองด้วย Webcam หรือกล้อง USB ของเครื่องนี้')
@@ -18,6 +32,8 @@ export function ResearchDemoPage() {
 
   const stop = () => {
     sessionRef.current += 1
+    requestRef.current?.abort()
+    requestRef.current = null
     if (timerRef.current) clearTimeout(timerRef.current)
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
@@ -29,6 +45,7 @@ export function ResearchDemoPage() {
 
   useEffect(() => () => {
     sessionRef.current += 1
+    requestRef.current?.abort()
     if (timerRef.current) clearTimeout(timerRef.current)
     streamRef.current?.getTracks().forEach((track) => track.stop())
   }, [])
@@ -40,9 +57,21 @@ export function ResearchDemoPage() {
       return
     }
     const session = ++sessionRef.current
+    const controller = new AbortController()
+    requestRef.current = controller
     setRunning(true)
     setResult(null)
-    setMessage('กำลังขออนุญาตใช้กล้อง…')
+    setMessage('กำลังตรวจความพร้อม Backend… เซิร์ฟเวอร์ฟรีอาจใช้เวลาปลุกประมาณหนึ่งนาที')
+    try {
+      await detectionService.checkReadiness(controller.signal)
+    } catch (error) {
+      if (session !== sessionRef.current) return
+      stop()
+      setMessage(detectionFailure(error).message)
+      return
+    }
+    if (session !== sessionRef.current) return
+    setMessage('Backend พร้อมแล้ว กำลังขออนุญาตใช้กล้อง…')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
@@ -74,20 +103,28 @@ export function ResearchDemoPage() {
         const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.7))
         if (!blob || session !== sessionRef.current) return
         setMessage('กำลังตรวจเฟรม… เซิร์ฟเวอร์ฟรีอาจใช้เวลาปลุกหรือประมวลผล')
+        let retryDelay = 2000
         try {
-          const detection = await detectionService.detectFrame(new File([blob], 'demo-frame.jpg', { type: 'image/jpeg' }))
+          const detection = await detectionService.detectFrame(new File([blob], 'demo-frame.jpg', { type: 'image/jpeg' }), undefined, controller.signal)
           if (session !== sessionRef.current) return
           failures = 0
           setResult(detection)
-          setMessage(`พบ ${detection.person_count} คน · ผลตรวจ PPE เป็นผลทดลอง ไม่ใช่การรับรองความปลอดภัย`)
-        } catch {
+          const duration = detection.processing_time_ms == null ? '' : ` · ประมวลผล ${(detection.processing_time_ms / 1000).toFixed(1)} วินาที`
+          setMessage(`พบ ${detection.person_count} คน${duration} · ผลทดลอง ไม่ใช่การรับรองความปลอดภัย`)
+        } catch (error) {
           if (session !== sessionRef.current) return
           failures += 1
           setResult(null)
-          if (failures >= 3) { stop(); setMessage('ตรวจจับไม่สำเร็จ กรุณาตรวจว่า Backend พร้อมแล้วและลองใหม่'); return }
-          setMessage('Backend ไม่พร้อมหรือมีผู้ใช้อื่นกำลังตรวจ จะลองใหม่โดยไม่ส่งคำขอซ้อน')
+          const failure = detectionFailure(error)
+          if (!failure.retry || failures >= 6) {
+            stop()
+            setMessage(`${failure.message} · หยุดส่งเฟรมแล้ว กรุณาลองเปิดกล้องใหม่`)
+            return
+          }
+          retryDelay = 5000
+          setMessage(`${failure.message} · ลองใหม่ครั้งที่ ${failures}/6 โดยไม่ส่งคำขอซ้อน`)
         }
-        if (session === sessionRef.current) timerRef.current = setTimeout(() => { void capture() }, 2000)
+        if (session === sessionRef.current) timerRef.current = setTimeout(() => { void capture() }, retryDelay)
       }
       void capture()
     } catch {
@@ -115,8 +152,9 @@ export function ResearchDemoPage() {
         <button type="button" disabled={!accepted || running} onClick={() => { void start() }} className="rounded-lg bg-blue-600 px-4 py-2 text-white disabled:opacity-40">เปิดกล้อง</button>
         <button type="button" disabled={!running} onClick={stop} className="rounded-lg border px-4 py-2 disabled:opacity-40">หยุดกล้อง</button>
       </div>
-      <div className="relative overflow-hidden rounded-xl bg-black">
-        <video ref={videoRef} autoPlay muted playsInline className="block w-full" />
+      <div className="relative overflow-hidden rounded-xl bg-black" style={{ aspectRatio: `${size.width} / ${size.height}` }}>
+        <video ref={videoRef} autoPlay muted playsInline className="block h-full w-full object-contain" />
+        {!running && <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-white/70">ยังไม่ได้เปิดกล้อง</div>}
         <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${size.width} ${size.height}`} aria-hidden="true">
           {result?.persons.map((person) => <g key={person.id}>
             <rect x={person.bbox[0]} y={person.bbox[1]} width={person.bbox[2] - person.bbox[0]} height={person.bbox[3] - person.bbox[1]} fill="none" stroke={person.is_compliant ? '#22c55e' : '#ef4444'} strokeWidth="3" />

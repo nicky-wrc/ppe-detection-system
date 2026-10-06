@@ -41,6 +41,9 @@ export interface DetectionHistoryFilters {
 }
 
 export const detectionService = {
+  async checkReadiness(signal?: AbortSignal): Promise<void> {
+    await api.get('/ready', { baseURL: API_ORIGIN, timeout: 90000, signal })
+  },
   async uploadImage(file: File, zoneId?: number, recordKind?: 'violation'): Promise<Detection> {
     const formData = new FormData()
     formData.append('file', file)
@@ -55,13 +58,14 @@ export const detectionService = {
     return response.data
   },
 
-  async detectFrame(file: File, zoneId?: number): Promise<Detection> {
+  async detectFrame(file: File, zoneId?: number, signal?: AbortSignal): Promise<Detection> {
     const formData = new FormData()
     formData.append('file', file)
 
     const params = zoneId ? `?zone_id=${zoneId}` : ''
     const response = await api.post(`/detection/frame${params}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      signal,
     })
     return response.data
   },
