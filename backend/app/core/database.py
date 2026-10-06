@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from app.core.config import settings
+from app.core.database_scope import configure_schema_engine
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,6 +14,7 @@ Settings อ่าน DATABASE_URL จาก environment และใช้ Post
 """
 
 engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+configure_schema_engine(engine, settings.DATABASE_SCHEMA, settings.DATABASE_ROLE)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

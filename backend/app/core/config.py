@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/ppe_detection"
+    DATABASE_SCHEMA: str | None = None
+    DATABASE_ROLE: str | None = None
     AUTO_CREATE_TABLES: bool = True
 
     SECRET_KEY: str = "development-only-secret-change-me"
@@ -106,9 +108,22 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_secrets(self):
+        if self.DATABASE_SCHEMA:
+            from app.core.database_scope import validate_schema_name
+            validate_schema_name(self.DATABASE_SCHEMA)
+            if not self.DATABASE_ROLE:
+                raise ValueError("DATABASE_SCHEMA requires a dedicated DATABASE_ROLE")
         if self.ENVIRONMENT == "research_demo":
             if not self.RESEARCH_DEMO_ACKNOWLEDGED or not self.RESEARCH_DEMO_DATABASE_CONFIRMED:
-                raise ValueError("Research demo requires explicit scope and isolated-database acknowledgements")
+                raise ValueError("Research demo requires explicit scope and isolated-schema acknowledgements")
+            if self.DATABASE_SCHEMA != "ppe_demo" or self.DATABASE_ROLE != "ppe_demo_app":
+                raise ValueError("Research demo requires DATABASE_SCHEMA=ppe_demo and DATABASE_ROLE=ppe_demo_app")
+            from sqlalchemy.engine import make_url
+            database_url = make_url(self.DATABASE_URL)
+            if database_url.drivername not in {"postgresql", "postgresql+psycopg2"} or database_url.query.get("sslmode") not in {"require", "verify-ca", "verify-full"}:
+                raise ValueError("Research demo requires PostgreSQL with TLS")
+            if not database_url.username or database_url.username.split(".")[0] != self.DATABASE_ROLE:
+                raise ValueError("Research demo DATABASE_URL must use its dedicated database role")
             if self.DEBUG or self.AUTO_CREATE_TABLES or self.ALLOW_PUBLIC_REGISTRATION or self.EVIDENCE_RETENTION_ENABLED:
                 raise ValueError("Research demo requires debug, auto-create, public registration and cleanup disabled")
             if len(self.SECRET_KEY) < 32 or self.SECRET_KEY == "development-only-secret-change-me":

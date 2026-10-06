@@ -4,6 +4,15 @@ Prepared 2026-10-06. This guide does not mean a deployment is live or that a fre
 instance can run the model within its memory/latency limits. Do not send a URL to
 testers until the acceptance checks below pass. No paid resources are configured.
 
+Current setup (2026-10-06): approved `ppe_demo` / `ppe_demo_app` provisioning and
+online migrations have been applied to the existing project. Twelve demo tables
+(including `alembic_version`) exist at revision `20260929_01`, with zero demo users.
+Original public schema/ACL/row-count/version snapshots matched before and after.
+Local backend `.env` was NOT changed. Credentials are in the ACL-restricted file
+`D:\ppe-detection-system\private-backups\render-demo-schema-20261006\render-demo.env`.
+Do NOT rerun setup against existing objects; use that private connection in Render
+after reviewing/pushing the updated schema-aware deployment files.
+
 ## Scope of the first URL
 
 - Invitation-only academic demonstration, not public registration or safety use.
@@ -13,24 +22,55 @@ testers until the acceptance checks below pass. No paid resources are configured
   request at a time per browser. Delay between results is at least two seconds.
 - Frames are processed in memory, not stored as evidence or detection history.
 - Server USB/RTSP discovery/start and persistent image/video uploads are disabled.
-- Users of this demo still share organization data; this is NOT tenant isolation.
-  Therefore use a NEW Supabase test project and invited test accounts only.
+- Invited demo users share demo data; this is NOT per-factory tenant isolation.
+  The existing Supabase project can be reused ONLY with the dedicated `ppe_demo`
+  schema and `ppe_demo_app` database login. Existing `public` data is not copied.
 - Local development, existing database/media/model files and production license
   gate remain unchanged. `research_demo` requires explicit acknowledgements;
   it does not establish license/privacy approval or production readiness.
 
-## 1. Prepare accounts and a separate Supabase demo project
+## 1. Prepare the isolated schema in the existing Supabase project
 
 1. Sign in to Render using GitHub, authorize ONLY the required repository.
-2. Create a separate free Supabase project (if within your account's free quota).
-   Do not copy the existing database or use its URL: preserve the old data.
-3. Disable Data API and automatically exposing tables. Copy Session pooler URI,
-   URL-encode password special characters, append `?sslmode=require`.
-4. Keep connection/password private in Render environment variables, never Git or
-   frontend. Render startup will run Alembic against this supplied demo database.
-5. Because this migration may create default public grants, check anon/authenticated
-   effective table/sequence privileges before inviting testers. Keep Data API OFF.
-   The prior project's grant fixes do not apply automatically to this new project.
+2. Keep the old database tables, accounts and local `backend/.env` unchanged.
+   The user approved schema reuse because the account has no free project quota.
+3. From `backend`, run the additive preparation script first in read-only mode:
+
+   ```powershell
+   .\.venv\Scripts\python.exe scripts/prepare_demo_schema.py --project-ref wjnlwekpfiveihrzchlh
+   ```
+
+   It reads the existing private `.env` operator connection without logging it.
+   Applying requires `--apply --secret-dir <existing-private-absolute-directory>`.
+   Protect that directory with ACLs for the owner and SYSTEM only before applying.
+   Script generates a separate password, exclusively saves `render-demo.env` outside
+   Git, creates only `ppe_demo_app` and `ppe_demo` transactionally, and refuses
+   collisions/unsafe inherited grants. It NEVER changes or migrates public tables.
+   If preparation fails, stop and review; do not revoke broad old-project grants
+   or delete/reuse existing objects just to make setup succeed.
+   PostgreSQL 16+ managed-role setup temporarily grants the operator SET on the
+   newly created demo role for ownership/default ACL setup, then revokes SET and
+   leaves INHERIT disabled. It never grants operator privileges to the demo role.
+4. Use the GENERATED role connection in Render, not the old postgres URL:
+   `postgresql://ppe_demo_app.<project-ref>:<new-role-password>@<session-pooler-host>:5432/postgres?sslmode=require`.
+   Password is URL-encoded by the script. Keep the file private; do not paste it
+   into chat or upload it to Git. The old `.env` continues to use public tables.
+5. Blueprint sets `DATABASE_SCHEMA=ppe_demo` and `DATABASE_ROLE=ppe_demo_app`.
+   Every connection checkout restores search_path without public fallback and
+   checks actual login, ownership, role flags/membership, outside table/sequence
+   privileges, schema/database CREATE rights and demo schema Data API access.
+   Alembic has its own `ppe_demo.alembic_version`; existing revisions run online
+   against the demo only. Offline schema SQL is rejected because it cannot audit
+   permissions. Schema setup is additive, not a new revision of public tables.
+   Standard system catalogs and the genuine pg_stat_statements extension's two
+   built-in metadata views are permitted; other roles' SQL text remains protected
+   by PostgreSQL, and the demo login is denied elevated/membership roles. An
+   unrelated view with the same name is NOT exempted from the grant check.
+6. Do not expose `ppe_demo` through Supabase Data API or grant anon/authenticated
+   schema access. Keep demo tables/sequences private and recheck after deployment.
+   Do not disable/change the existing project's APIs blindly if another app uses
+   them. Schema separation shares storage/compute/quota with the original project;
+   it does not provide separate-project availability or disaster isolation.
 
 ## 2. Supply model artifacts privately
 
@@ -50,6 +90,11 @@ Do not include datasets, .env, uploads, private backups or other weights.
 Avoid expiring signed URLs unless you can renew them before cold starts/restarts;
 artifacts must be downloadable every time an ephemeral Render instance starts.
 Never publish weights whose redistribution rights have not been approved.
+On a reused project, do NOT give Render the existing broad service-role/admin API
+key solely to download weights. Prefer a storage identity limited to the model
+bucket, or private signed artifact URLs with an explicit renewal plan (leave
+MODEL_DOWNLOAD_TOKEN empty for signed URLs). Database role isolation does not
+limit a separately supplied broad Storage/Data API token.
 
 ## 3. Commit/push reviewed changes yourself, then create a Blueprint
 
@@ -65,9 +110,10 @@ Never publish weights whose redistribution rights have not been approved.
 
 | Variable | Value |
 | --- | --- |
-| DATABASE_URL | NEW demo Supabase session-pooler URI with TLS |
+| DATABASE_URL | Generated `ppe_demo_app.<project-ref>` session-pooler URI with TLS |
+| DATABASE_SCHEMA / DATABASE_ROLE | `ppe_demo` / `ppe_demo_app` (provided by Blueprint) |
 | RESEARCH_DEMO_ACKNOWLEDGED | `true` only after reviewing scope/license/privacy |
-| RESEARCH_DEMO_DATABASE_CONFIRMED | `true` only after verifying the URL is the NEW demo DB |
+| RESEARCH_DEMO_DATABASE_CONFIRMED | `true` only after verifying dedicated role/schema isolation |
 | ALLOWED_ORIGINS | Exact HTTPS frontend URL, comma separated if needed |
 | BOOTSTRAP_ADMIN_EMAIL | New demo administrator email |
 | BOOTSTRAP_ADMIN_PASSWORD | New strong demo password, not the local password |
@@ -82,7 +128,7 @@ then update to the REAL allocated URLs and rebuild frontend before any testing.
 The placeholder origin will not allow a browser to access the API.
 
 Backend starts `render_start.py`, downloads/hash-verifies the exact checkpoints,
-migrates only the supplied demo DB and rejects model fallback. It uses CPU-only
+migrates only the verified demo schema and rejects model fallback. It uses CPU-only
 PyTorch, one Uvicorn worker, full-frame inference size 640 and one crop person.
 The bootstrap administrator can create invited `safety_officer` accounts in Users;
 Viewer cannot detect. Each tester should have their own account, not shared admin.
@@ -101,6 +147,11 @@ Viewer cannot detect. Each tester should have their own account, not shared admi
    UI retries serially. Restrict initial tests to one camera at a time.
 7. Verify HTTPS, exact CORS origins, model/version and clear experimental notices.
 8. After an idle cold start, confirm artifacts download and login/detection recover.
+9. Confirm the demo has its own users and Alembic version; original local accounts
+   cannot sign in unless separately created for the demo. Verify old public rows
+   and schema/version are unchanged. A schema is NOT a filter based on app Roles.
+10. On failure stop the Render backend and inspect the cause; leave old `.env`,
+    public data and the demo schema in place. No DROP/CASCADE cleanup is needed.
 
 Free Web Services currently have 512 MB RAM/limited CPU and sleep after 15 minutes
 idle. The two-model PyTorch runtime may exceed the free memory limit: successful
@@ -117,11 +168,14 @@ DNS. Once TLS is active, add `https://dtech.life` to backend ALLOWED_ORIGINS and
 verify login/camera again. Keep onrender.com origin only if it is still needed.
 An API custom domain is optional; VITE_API_URL can use Render's backend HTTPS URL.
 
-Remaining human/external steps: Render sign-in/repository authorization, new demo
-DB/password, private model upload/access, reviewed push, actual deployment, DNS and
+Remaining human/external steps: schema/role provisioning if not yet applied, private
+model upload/access, reviewed push, actual deployment, DNS and
 hosted camera tests. No real URL is ready until those steps are completed.
 
 References:
 - https://render.com/docs/free
 - https://render.com/docs/blueprint-spec
 - https://render.com/docs/custom-domains
+- https://supabase.com/docs/guides/troubleshooting/supavisor-faq-YyP5tI
+- https://alembic.sqlalchemy.org/en/latest/cookbook.html#rudimental-schema-level-multi-tenancy-for-postgresql-mysql-other-databases
+- https://www.postgresql.org/docs/17/pgstatstatements.html

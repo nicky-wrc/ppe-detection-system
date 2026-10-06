@@ -10,6 +10,9 @@ TEST_DB = Path(tempfile.gettempdir()) / "ppe_detection_api_tests.db"
 TEST_DB.unlink(missing_ok=True)
 os.environ["ENVIRONMENT"] = "test"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB.as_posix()}"
+# Ignore any operator's cloud schema settings for the normal isolated SQLite suite.
+os.environ.pop("DATABASE_SCHEMA", None)
+os.environ.pop("DATABASE_ROLE", None)
 os.environ["AUTO_CREATE_TABLES"] = "true"
 os.environ["SECRET_KEY"] = "test-secret-key-with-at-least-32-characters"
 os.environ["BOOTSTRAP_ADMIN_EMAIL"] = "admin@example.com"

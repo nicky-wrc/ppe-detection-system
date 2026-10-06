@@ -60,6 +60,10 @@ def main() -> None:
         raise ValueError('This entry point requires the explicitly acknowledged research_demo mode')
     if settings.INFERENCE_DEVICE != 'cpu':
         raise ValueError('Render Free deployment requires explicit CPU inference')
+    from app.core.database import engine
+    with engine.connect() as connection:
+        # Verify credentials/schema isolation before downloads or migrations.
+        connection.exec_driver_sql('SELECT 1')
     port = int(os.environ.get('PORT', '10000'))
     if not 1 <= port <= 65535:
         raise ValueError('Invalid service port')
@@ -72,7 +76,7 @@ def main() -> None:
             raise ValueError('Cloud checkpoints must be under runtime_models')
         fetch_model(path, os.environ.get(prefix + '_MODEL_DOWNLOAD_URL', ''), default_hash,
                     os.environ.get('MODEL_DOWNLOAD_TOKEN', ''))
-    # Migration only targets the explicitly supplied isolated demo database.
+    # Migration only targets the verified dedicated role/schema, never public.
     result = subprocess.run([sys.executable, '-m', 'alembic', 'upgrade', 'head'], capture_output=True)
     if result.returncode:
         raise ValueError('Demo database migration failed; inspect configuration without exposing credentials')

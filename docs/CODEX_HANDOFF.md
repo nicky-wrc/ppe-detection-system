@@ -1,5 +1,49 @@
 # Codex Handoff — PPE Guard AI
 
+## Same-project isolated demo schema — 2026-10-06
+
+- User explicitly approved reusing the existing Supabase project with a separate
+  schema, after the free-project quota prevented a new project. This supersedes
+  the earlier NEW-project requirement. No automatic commit/push is authorized.
+- Added DATABASE_SCHEMA / DATABASE_ROLE and a shared PostgreSQL connection guard
+  used by both ORM and Alembic. Research demo now requires `ppe_demo` / `ppe_demo_app`
+  and TLS. On every checkout restore search_path without public fallback, check
+  actual login, role flags/memberships, owner and effective permissions. Reject
+  outside app data access, CREATE outside scope and demo Data API schema access.
+- Built-in catalogs/statistics are not private application data. Supabase grants
+  PUBLIC SELECT on two pg_stat_statements views; only genuine extension-owned
+  views are exempted (PostgreSQL protects other roles' query text). Integration
+  verifies a spoofed view name cannot bypass the guard. Never allow elevated role
+  memberships or give Render the old project's broad service-role Storage key.
+- Updated Blueprint/env example/guide; `render_start.py` verifies DB scope before
+  downloads/migrations. Alembic reflections and version table target demo schema;
+  offline isolated migrations rejected. No new table definition or public revision
+  change: existing migrations initialize the new schema only.
+- Additive preparation script uses existing private operator .env, generates a
+  separate demo password and exclusively saves its connection outside Git. It
+  refuses collisions/unsafe grants and compares old public layout/ACL/counts/version
+  before/after. Managed non-superuser PostgreSQL 16+ role creation temporarily uses
+  SET on the new role for DDL, then revokes SET and leaves INHERIT false.
+- Actual provisioning and ONLINE demo migration completed in approved project
+  wjnlwekpfiveihrzchlh. Twelve demo tables including separate Alembic version at
+  `20260929_01`; demo users zero. Old public snapshots identical, `.env` unchanged.
+  First failed attempts rolled back fully; no old ACL revokes/data deletions.
+- Verified actual role identity `ppe_demo_app`, schema `ppe_demo`, client TLS true.
+  Generated connection is in ACL-restricted private-backups/render-demo-schema-20261006/
+  render-demo.env, current Windows user and SYSTEM only. NEVER print or commit it.
+  Do not rerun provisioning: existing role/schema should cause refusal.
+- Tests: full isolated SQLite backend suite 176 passed / 67 existing JWT warnings;
+  local PostgreSQL 17 integration (separate cluster) passes migration idempotence,
+  version/accounts isolation, old public reads/writes denied, public preservation,
+  pool rollback/recheckout scoping, unsafe grants/admin login/spoofed view rejection.
+  Non-superuser operator scenario included. Test clusters retained outside Git and
+  stopped after validation. No GPU/camera/inference or Docker/Render acceptance.
+- GitHub main already held commit 70c0cdd at task start; new schema-aware changes
+  remain uncommitted. Render Blueprint form previously selected repo/main, but the
+  services are NOT deployed. Next user reviews/pushes changes, then uses NEW demo
+  connection in Render, privately supplies model URLs and new bootstrap account.
+
+
 ## Deployment preparation and active model audit — 2026-10-04
 
 - User asked to prepare deployment and audit newest YOLOv8/YOLO11 models; no provider/domain chosen or public deployment performed. Existing local frontend/backend processes and private Supabase .env unchanged this turn.

@@ -18,6 +18,10 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      - key: DATABASE_SCHEMA
+        value: ppe_demo
+      - key: DATABASE_ROLE
+        value: ppe_demo_app
       - key: SECRET_KEY
         generateValue: true
       - key: ALLOWED_ORIGINS

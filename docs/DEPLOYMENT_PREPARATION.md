@@ -116,7 +116,8 @@ models; supply the exact checkpoint and person model paths as read-only mounts.
 - Added explicitly acknowledged `research_demo` mode with authenticated stateless
   browser frames, single-request inference, no native cameras/persistent uploads,
   hidden API docs and blocked metrics. Ordinary local behavior remains unchanged.
-- Demo must use a NEW isolated Supabase project; no migration of old user data.
+- Updated schema plan: demo reuses the Supabase project with dedicated `ppe_demo`
+  schema and `ppe_demo_app` login. No copying/migration of old public user data.
 - Fixed Alembic interpolation for URL-encoded database passwords.
 - Full isolated backend suite: 147 passed, 67 warnings. Frontend typecheck/build
   passed; lint has zero errors and two existing CameraPage hook warnings.

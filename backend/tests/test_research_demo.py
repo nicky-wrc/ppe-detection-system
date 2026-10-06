@@ -13,6 +13,8 @@ from render_start import fetch_model
 def demo_settings(**overrides):
     values = dict(ENVIRONMENT='research_demo', RESEARCH_DEMO_ACKNOWLEDGED=True,
         RESEARCH_DEMO_DATABASE_CONFIRMED=True, DEBUG=False, AUTO_CREATE_TABLES=False,
+        DATABASE_SCHEMA='ppe_demo', DATABASE_ROLE='ppe_demo_app',
+        DATABASE_URL='postgresql://ppe_demo_app.project:test-only@host/postgres?sslmode=require',
         ALLOW_PUBLIC_REGISTRATION=False, EVIDENCE_RETENTION_ENABLED=False,
         SECRET_KEY='unique-demo-secret-at-least-32-characters',
         ALLOWED_ORIGINS='https://demo.example.com', MODEL_LICENSE_APPROVED=False)
