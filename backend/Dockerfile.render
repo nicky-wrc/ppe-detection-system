@@ -1,0 +1,8 @@
+FROM python:3.11-slim
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
+COPY requirements-cpu.txt requirements.txt ./
+RUN pip install --no-cache-dir -r requirements-cpu.txt && pip install --no-cache-dir -r requirements.txt
+COPY . .
+ENV OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+CMD ["python", "render_start.py"]

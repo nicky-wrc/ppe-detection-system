@@ -804,6 +804,7 @@ cd backend
 
 ## เอกสารที่เกี่ยวข้อง
 
+- [ขั้นตอน Deploy โหมดสาธิตบน Render Free](docs/RENDER_FREE_DEPLOYMENT.md)
 - [การเตรียม Deploy และผลตรวจโมเดลปัจจุบัน](docs/DEPLOYMENT_PREPARATION.md)
 - [คู่มือปฏิบัติการ Pilot](docs/pilot/OPERATIONS_RUNBOOK.md)
 - [ขั้นตอน Acceptance Test](docs/pilot/ACCEPTANCE_TEST_PROTOCOL.md)

@@ -11,7 +11,9 @@ class Settings(BaseSettings):
 
     PROJECT_NAME: str = "PPE Detection System"
     API_V1_PREFIX: str = "/api/v1"
-    ENVIRONMENT: Literal["development", "test", "production"] = "development"
+    ENVIRONMENT: Literal["development", "test", "research_demo", "production"] = "development"
+    RESEARCH_DEMO_ACKNOWLEDGED: bool = False
+    RESEARCH_DEMO_DATABASE_CONFIRMED: bool = False
     DEBUG: bool = True
 
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/ppe_detection"
@@ -104,6 +106,15 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_secrets(self):
+        if self.ENVIRONMENT == "research_demo":
+            if not self.RESEARCH_DEMO_ACKNOWLEDGED or not self.RESEARCH_DEMO_DATABASE_CONFIRMED:
+                raise ValueError("Research demo requires explicit scope and isolated-database acknowledgements")
+            if self.DEBUG or self.AUTO_CREATE_TABLES or self.ALLOW_PUBLIC_REGISTRATION or self.EVIDENCE_RETENTION_ENABLED:
+                raise ValueError("Research demo requires debug, auto-create, public registration and cleanup disabled")
+            if len(self.SECRET_KEY) < 32 or self.SECRET_KEY == "development-only-secret-change-me":
+                raise ValueError("Research demo requires a unique SECRET_KEY of at least 32 characters")
+            if not self.allowed_origins_list or any(not origin.startswith("https://") or "*" in origin for origin in self.allowed_origins_list):
+                raise ValueError("Research demo requires explicit HTTPS frontend origins")
         if self.ENVIRONMENT == "production":
             if self.SECRET_KEY == "development-only-secret-change-me" or len(self.SECRET_KEY) < 32:
                 raise ValueError("SECRET_KEY must be a unique value of at least 32 characters in production")

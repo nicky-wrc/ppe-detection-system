@@ -141,7 +141,7 @@ class DetectionService:
         zone_id: Optional[int] = None,
         user_id: Optional[int] = None,
     ) -> dict:
-        content = await file.read()
+        content = await file.read(settings.MAX_FRAME_SIZE + 1)
         if len(content) > settings.MAX_FRAME_SIZE:
             raise ValueError(f"เฟรมมีขนาดเกิน {settings.MAX_FRAME_SIZE // (1024 * 1024)} MB")
         image_array = np.frombuffer(content, dtype=np.uint8)

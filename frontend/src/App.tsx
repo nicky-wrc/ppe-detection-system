@@ -12,6 +12,8 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) =
 // Detect page is temporarily hidden from the web application.
 // const DetectionPage = lazy(() => import('./pages/DetectionPage').then((module) => ({ default: module.DetectionPage })))
 const CameraPage = lazy(() => import('./pages/CameraPage').then((module) => ({ default: module.CameraPage })))
+const ResearchDemoPage = lazy(() => import('./pages/ResearchDemoPage').then((module) => ({ default: module.ResearchDemoPage })))
+const researchDemo = import.meta.env.VITE_RESEARCH_DEMO === 'true'
 const SafetyCenterPage = lazy(() => import('./pages/SafetyCenterPage').then((module) => ({ default: module.SafetyCenterPage })))
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((module) => ({ default: module.SettingsPage })))
 const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage').then((module) => ({ default: module.AdminUsersPage })))
@@ -89,7 +91,7 @@ function App() {
           {/* <Route path="/detection" element={<PrivateRoute><DetectionPage /></PrivateRoute>} /> */}
           {/* Previous camera route kept as a comment for easy restoration. */}
           {/* <Route path="/camera" element={<PrivateRoute><CameraPage /></PrivateRoute>} /> */}
-          <Route path="/detect" element={<PrivateRoute><RoleRoute allowedRoles={operationalRoles}><CameraPage /></RoleRoute></PrivateRoute>} />
+          <Route path="/detect" element={<PrivateRoute><RoleRoute allowedRoles={operationalRoles}>{researchDemo ? <ResearchDemoPage /> : <CameraPage />}</RoleRoute></PrivateRoute>} />
           <Route path="/camera" element={<Navigate to="/detect" replace />} />
           <Route path="/reports" element={<PrivateRoute><SafetyCenterPage /></PrivateRoute>} />
           <Route path="/alerts" element={<PrivateRoute><SafetyCenterPage /></PrivateRoute>} />

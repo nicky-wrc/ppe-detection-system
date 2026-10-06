@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
@@ -71,6 +72,8 @@ async def lifespan(_: FastAPI):
         active_camera_ids = [camera.id for camera in db.query(Camera).filter(Camera.is_active.is_(True)).all()]
     finally:
         db.close()
+    if settings.ENVIRONMENT == "research_demo":
+        active_camera_ids = []  # Cloud demo has browser cameras only, never server USB/RTSP.
     for camera_id in active_camera_ids:
         await camera_runtime.start(camera_id)
     if active_camera_ids:
@@ -90,8 +93,9 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     description="ระบบตรวจจับการสวมใส่อุปกรณ์ป้องกันความปลอดภัยแบบอัตโนมัติ",
     version="2.0.0",
-    docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
-    redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None,
+    docs_url="/docs" if settings.ENVIRONMENT in {"development", "test"} else None,
+    redoc_url="/redoc" if settings.ENVIRONMENT in {"development", "test"} else None,
+    openapi_url="/openapi.json" if settings.ENVIRONMENT in {"development", "test"} else None,
     lifespan=lifespan,
 )
 
@@ -104,6 +108,42 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+
+demo_frame_lock = asyncio.Lock()
+
+
+@app.middleware("http")
+async def research_demo_boundary(request: Request, call_next):
+    """A controlled stateless browser-camera trial, not a multi-factory deployment."""
+    if settings.ENVIRONMENT != "research_demo":
+        return await call_next(request)
+    path = request.url.path.rstrip("/")
+    api_prefix = settings.API_V1_PREFIX
+    if path == "/metrics" or path.startswith(f"{api_prefix}/cameras"):
+        return JSONResponse(status_code=403, content={"detail": "Native camera and metrics access is disabled in this research demo"})
+    if request.method == "POST" and (path.startswith(f"{api_prefix}/auth/forgot-password") or path in {
+        f"{api_prefix}/detection/image", f"{api_prefix}/detection/video",
+        f"{api_prefix}/detection/frame/compliant-report",
+        f"{api_prefix}/auth/forgot-password", f"{api_prefix}/auth/reset-password",
+    }):
+        return JSONResponse(status_code=403, content={"detail": "Persistent media and password reset are disabled in this research demo"})
+    if request.method == "POST" and path == f"{api_prefix}/detection/frame":
+        content_length = request.headers.get("content-length")
+        if content_length is not None:
+            try:
+                if int(content_length) < 0 or int(content_length) > settings.MAX_FRAME_SIZE + 65536:
+                    return JSONResponse(status_code=413, content={"detail": "Demo frame is too large"})
+            except ValueError:
+                return JSONResponse(status_code=400, content={"detail": "Invalid content length"})
+        if demo_frame_lock.locked():
+            return JSONResponse(status_code=429, content={"detail": "Demo inference is busy; try again shortly"}, headers={"Retry-After": "2"})
+        async with demo_frame_lock:
+            response = await call_next(request)
+    else:
+        response = await call_next(request)
+    if response.status_code >= 500:
+        return JSONResponse(status_code=response.status_code, content={"detail": "Demo service unavailable; try again later"})
+    return response
 
 
 @app.middleware("http")

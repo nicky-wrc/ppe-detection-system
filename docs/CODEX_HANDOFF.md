@@ -566,6 +566,35 @@ Locked targets ปัจจุบัน:
 
 หลังจากนั้นให้ผู้ใช้เลือกว่าจะทำ Disable soft archive หรือ Docker secret hardening ก่อน เพราะทั้งสองงานต้องมีการยืนยันตามข้อกำหนดใน `AGENTS.md`
 
+## Deployment snapshot — 2026-10-06
+
+- User requested implementation to prepare a free deployment. Target: Render
+  Free controlled invited academic demo, then the existing `dtech.life` domain.
+- Added `render.yaml`, `backend/Dockerfile.render`, `requirements-cpu.txt`, strict
+  `render_start.py` and `docs/RENDER_FREE_DEPLOYMENT.md`.
+- Exact September 17 v4 PPE and existing pretrained YOLO11n person checkpoints
+  are hash-verified at startup; downloaded privately, not placed in Git/images.
+- New explicitly acknowledged `research_demo` environment requires a separate
+  database confirmation. Invited browser webcam frames are stateless/serialized;
+  native cameras, persistent detection uploads, metrics and API docs are disabled.
+  Regular local development and the production license gate remain unchanged.
+- Added demo `/detect` UI behind `VITE_RESEARCH_DEMO=true`, with consent/start/stop,
+  USB/webcam selection, serial requests and PPE overlays. No tenant isolation or
+  cloud access to factory-local RTSP is implemented by this demo.
+- Pinned/installed `tzdata==2026.5`; fixed Alembic percent interpolation. No schema
+  migration was run against the original database. Existing `.env`, data, media,
+  model checkpoints and private backups were preserved.
+- Validation: full isolated backend suite 147 passed / 67 warnings; frontend
+  lint zero errors / two existing warnings, typecheck and isolated demo build pass.
+  Docker Desktop Linux daemon unavailable; hosted RAM/cold starts/camera untested.
+  Local backend not running during latest read-only API check, so no live API fix
+  verification is claimed. Free Render memory may be insufficient for this pair.
+- No commit/push, external deployment, paid resource or DNS change made.
+- Next: user reviews/pushes changes, authorizes Render repository access, creates
+  separate demo Supabase DB and private artifact downloads, then deploys/tests.
+  Keep all credentials in hosting secrets, not chat/Git/frontend. Do not send a
+  tester URL until actual hosted acceptance succeeds; never silently change model.
+
 ## 10. Checklist สำหรับ Codex session ถัดไป
 
 1. อ่าน `AGENTS.md` ทั้งหมด

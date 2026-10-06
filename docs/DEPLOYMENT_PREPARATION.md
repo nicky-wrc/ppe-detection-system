@@ -1,8 +1,11 @@
 # Deployment preparation — PPE Detection System
 
 This is a preparation checklist, not a deployment or production approval.
-No hosting provider, domain, public endpoint or remote runtime has been selected.
-The existing local services and private Supabase connection remain unchanged.
+Render Free is now the selected first controlled-demo target; the user owns
+`dtech.life`. No public endpoint or remote runtime has been deployed yet.
+The existing local configuration and private Supabase connection remain unchanged.
+For the current isolated demo workflow, use `RENDER_FREE_DEPLOYMENT.md`; the broader
+deployment requirements below still apply to a full factory deployment.
 
 ## Model audit (2026-10-04)
 
@@ -59,10 +62,9 @@ The existing local services and private Supabase connection remain unchanged.
    Do not expose uploads as an unauthenticated static directory.
 7. Preserve all existing data and `EVIDENCE_RETENTION_ENABLED=false` during this
    transition. Back up before cutover; enable no cleanup without explicit approval.
-8. Resolve timezone support before release: full backend tests currently fail in
-   daily analytics because this Windows venv has no IANA `Asia/Bangkok` database.
-   A `tzdata` dependency is a proposed fix, not an installed/approved change.
-   Check timezone support in the eventual image too, rather than assuming it.
+8. Timezone dependency is now pinned and installed (`tzdata==2026.5`), with
+   `Asia/Bangkok` covered by tests. Verify the eventual image and live analytics
+   too; the local API was not running during the latest verification.
 
 ## Build commands after target selection
 
@@ -107,6 +109,20 @@ models; supply the exact checkpoint and person model paths as read-only mounts.
   private directory with placeholder public API URL, without replacing local dist.
 - Docker executable exists, but Docker Desktop Linux engine is not running.
   Image build/context enforcement has NOT been validated by a real Docker build.
+
+## Controlled demo preparation update (2026-10-06)
+
+- Added a free Render Blueprint, CPU Dockerfile and strict checkpoint downloader.
+- Added explicitly acknowledged `research_demo` mode with authenticated stateless
+  browser frames, single-request inference, no native cameras/persistent uploads,
+  hidden API docs and blocked metrics. Ordinary local behavior remains unchanged.
+- Demo must use a NEW isolated Supabase project; no migration of old user data.
+- Fixed Alembic interpolation for URL-encoded database passwords.
+- Full isolated backend suite: 147 passed, 67 warnings. Frontend typecheck/build
+  passed; lint has zero errors and two existing CameraPage hook warnings.
+- No Docker image, hosted memory/latency or real HTTPS camera acceptance yet.
+  The model pair may not fit Render Free RAM; no fallback or paid upgrade is made.
+- No commit, push, deployment, DNS change or original data deletion was performed.
 
 Sources:
 - https://docs.docker.com/build/concepts/context/

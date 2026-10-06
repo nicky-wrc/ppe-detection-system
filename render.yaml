@@ -1,0 +1,78 @@
+# Controlled invitation-only academic demo; no production license approval implied.
+services:
+  - type: web
+    name: dtech-ppe-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./backend/Dockerfile.render
+    dockerContext: ./backend
+    healthCheckPath: /ready
+    autoDeployTrigger: off
+    envVars:
+      - key: ENVIRONMENT
+        value: research_demo
+      - key: RESEARCH_DEMO_ACKNOWLEDGED
+        sync: false
+      - key: RESEARCH_DEMO_DATABASE_CONFIRMED
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        sync: false
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
+      - key: PPE_MODEL_DOWNLOAD_URL
+        sync: false
+      - key: PERSON_MODEL_DOWNLOAD_URL
+        sync: false
+      - key: MODEL_DOWNLOAD_TOKEN
+        sync: false
+      - key: DEBUG
+        value: 'false'
+      - key: AUTO_CREATE_TABLES
+        value: 'false'
+      - key: ALLOW_PUBLIC_REGISTRATION
+        value: 'false'
+      - key: MODEL_LICENSE_APPROVED
+        value: 'false'
+      - key: EVIDENCE_RETENTION_ENABLED
+        value: 'false'
+      - key: MODEL_PATH
+        value: ./runtime_models/ppe-best.pt
+      - key: PERSON_MODEL_PATH
+        value: ./runtime_models/person.pt
+      - key: MODEL_VERSION
+        value: orange-ppe-yolov8m-yolo11n-hybrid-20260917-v4
+      - key: INFERENCE_DEVICE
+        value: cpu
+      - key: INFERENCE_IMAGE_SIZE
+        value: '640'
+      - key: PPE_CROP_REFINEMENT
+        value: 'true'
+      - key: PPE_CROP_REFINEMENT_ON_CPU
+        value: 'true'
+      - key: PPE_CROP_MAX_PERSONS
+        value: '1'
+      - key: MAX_FRAME_SIZE
+        value: '1048576'
+  - type: web
+    name: dtech-ppe-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    autoDeployTrigger: off
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+      - key: VITE_RESEARCH_DEMO
+        value: 'true'
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

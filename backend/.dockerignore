@@ -2,6 +2,9 @@
 # Checkpoints and evidence must be mounted separately at runtime.
 **
 !Dockerfile
+!Dockerfile.render
+!render_start.py
+!requirements-cpu.txt
 !.dockerignore
 !requirements.txt
 !requirements-gpu.txt

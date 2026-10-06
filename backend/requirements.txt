@@ -27,6 +27,7 @@ pillow>=10.2.0
 # Utilities
 python-dotenv==1.0.1
 aiofiles==23.2.1
+tzdata==2026.5
 
 # Testing
 pytest==8.0.0
