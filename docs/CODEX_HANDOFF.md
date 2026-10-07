@@ -1,5 +1,30 @@
 # Codex Handoff — PPE Guard AI
 
+## Cloud Detect layout parity — 2026-10-08
+
+- User authorized matching the localhost camera layout while keeping the cloud
+  browser-frame workflow. ResearchDemoPage now uses the existing page-heading,
+  surface-card and Apple button styles: four real session summary cards, camera
+  selection/consent controls, 16:9 live preview and latest per-person PPE results.
+- Stats distinguish unknown device count from zero and session totals from DB
+  totals. Online status only starts after video playback; processing time comes
+  from the API, not simulated FPS. Reports link does not create extra detections.
+- Consent, recording-mode recheck, sequential requests, retries/abort/stop and
+  private evidence behavior remain intact. No RTSP/backend-device discovery,
+  API/schema/role/dependency/model/config changes. Local CameraPage unchanged.
+- Validation: changed-file ESLint, TypeScript build and isolated cloud-mode Vite
+  production build passed. Isolated browser visual QA passed desktop/mobile
+  (390px; no horizontal document overflow), empty state and consent start-button
+  disabled/enabled checks. QA stubbed recording-mode lookup; no real camera,
+  credentials, inference, evidence or database writes used in that test.
+- Pending: user commit/push then frontend Manual Deploy on Render (auto-deploy
+  is off), followed by real authorized camera/result/persistence smoke test on
+  dtech.life. Hosted UI has not been changed by this source-only step.
+- DNS/CORS were configured separately: apex A 216.24.57.1, www CNAME to the
+  frontend onrender hostname. HTTPS apex returns 200, www redirects to apex;
+  both custom-origin API preflights returned 200 with matching allow-origin.
+  ALLOWED_ORIGINS stays sync:false in render.yaml. Original DB/files retained.
+
 ## Same-project isolated demo schema — 2026-10-06
 
 - User explicitly approved reusing the existing Supabase project with a separate
