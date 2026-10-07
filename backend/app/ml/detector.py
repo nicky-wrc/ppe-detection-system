@@ -10,9 +10,7 @@ from typing import Any
 
 import cv2
 import numpy as np
-import torch
 from PIL import Image, ImageDraw, ImageFont
-from ultralytics import YOLO
 
 from app.core.config import settings
 
@@ -301,8 +299,8 @@ class PPEDetector:
     IOU_THRESHOLD = 0.45
 
     def __init__(self) -> None:
-        self.ppe_model: YOLO | None = None
-        self.person_model: YOLO | None = None
+        self.ppe_model: Any | None = None
+        self.person_model: Any | None = None
         self.ppe_model_path: Path | None = None
         self.person_model_path: Path | None = None
         self.font: ImageFont.FreeTypeFont | ImageFont.ImageFont | None = None
@@ -318,6 +316,9 @@ class PPEDetector:
     @staticmethod
     def _resolve_device(configured: str) -> str:
         requested = configured.strip().lower()
+        if requested in {"cpu", "mps"}:
+            return requested
+        import torch
         if requested == "auto":
             return "0" if torch.cuda.is_available() else "cpu"
         if requested not in {"cpu", "mps"} and not torch.cuda.is_available():
@@ -336,7 +337,7 @@ class PPEDetector:
         }
 
     @staticmethod
-    def _model_names(model: YOLO) -> dict[int, str]:
+    def _model_names(model: Any) -> dict[int, str]:
         names = getattr(model, "names", None)
         if names is None:
             return {}
@@ -352,6 +353,22 @@ class PPEDetector:
     def _load_models(self) -> None:
         model_dir = Path(__file__).resolve().parent.parent.parent
         configured_ppe = self._resolve_model_path(model_dir, settings.MODEL_PATH)
+        if settings.INFERENCE_BACKEND == "onnx":
+            from app.ml.onnx_runtime import OnnxModel
+            person_path = self._resolve_model_path(model_dir, settings.PERSON_MODEL_PATH).resolve()
+            self.ppe_model = OnnxModel(configured_ppe.resolve())
+            self.person_model = OnnxModel(person_path)
+            if not {"person", "helmet", "safety-vest"}.issubset(set(self._model_names(self.ppe_model).values())):
+                raise ValueError("Incompatible ONNX PPE model")
+            if "person" not in self._model_names(self.person_model).values():
+                raise ValueError("Incompatible ONNX person model")
+            if self.ppe_model.size != settings.INFERENCE_IMAGE_SIZE or self.person_model.size != settings.INFERENCE_IMAGE_SIZE:
+                raise ValueError("ONNX input size differs from configured inference size")
+            self.ppe_model_path = configured_ppe.resolve()
+            self.person_model_path = person_path
+            logger.info("Loaded strict ONNX hybrid on CPU; no PyTorch fallback")
+            return
+        from ultralytics import YOLO
         candidates = [configured_ppe, model_dir / "yolo8m.pt", model_dir / "yolo8s.pt"]
         seen: set[Path] = set()
 
@@ -438,7 +455,7 @@ class PPEDetector:
 
     def _predict(
         self,
-        model: YOLO,
+        model: Any,
         source: np.ndarray | list[np.ndarray],
         confidence: float,
         classes: list[int] | None = None,

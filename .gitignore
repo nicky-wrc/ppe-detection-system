@@ -209,6 +209,7 @@ backend/datasets/
 /backend/yolo26n.pt
 *.engine
 *.onnx
+!backend/Dockerfile.onnx
 
 # Cursor
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to

@@ -699,6 +699,31 @@ Locked targets ปัจจุบัน:
   bucket and dedicated identity provisioning; audit existing RLS before enabling.
   Real browser camera/roles/restart persistence still unverified for this feature.
 
+## 2026-10-07 ONNX cloud experiment (not promoted)
+
+- Snapshot: Render Free repeatedly exceeded memory limits. Existing CORS fix
+  cannot prevent proxy errors while API is unavailable. Hosted settings unchanged.
+- Completed: additive FP32 static-320 exports of exact v4 PPE and YOLO11n weights;
+  strict CPU ONNX adapter and opt-in Dockerfile.onnx/requirements-onnx.txt without
+  torch/ultralytics. Lazy ML imports prevent unintended torch loading. PyTorch
+  remains default; local .env, source checkpoints, DB and evidence preserved.
+- Validation: 209 application tests passed (69 existing python-jose UTC warnings).
+  Raw `pytest -q` initially collected vendor tests inside isolated experiment
+  tools and failed on missing vendor-only dependencies. Added pytest.ini with
+  testpaths=tests; no application test removed or skipped.
+- Windows CPU peak RSS: PyTorch 748.28 MiB; ONNX 197.34 MiB; ONNX with API imports
+  263.10 MiB; with additional hybrid detection on 60 images 272.21 MiB. No torch
+  import in ONNX trial. 30-image raw replay matched 253 boxes/classes/counts;
+  max score delta 0.00000218, coordinate delta 0.000260 px. Not accuracy evidence.
+- Known issues: local Linux Docker daemon unavailable. Linux dependencies,
+  hosted memory/load, HTTP persistence and long-running behavior still unverified.
+  PPE ONNX is 98.71 MiB; private artifact hosting upload cap must be checked.
+  Do not promise full localhost/RTSP parity or 512 MB compatibility yet.
+- Next task: see docs/CLOUD_ONNX_TRIAL.md; review/push source when authorized,
+  provision private export URLs within existing storage limits, explicitly promote
+  Dockerfile + backend/paths/URLs together, then test on Render and retain rollback.
+  No commit/push or production config mutation performed in this experiment.
+
 1. อ่าน `AGENTS.md` ทั้งหมด
 2. อ่านไฟล์นี้ทั้งหมด
 3. อ่าน `README.md` และเอกสารที่เกี่ยวข้องกับ task

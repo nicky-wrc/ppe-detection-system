@@ -11,6 +11,8 @@ import httpx
 
 EXPECTED_PPE_HASH = '833fa3362afad19f27ff68ac44a52e598d26bd96f7f9f750b5469bd2382e0b9c'
 EXPECTED_PERSON_HASH = '0ebbc80d4a7680d14987a577cd21342b65ecfd94632bd9a8da63ae6417644ee1'
+EXPECTED_ONNX_PPE_HASH = '5c7ab0aab104a90b0531edcd4146f573f4d5cc90ea42d352da895e5f5ad65228'
+EXPECTED_ONNX_PERSON_HASH = 'f68462ab9ebaeb7aab8716ebab31e66269439bd9ff123f424ed3f2420ddf8faa'
 
 
 def fetch_model(destination: Path, url: str, expected_hash: str, token: str = '') -> None:
@@ -67,9 +69,10 @@ def main() -> None:
     port = int(os.environ.get('PORT', '10000'))
     if not 1 <= port <= 65535:
         raise ValueError('Invalid service port')
+    onnx_trial = settings.INFERENCE_BACKEND == 'onnx'
     for configured, default_hash, prefix in (
-        (settings.MODEL_PATH, EXPECTED_PPE_HASH, 'PPE'),
-        (settings.PERSON_MODEL_PATH, EXPECTED_PERSON_HASH, 'PERSON'),
+        (settings.MODEL_PATH, EXPECTED_ONNX_PPE_HASH if onnx_trial else EXPECTED_PPE_HASH, 'PPE'),
+        (settings.PERSON_MODEL_PATH, EXPECTED_ONNX_PERSON_HASH if onnx_trial else EXPECTED_PERSON_HASH, 'PERSON'),
     ):
         path = (root / configured).resolve()
         if not path.is_relative_to(root / 'runtime_models'):
@@ -80,8 +83,9 @@ def main() -> None:
     result = subprocess.run([sys.executable, '-m', 'alembic', 'upgrade', 'head'], capture_output=True)
     if result.returncode:
         raise ValueError('Demo database migration failed; inspect configuration without exposing credentials')
-    import torch
-    torch.set_num_threads(1)
+    if not onnx_trial:
+        import torch
+        torch.set_num_threads(1)
     from app.ml.detector import get_detector
     detector = get_detector()
     if detector.ppe_model_path != (root / settings.MODEL_PATH).resolve() or detector.person_model_path != (root / settings.PERSON_MODEL_PATH).resolve():

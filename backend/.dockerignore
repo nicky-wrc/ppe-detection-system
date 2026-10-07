@@ -3,6 +3,8 @@
 **
 !Dockerfile
 !Dockerfile.render
+!Dockerfile.onnx
+!requirements-onnx.txt
 !render_start.py
 !requirements-cpu.txt
 !.dockerignore
