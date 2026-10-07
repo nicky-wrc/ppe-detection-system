@@ -643,6 +643,18 @@ Locked targets ปัจจุบัน:
 
 ### 2026-10-07 hosted memory incident and CORS repair
 
+- Follow-up: user pushed 8ae3c8d; Blueprint deploy dep-db32ohvlk1mc7397tkb0
+  went Live at 18:27 Bangkok. Real preflight cameras/frame: 200 with exact frontend
+  CORS origin; actual native camera GET: 403 with CORS; unapproved origin: 400
+  without allow-origin. Blueprint reset CLOUD_BROWSER_RECORDING=false; restored
+  approved true and requested Save and deploy (dep-db32q3vavr4c739jfiag).
+  render.yaml now uses sync:false for the recording toggle so future sync does not
+  overwrite operator approval; this small follow-up is uncommitted/unpushed.
+  Research-demo tests after that change: 33 passed. Still no real camera/OOM
+  acceptance proof; do not claim the 512 MB runtime is sufficient.
+- Recording restore deploy went Live at 18:30 Bangkok; /health confirmed
+  CLOUD_BROWSER_RECORDING true, /ready confirmed database ok.
+
 - Render Events confirmed instance h7lvj failed at 18:02 Bangkok: RAM above 512 MB.
   Public health returned 502. Proxy errors have no application CORS headers; this
   is distinct from native-camera preflight being rejected by the demo boundary.
