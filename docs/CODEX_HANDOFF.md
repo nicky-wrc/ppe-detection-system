@@ -724,6 +724,26 @@ Locked targets ปัจจุบัน:
   Dockerfile + backend/paths/URLs together, then test on Render and retain rollback.
   No commit/push or production config mutation performed in this experiment.
 
+## 2026-10-07 multipart model preparation
+
+- User authorized splitting and runtime reassembly for the private artifact
+  upload cap. Added scripts/split_model_artifact.py and ordered JSON secret
+  PPE_MODEL_PART_URLS / PERSON_MODEL_PART_URLS support in render_start.py.
+- Prepared PPE export parts (40 MiB, 40 MiB, 19615050 bytes) in ignored
+  experiments/onnx-v4-fp32-320-20261007/upload-parts. Saved part reassembly hash
+  equals trusted original ONNX hash. Original exports/.pt files preserved.
+- Downloads use 64 KiB streaming, bounded part/total sizes, no redirects and
+  whole-model hash verification before publishing. Invalid/missing/reordered
+  parts fail closed. Existing single-file download behavior is preserved.
+- Validation: 21 new tests, full suite 230 passed / 69 existing JWT warnings;
+  git diff --check passed. No dependency/API/schema/role/retention change.
+- Pending: user push, private bucket upload of 3 PPE parts plus person.onnx,
+  signed URLs in Render secrets, explicit ONNX image/config promotion and hosted
+  acceptance/memory validation. Local .env and hosted settings untouched.
+  On rollback clear multipart variables before restoring original .pt URLs.
+- No Git commit/push, upload, external deploy, original data deletion, storage
+  policy or paid resource change performed by this step. See CLOUD_ONNX_TRIAL.md.
+
 1. อ่าน `AGENTS.md` ทั้งหมด
 2. อ่านไฟล์นี้ทั้งหมด
 3. อ่าน `README.md` และเอกสารที่เกี่ยวข้องกับ task

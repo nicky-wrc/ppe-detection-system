@@ -69,9 +69,9 @@ Use a new report filename each time; reports are never overwritten.
 2. Upload both exports into private model Storage. Check bucket/global size
    limits first: the PPE export is 98.71 MiB and larger than the Free project's
    50 MB per-file cap, so it cannot be uploaded as a single file there. Do not
-   make it public; arrange another approved private artifact host or separately
-   implement and verify bounded multipart download/reassembly without changing
-   the model. Source: https://supabase.com/docs/guides/storage/uploads/file-limits
+   make it public. The additive multipart implementation below now permits
+   bounded download/reassembly without changing the model.
+   Source: https://supabase.com/docs/guides/storage/uploads/file-limits
 3. Supply new private download URLs in Render, never Git. Signed URLs expire and
    must remain valid on every rebuild/restart requiring download.
 4. Only after explicit promotion, select `./backend/Dockerfile.onnx` and set:
@@ -101,3 +101,44 @@ Use a new report filename each time; reports are never overwritten.
 Do not claim all localhost functions are enabled: remote RTSP/private-network
 camera access still requires a separately scoped on-site connector. No cloud
 or original data is deleted by this trial.
+
+## Multipart preparation completed
+
+`backend/scripts/split_model_artifact.py` created three ordered parts in
+`backend/experiments/onnx-v4-fp32-320-20261007/upload-parts/`:
+
+| File | Bytes |
+| --- | --- |
+| ppe.onnx.part001 | 41943040 |
+| ppe.onnx.part002 | 41943040 |
+| ppe.onnx.part003 | 19615050 |
+
+The local `parts-manifest.json` includes each part's SHA-256 and the verified
+reassembled SHA-256, equal to the original export. No compression/precision
+change occurred. This folder and model exports remain ignored by Git.
+
+Next upload these three files plus the existing `person.onnx` to the **private**
+`ppe-demo-models` bucket. Do not upload `.pt` copies or benchmark images. Obtain
+private signed URLs (valid for all future downloads until expiry).
+
+In Render secrets, enter `PPE_MODEL_PART_URLS` as an ordered JSON array:
+
+```json
+["SIGNED_URL_FOR_PART001","SIGNED_URL_FOR_PART002","SIGNED_URL_FOR_PART003"]
+```
+
+Set `PERSON_MODEL_DOWNLOAD_URL` to the signed URL of `person.onnx` and leave
+`PERSON_MODEL_PART_URLS` unset. `PPE_MODEL_PART_URLS`, when nonempty, takes
+precedence over the old `PPE_MODEL_DOWNLOAD_URL`; clear it when rolling back to
+PyTorch. Never store signed URLs in Git, frontend environment variables or docs.
+Malformed part configuration fails instead of falling back to an old model.
+
+Startup streams parts in order with 64 KiB chunks directly into a temporary file,
+at most 40 MiB per part / 100 MiB total / eight parts. It rejects redirects, empty
+parts and non-200 responses; the compiled trusted whole-model hash detects missing,
+reordered or damaged bytes before publishing the checkpoint. Failure removes only
+its own temporary download. Existing mismatched models and preexisting temporary
+files are preserved and startup stops. Single-file `.pt` downloads still work.
+
+Upload and hosted promotion remain pending. No Render config, model URLs, `.env`,
+database or storage policy changed during local multipart preparation.
