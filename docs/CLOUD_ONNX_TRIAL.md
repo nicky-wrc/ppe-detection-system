@@ -2,6 +2,13 @@
 
 ## Scope and status
 
+Hosted update: user approved promotion after the offline trial. Render deploy
+dep-db375c60tbcc73fshej0 (commit 4911fc6) reached Live with Dockerfile.onnx.
+Health/readiness returned healthy/ready and cloud recording stayed enabled.
+Real frame inference and sustained hosted memory acceptance remain pending.
+Local render.yaml follow-up now matches this configuration and needs user push.
+Earlier trial-only status below describes the pre-promotion experiment.
+
 Opt-in CPU runtime using the same v4 YOLOv8m PPE weights and YOLO11n person
 weights. No retraining, quantization, database migration, local `.env` change,
 or hosted promotion was performed. Default remains PyTorch. `render.yaml` still
@@ -140,5 +147,5 @@ reordered or damaged bytes before publishing the checkpoint. Failure removes onl
 its own temporary download. Existing mismatched models and preexisting temporary
 files are preserved and startup stops. Single-file `.pt` downloads still work.
 
-Upload and hosted promotion remain pending. No Render config, model URLs, `.env`,
-database or storage policy changed during local multipart preparation.
+Upload and hosted promotion were subsequently completed with user approval.
+No `.env` or storage policy was changed; original model artifacts remain.

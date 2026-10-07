@@ -5,7 +5,7 @@ services:
     runtime: docker
     plan: free
     region: singapore
-    dockerfilePath: ./backend/Dockerfile.render
+    dockerfilePath: ./backend/Dockerfile.onnx
     dockerContext: ./backend
     healthCheckPath: /ready
     autoDeployTrigger: off
@@ -32,6 +32,8 @@ services:
         sync: false
       - key: PPE_MODEL_DOWNLOAD_URL
         sync: false
+      - key: PPE_MODEL_PART_URLS
+        sync: false
       - key: PERSON_MODEL_DOWNLOAD_URL
         sync: false
       - key: MODEL_DOWNLOAD_TOKEN
@@ -50,11 +52,13 @@ services:
         # Preserve the operator-approved setting when the Blueprint syncs.
         sync: false
       - key: MODEL_PATH
-        value: ./runtime_models/ppe-best.pt
+        value: ./runtime_models/ppe.onnx
       - key: PERSON_MODEL_PATH
-        value: ./runtime_models/person.pt
+        value: ./runtime_models/person.onnx
       - key: MODEL_VERSION
-        value: orange-ppe-yolov8m-yolo11n-hybrid-20260917-v4
+        value: orange-ppe-yolov8m-yolo11n-hybrid-20260917-v4-onnx-fp32-320
+      - key: INFERENCE_BACKEND
+        value: onnx
       - key: INFERENCE_DEVICE
         value: cpu
       - key: INFERENCE_IMAGE_SIZE

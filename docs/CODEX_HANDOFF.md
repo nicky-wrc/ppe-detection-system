@@ -744,6 +744,30 @@ Locked targets ปัจจุบัน:
 - No Git commit/push, upload, external deploy, original data deletion, storage
   policy or paid resource change performed by this step. See CLOUD_ONNX_TRIAL.md.
 
+## 2026-10-07 ONNX hosted promotion
+
+- User explicitly approved one-year private signed artifact URLs and entering
+  them into Render. Three PPE parts + person.onnx uploaded to private bucket;
+  original .pt objects remain. No bucket policy/public access change.
+- Saved INFERENCE_BACKEND=onnx, CPU/static320/crop=false, ONNX model paths and
+  version; ordered PPE_MODEL_PART_URLS and person URL stored only in Render.
+  Dockerfile path saved as backend/Dockerfile.onnx, context remains backend.
+- First deploy used the old Dockerfile before its asynchronous save completed;
+  failed config validation. Also fixed model path fields after delayed Render
+  value loading restored old .pt paths. Verified edited field values before save.
+- Final deploy dep-db375c60tbcc73fshej0, commit 4911fc6, is Live. Build logs show
+  requirements-onnx.txt; application startup complete. Read-only public health
+  healthy with cloud_browser_recording=true; readiness ready/database=ok.
+  Strict startup verifies model hashes/paths before starting API.
+- render.yaml updated locally to match ONNX promotion and preserve multipart URL
+  secret on future Blueprint sync. This small follow-up needs user commit/push;
+  no Git writes performed. Do not sync the old Blueprint values meanwhile.
+- Evidence screenshot outside Git: private-backups/onnx-upload-20261007/
+  render-onnx-live.jpg. Secret URLs not included in source/docs/chat.
+- Still pending: real consented browser-frame detection, persistence/evidence,
+  roles and sustained hosted memory/load tests. Live/readiness alone does not
+  prove inference stability or full localhost parity. No paid resources used.
+
 1. อ่าน `AGENTS.md` ทั้งหมด
 2. อ่านไฟล์นี้ทั้งหมด
 3. อ่าน `README.md` และเอกสารที่เกี่ยวข้องกับ task
