@@ -9,6 +9,7 @@ function detectionFailure(error: unknown): { message: string; retry: boolean } {
   const status = error.response?.status
   if (status === 401) return { message: 'หมดเวลาการเข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่', retry: false }
   if (status === 403) return { message: 'บัญชีนี้ไม่มีสิทธิ์ตรวจจับ ต้องใช้ Administrator หรือ Safety officer', retry: false }
+  if (status === 409) return { message: 'โหมดการเก็บข้อมูลเปลี่ยนแล้ว กรุณารีเฟรชหน้าและอ่านข้อตกลงใหม่', retry: false }
   if (status === 429) return { message: 'เซิร์ฟเวอร์กำลังตรวจภาพของผู้ใช้อื่น จะลองใหม่ใน 5 วินาที', retry: true }
   if (status === 413 || status === 400 || status === 422) return { message: 'เซิร์ฟเวอร์ไม่สามารถรับเฟรมนี้ได้ กรุณาหยุดแล้วเปิดกล้องใหม่', retry: false }
   if (status && status >= 500) return { message: `Backend ไม่พร้อม (HTTP ${status}) อาจกำลังรีสตาร์ตหรือทรัพยากรไม่พอ`, retry: true }
@@ -23,6 +24,7 @@ export function ResearchDemoPage() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const requestRef = useRef<AbortController | null>(null)
   const [accepted, setAccepted] = useState(false)
+  const [cloudRecording, setCloudRecording] = useState<boolean | null>(null)
   const [running, setRunning] = useState(false)
   const [message, setMessage] = useState('พร้อมทดลองด้วย Webcam หรือกล้อง USB ของเครื่องนี้')
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
@@ -50,8 +52,18 @@ export function ResearchDemoPage() {
     streamRef.current?.getTracks().forEach((track) => track.stop())
   }, [])
 
+  useEffect(() => {
+    const controller = new AbortController()
+    void detectionService.getCloudRecordingMode(controller.signal).then((enabled) => {
+      if (!controller.signal.aborted) setCloudRecording(enabled)
+    }).catch(() => {
+      if (!controller.signal.aborted) setMessage('ตรวจโหมดการเก็บข้อมูลไม่ได้ กรุณารีเฟรชหน้าและรอ Backend พร้อม')
+    })
+    return () => controller.abort()
+  }, [])
+
   const start = async () => {
-    if (!accepted || running) return
+    if (!accepted || running || cloudRecording === null) return
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
       setMessage('ต้องเปิดเว็บผ่าน HTTPS และใช้เบราว์เซอร์ที่รองรับกล้อง')
       return
@@ -64,6 +76,15 @@ export function ResearchDemoPage() {
     setMessage('กำลังตรวจความพร้อม Backend… เซิร์ฟเวอร์ฟรีอาจใช้เวลาปลุกประมาณหนึ่งนาที')
     try {
       await detectionService.checkReadiness(controller.signal)
+      const currentMode = await detectionService.getCloudRecordingMode(controller.signal)
+      if (currentMode !== cloudRecording) {
+        if (session !== sessionRef.current) return
+        stop()
+        setAccepted(false)
+        setCloudRecording(currentMode)
+        setMessage('โหมดการเก็บข้อมูลเปลี่ยน กรุณาอ่านและยอมรับเงื่อนไขใหม่ก่อนเปิดกล้อง')
+        return
+      }
     } catch (error) {
       if (session !== sessionRef.current) return
       stop()
@@ -105,12 +126,13 @@ export function ResearchDemoPage() {
         setMessage('กำลังตรวจเฟรม… เซิร์ฟเวอร์ฟรีอาจใช้เวลาปลุกหรือประมวลผล')
         let retryDelay = 2000
         try {
-          const detection = await detectionService.detectFrame(new File([blob], 'demo-frame.jpg', { type: 'image/jpeg' }), undefined, controller.signal)
+          const detection = await detectionService.detectFrame(new File([blob], 'demo-frame.jpg', { type: 'image/jpeg' }), undefined, controller.signal, cloudRecording)
           if (session !== sessionRef.current) return
           failures = 0
           setResult(detection)
           const duration = detection.processing_time_ms == null ? '' : ` · ประมวลผล ${(detection.processing_time_ms / 1000).toFixed(1)} วินาที`
-          setMessage(`พบ ${detection.person_count} คน${duration} · ผลทดลอง ไม่ใช่การรับรองความปลอดภัย`)
+          const saved = detection.id > 0 ? ' · บันทึกผลลง Reports แล้ว' : ''
+          setMessage(`พบ ${detection.person_count} คน${duration}${saved} · ผลทดลอง ไม่ใช่การรับรองความปลอดภัย`)
         } catch (error) {
           if (session !== sessionRef.current) return
           failures += 1
@@ -137,19 +159,21 @@ export function ResearchDemoPage() {
       <h1 className="text-2xl font-semibold">ทดลองตรวจ PPE ผ่านกล้อง</h1>
       <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-950">
         โหมดสาธิตโปรเจกต์จบสำหรับผู้ได้รับเชิญเท่านั้น ใช้ภาพทดลองที่ได้รับอนุญาต
-        เฟรมจะส่งไปประมวลผลบนเซิร์ฟเวอร์ แต่ไม่บันทึกรูป วิดีโอ หรือประวัติการตรวจ
+        {cloudRecording === null ? ' กำลังตรวจสอบโหมดการเก็บข้อมูล…' : cloudRecording
+          ? ' เฟรมส่งไปประมวลผลบนเซิร์ฟเวอร์ ผลตรวจจะบันทึกลงฐานข้อมูลเดโมตามการตั้งค่า หากเปิดบันทึกหลักฐาน ระบบจะเก็บเฉพาะภาพที่เบลอบริเวณศีรษะแล้วใน Storage ส่วนตัว ไม่เก็บวิดีโอต่อเนื่อง การเบลอไม่รับประกันการปกปิดตัวตนทั้งหมด'
+          : ' เฟรมจะส่งไปประมวลผลบนเซิร์ฟเวอร์ แต่ไม่บันทึกรูป วิดีโอ หรือประวัติการตรวจ'}
         ไม่รองรับ RTSP ในโหมดนี้ และไม่ใช่ระบบรับรองความปลอดภัย
       </p>
       <label className="flex items-start gap-3 text-sm">
-        <input type="checkbox" checked={accepted} disabled={running} onChange={(event) => setAccepted(event.target.checked)} />
-        ฉันได้รับอนุญาตให้ใช้ภาพทดลองนี้ และยินยอมส่งเฟรมไปประมวลผลบนเซิร์ฟเวอร์
+        <input type="checkbox" checked={accepted} disabled={running || cloudRecording === null} onChange={(event) => setAccepted(event.target.checked)} />
+        {cloudRecording ? 'ฉันได้รับอนุญาตให้ใช้และเก็บภาพทดลองนี้ และยินยอมประมวลผลและบันทึกผล/ภาพหลักฐานตามการตั้งค่าใน Supabase' : 'ฉันได้รับอนุญาตให้ใช้ภาพทดลองนี้ และยินยอมส่งเฟรมไปประมวลผลบนเซิร์ฟเวอร์'}
       </label>
       <div className="flex flex-wrap items-center gap-3">
         <select aria-label="เลือกกล้อง" value={deviceId} disabled={running} onChange={(event) => setDeviceId(event.target.value)} className="rounded-lg border p-2">
           <option value="">กล้องเริ่มต้น</option>
           {devices.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `กล้อง ${index + 1}`}</option>)}
         </select>
-        <button type="button" disabled={!accepted || running} onClick={() => { void start() }} className="rounded-lg bg-blue-600 px-4 py-2 text-white disabled:opacity-40">เปิดกล้อง</button>
+        <button type="button" disabled={!accepted || running || cloudRecording === null} onClick={() => { void start() }} className="rounded-lg bg-blue-600 px-4 py-2 text-white disabled:opacity-40">เปิดกล้อง</button>
         <button type="button" disabled={!running} onClick={stop} className="rounded-lg border px-4 py-2 disabled:opacity-40">หยุดกล้อง</button>
       </div>
       <div className="relative overflow-hidden rounded-xl bg-black" style={{ aspectRatio: `${size.width} / ${size.height}` }}>

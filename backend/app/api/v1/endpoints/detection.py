@@ -1,8 +1,10 @@
 from typing import Optional
 from datetime import date
 from pathlib import Path
+import logging
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import get_current_user, require_roles
@@ -12,6 +14,7 @@ from app.services import DetectionService
 from app.core.rate_limit import enforce_rate_limit
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _validate_extension(file: UploadFile, allowed: set[str]) -> None:
@@ -64,10 +67,14 @@ async def detect_from_frame(
     request: Request,
     file: UploadFile = File(...),
     zone_id: Optional[int] = Query(None),
+    recording_consent: bool = Query(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("admin", "safety_officer"))
 ):
     """ตรวจจับ PPE จากเฟรมกล้องแบบ realtime โดยไม่บันทึกลงประวัติทุกเฟรม"""
+    from app.core.config import settings
+    if settings.CLOUD_BROWSER_RECORDING and not recording_consent:
+        raise HTTPException(status_code=409, detail="Please review and accept the cloud recording notice")
     enforce_rate_limit(request, "detect-frame", limit=120)
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(
@@ -83,13 +90,15 @@ async def detect_from_frame(
             file=file,
             zone_id=zone_id,
             user_id=current_user.id,
+            recording_consent=recording_consent,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
+        logger.error("Browser frame failed: %s", type(e).__name__)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"เกิดข้อผิดพลาด: {str(e)}"
+            detail="ประมวลผลหรือบันทึกเฟรมไม่สำเร็จ กรุณาลองใหม่"
         )
 
 
@@ -251,6 +260,16 @@ async def get_result_image(
         )
 
     path = detection.result_image_path
+    if path.startswith("supabase://"):
+        from app.services.cloud_evidence import get_cloud_evidence_store, CloudEvidenceError
+        try:
+            content = await get_cloud_evidence_store().download(path)
+        except (CloudEvidenceError, httpx.RequestError):
+            raise HTTPException(status_code=503, detail="Private evidence is temporarily unavailable") from None
+        return Response(content, media_type="image/jpeg", headers={
+            "Cache-Control": "private, no-store",
+            "Content-Disposition": f"inline; filename=result_{detection_id}.jpg",
+        })
     if not os.path.exists(path):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -643,7 +643,8 @@ export function SettingsPage() {
                       <HardDrive size={19} strokeWidth={1.8} />
                     </span>
                     <div>
-                      <p className="text-[17px] font-semibold text-[var(--ink)]">{text('บันทึกหลักฐานจากกล้องฝั่ง Backend', 'Save evidence from backend cameras')}</p>
+                      <p className="text-[17px] font-semibold text-[var(--ink)]">{text('บันทึกภาพหลักฐานจากกล้อง', 'Save camera evidence')}</p>
+                      {import.meta.env.VITE_RESEARCH_DEMO === 'true' && <p className="mt-1 text-[14px] text-[var(--muted)]">{text('กล้องเว็บบันทึกภาพได้เมื่อผู้ดูแลเปิดการบันทึกบนคลาวด์และผู้ใช้ให้ความยินยอม ไม่ใช่วิดีโอต่อเนื่อง', 'Browser snapshots require cloud recording to be enabled and user consent. Continuous video is not recorded.')}</p>}
                       <p className="mt-1 max-w-xl text-[14px] leading-relaxed text-[var(--muted)]">{text('เมื่อปิด ระบบยังเก็บเหตุการณ์และสถิติ แต่จะไม่เก็บภาพหรือคลิปใหม่ หลักฐานเดิมจะไม่ถูกลบ', 'When disabled, events and statistics are still saved, but new images and clips are not. Existing evidence is not deleted.')}</p>
                       <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-amber-700">{text('ไม่รวมการอัปโหลดภาพ วิดีโอ หรือโหมดกล้องผ่านเบราว์เซอร์', 'This does not apply to image or video uploads or browser camera mode.')}</p>
                     </div>

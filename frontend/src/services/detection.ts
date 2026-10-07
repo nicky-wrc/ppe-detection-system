@@ -41,6 +41,10 @@ export interface DetectionHistoryFilters {
 }
 
 export const detectionService = {
+  async getCloudRecordingMode(signal?: AbortSignal): Promise<boolean> {
+    const response = await api.get('/health', { baseURL: API_ORIGIN, timeout: 90000, signal })
+    return response.data.cloud_browser_recording === true
+  },
   async checkReadiness(signal?: AbortSignal): Promise<void> {
     await api.get('/ready', { baseURL: API_ORIGIN, timeout: 90000, signal })
   },
@@ -58,12 +62,15 @@ export const detectionService = {
     return response.data
   },
 
-  async detectFrame(file: File, zoneId?: number, signal?: AbortSignal): Promise<Detection> {
+  async detectFrame(file: File, zoneId?: number, signal?: AbortSignal, recordingConsent = false): Promise<Detection> {
     const formData = new FormData()
     formData.append('file', file)
 
-    const params = zoneId ? `?zone_id=${zoneId}` : ''
-    const response = await api.post(`/detection/frame${params}`, formData, {
+    const params = new URLSearchParams()
+    if (zoneId) params.set('zone_id', String(zoneId))
+    if (recordingConsent) params.set('recording_consent', 'true')
+    const query = params.toString()
+    const response = await api.post(`/detection/frame${query ? `?${query}` : ''}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
       signal,
     })

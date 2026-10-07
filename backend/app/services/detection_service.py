@@ -6,7 +6,7 @@ import aiofiles
 import numpy as np
 from pathlib import Path
 from typing import Any, Optional, List, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, Date, String, and_, or_
@@ -17,6 +17,7 @@ from app.models import Detection, Alert
 from app.ml.detector import get_detector
 from app.services.detection_preferences import (
     get_detection_record_mode,
+    get_detection_cooldown,
     normalize_violation_label,
     resolve_detection_preferences,
     should_save_detection_record,
@@ -145,6 +146,7 @@ class DetectionService:
         file: UploadFile,
         zone_id: Optional[int] = None,
         user_id: Optional[int] = None,
+        recording_consent: bool = False,
     ) -> dict:
         content = await file.read(settings.MAX_FRAME_SIZE + 1)
         if len(content) > settings.MAX_FRAME_SIZE:
@@ -179,7 +181,7 @@ class DetectionService:
             finally:
                 raise
 
-        return {
+        response = {
             "id": 0,
             "zone_id": zone_id,
             "original_image_path": "live-camera-frame",
@@ -194,6 +196,57 @@ class DetectionService:
             "summary": self._summary_with_settings(detection_result, settings_summary),
             "created_at": datetime.now(),
         }
+        if settings.ENVIRONMENT == "research_demo" and settings.CLOUD_BROWSER_RECORDING and recording_consent:
+            response["summary"]["cloud_recording_enabled"] = True
+            if response["person_count"] > 0 and self._allows_detection_record(user_id, response["has_violation"]):
+                cutoff = datetime.now(timezone.utc) - timedelta(seconds=get_detection_cooldown(self.db, user_id))
+                recent = self.db.query(Detection).filter(
+                    Detection.user_id == user_id, Detection.zone_id == zone_id,
+                    Detection.original_image_path == "cloud-browser-frame",
+                    Detection.has_violation == response["has_violation"],
+                    Detection.created_at >= cutoff,
+                ).first()
+                if recent is None:
+                    await self._persist_cloud_frame(image, detection_result, response, user_id)
+        return response
+
+    async def _persist_cloud_frame(self, image: np.ndarray, result: dict, response: dict, user_id: Optional[int]) -> None:
+        from app.services.cloud_evidence import get_cloud_evidence_store, CloudEvidenceError
+        from app.services.evidence_recorder import blur_person_heads, EvidenceRecorder
+
+        _, _, _, save_evidence = resolve_detection_preferences(self.db, user_id, response["zone_id"])
+        evidence_path = None
+        if save_evidence:
+            def encode_evidence():
+                blurred = blur_person_heads(image, result.get("persons", []))
+                annotated = self.detector.draw_detections(blurred, result)
+                return EvidenceRecorder.encode(annotated)
+            encoded = await asyncio.to_thread(encode_evidence)
+            if encoded is None:
+                raise CloudEvidenceError("Evidence encoding failed")
+            evidence_path = await get_cloud_evidence_store().upload(encoded)
+        record = Detection(
+            user_id=user_id, zone_id=response["zone_id"], original_image_path="cloud-browser-frame",
+            result_image_path=evidence_path, detected_objects=response["detected_objects"],
+            persons=response["persons"], violations=response["violations"], person_count=response["person_count"],
+            violation_count=response["violation_count"], has_violation=response["has_violation"],
+            processing_time_ms=response["processing_time_ms"], summary=response["summary"],
+        )
+        try:
+            self.db.add(record)
+            self.db.flush()
+            if record.has_violation:
+                await self._create_alerts(record)
+            else:
+                self.db.commit()
+            self.db.refresh(record)
+        except Exception:
+            self.db.rollback()
+            raise
+        response["id"] = record.id
+        response["original_image_path"] = record.original_image_path
+        response["result_image_path"] = evidence_path
+        response["created_at"] = record.created_at
 
     async def process_compliant_frame_report(
         self,

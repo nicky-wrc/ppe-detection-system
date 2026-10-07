@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import field_validator, model_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     ENVIRONMENT: Literal["development", "test", "research_demo", "production"] = "development"
     RESEARCH_DEMO_ACKNOWLEDGED: bool = False
     RESEARCH_DEMO_DATABASE_CONFIRMED: bool = False
+    CLOUD_BROWSER_RECORDING: bool = False
+    CLOUD_STORAGE_URL: str | None = None
+    CLOUD_STORAGE_BUCKET: str = "ppe-demo-evidence"
+    CLOUD_STORAGE_PUBLIC_KEY: SecretStr | None = None
+    CLOUD_STORAGE_EMAIL: str | None = None
+    CLOUD_STORAGE_PASSWORD: SecretStr | None = None
     DEBUG: bool = True
 
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/ppe_detection"
@@ -108,6 +114,16 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_secrets(self):
+        if self.CLOUD_BROWSER_RECORDING:
+            import re
+            if self.ENVIRONMENT != "research_demo":
+                raise ValueError("Cloud browser recording is an opt-in research demo feature")
+            if not self.CLOUD_STORAGE_URL or not re.fullmatch(r"https://[a-z0-9]+\.supabase\.co", self.CLOUD_STORAGE_URL):
+                raise ValueError("Cloud recording requires an explicit Supabase HTTPS origin")
+            if self.CLOUD_STORAGE_BUCKET != "ppe-demo-evidence":
+                raise ValueError("Cloud recording requires the isolated private evidence bucket")
+            if not all((self.CLOUD_STORAGE_PUBLIC_KEY, self.CLOUD_STORAGE_EMAIL, self.CLOUD_STORAGE_PASSWORD)):
+                raise ValueError("Cloud recording requires a dedicated limited Storage identity")
         if self.DATABASE_SCHEMA:
             from app.core.database_scope import validate_schema_name
             validate_schema_name(self.DATABASE_SCHEMA)

@@ -46,6 +46,8 @@ services:
         value: 'false'
       - key: EVIDENCE_RETENTION_ENABLED
         value: 'false'
+      - key: CLOUD_BROWSER_RECORDING
+        value: 'false'
       - key: MODEL_PATH
         value: ./runtime_models/ppe-best.pt
       - key: PERSON_MODEL_PATH

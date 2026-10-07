@@ -641,6 +641,27 @@ Locked targets ปัจจุบัน:
 
 ## 10. Checklist สำหรับ Codex session ถัดไป
 
+### 2026-10-07 cloud feature parity work (pending hosted setup)
+
+- Hosted CPU/free demo is not equivalent to localhost. Existing research-demo
+  restrictions and model/license gates remain active; v4 weights unchanged.
+- Added opt-in consented browser-frame metadata recording using existing demo
+  tables, recording mode/cooldown, optional blurred JPEG private Storage, and
+  authenticated evidence proxy. Added fail-closed config and public-key-only
+  Storage client using a dedicated Auth identity (not service_role).
+- Defaults remain off. No Storage bucket/account/policy created, Render environment
+  changed, original DB/media deleted, local `.env` edited, commit/push performed.
+- See `docs/CLOUD_BROWSER_RECORDING.md` for provisioning gate, policy audit and
+  outstanding gaps. Do not claim full parity or persistence until actual hosted
+  acceptance testing. Auth credentials must be entered privately by the user.
+- Validation: targeted backend 60 passed (45 existing JWT deprecation warnings);
+  includes private storage mocks, consent/settings/cooldown, head blur before
+  upload and isolated database persistence across sessions. TypeScript and
+  isolated Vite build passed; lint zero errors, two existing CameraPage warnings.
+- Next: review/retest final changes; obtain confirmation for private evidence
+  bucket and dedicated identity provisioning; audit existing RLS before enabling.
+  Real browser camera/roles/restart persistence still unverified for this feature.
+
 1. อ่าน `AGENTS.md` ทั้งหมด
 2. อ่านไฟล์นี้ทั้งหมด
 3. อ่าน `README.md` และเอกสารที่เกี่ยวข้องกับ task

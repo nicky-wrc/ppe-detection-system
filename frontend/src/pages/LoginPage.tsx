@@ -9,6 +9,7 @@ import { useAuthStore } from '../stores/authStore'
 import { useLanguage } from '../i18n/LanguageContext'
 
 export function LoginPage() {
+  const isCloudDemo = import.meta.env.VITE_RESEARCH_DEMO === 'true'
   const { language, setLanguage, text } = useLanguage()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -71,14 +72,16 @@ export function LoginPage() {
               Safety.<br />Seen sooner.
             </h1>
             <p className="!mt-7 !max-w-[600px] text-[17px] font-normal !leading-[1.47] tracking-[-0.01em] !text-white/70">
-              {text('ตรวจจับหมวกนิรภัยและเสื้อสะท้อนแสงแบบเรียลไทม์ ด้วย Hybrid YOLOv8m + YOLO11n บน GPU ภายในองค์กร', 'Detect safety helmets and vests in real time with Hybrid YOLOv8m + YOLO11n on an on-premises GPU.')}
+              {isCloudDemo
+                ? text('ทดลองตรวจจับหมวกนิรภัยและเสื้อสะท้อนแสงผ่าน Webcam ด้วย Hybrid YOLOv8m + YOLO11n ประมวลผลบนเซิร์ฟเวอร์ CPU', 'Test helmet and vest detection through your webcam with Hybrid YOLOv8m + YOLO11n on a CPU server.')
+                : text('ตรวจจับหมวกนิรภัยและเสื้อสะท้อนแสงแบบเรียลไทม์ ด้วย Hybrid YOLOv8m + YOLO11n บน GPU ภายในองค์กร', 'Detect safety helmets and vests in real time with Hybrid YOLOv8m + YOLO11n on an on-premises GPU.')}
             </p>
 
             <div className="mt-10 grid max-w-[620px] gap-3 sm:grid-cols-2">
               <div className="rounded-[18px] border border-white/15 bg-[#272729] p-5">
                 <Cpu className="mb-5 text-white/70" size={22} strokeWidth={1.75} aria-hidden="true" />
-                <h2 className="m-0 text-[17px] font-semibold tracking-[-0.01em] text-white">Edge processing</h2>
-                <p className="!mt-1 !max-w-none !text-[14px] !leading-[1.47] !text-white/55">{text('ประมวลผลบนโครงสร้างพื้นฐานภายในองค์กร', 'Processed on your organization’s infrastructure.')}</p>
+                <h2 className="m-0 text-[17px] font-semibold tracking-[-0.01em] text-white">{isCloudDemo ? 'Cloud research demo' : 'Edge processing'}</h2>
+                <p className="!mt-1 !max-w-none !text-[14px] !leading-[1.47] !text-white/55">{isCloudDemo ? text('ส่งเฟรมที่ได้รับอนุญาตไปประมวลผลบนคลาวด์ ไม่รองรับ RTSP ภายในโรงงานโดยตรง', 'Authorized frames are processed in the cloud. Private factory RTSP is not directly supported.') : text('ประมวลผลบนโครงสร้างพื้นฐานภายในองค์กร', 'Processed on your organization’s infrastructure.')}</p>
               </div>
               <div className="rounded-[18px] border border-white/15 bg-[#272729] p-5">
                 <Activity className="mb-5 text-white/70" size={22} strokeWidth={1.75} aria-hidden="true" />

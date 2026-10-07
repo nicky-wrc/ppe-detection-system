@@ -172,6 +172,7 @@ async def root():
 async def health():
     return {
         "status": "healthy",
+        "cloud_browser_recording": settings.CLOUD_BROWSER_RECORDING,
         "environment": settings.ENVIRONMENT,
         "data_access_policy": DATA_ACCESS_POLICY,
     }

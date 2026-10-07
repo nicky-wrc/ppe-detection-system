@@ -821,5 +821,10 @@ Source code ของ repository ใช้สัญญาอนุญาต MIT 
 
 ## ผู้จัดทำ
 
+การบันทึกผลกล้องเว็บบนคลาวด์แบบเลือกเปิดใช้งาน: อ่าน
+[Cloud browser recording](docs/CLOUD_BROWSER_RECORDING.md) ก่อนเปิด
+`CLOUD_BROWSER_RECORDING` โหมดนี้ยังต้องเตรียม Storage ส่วนตัวและทดสอบบนโฮสต์
+ไม่ใช่การรองรับฟังก์ชัน localhost ทั้งหมด และไม่เปลี่ยนข้อมูลเดิม
+
 - Nicky
 - Krit
