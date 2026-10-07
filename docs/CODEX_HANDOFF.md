@@ -641,6 +641,31 @@ Locked targets ปัจจุบัน:
 
 ## 10. Checklist สำหรับ Codex session ถัดไป
 
+### 2026-10-07 hosted memory incident and CORS repair
+
+- Render Events confirmed instance h7lvj failed at 18:02 Bangkok: RAM above 512 MB.
+  Public health returned 502. Proxy errors have no application CORS headers; this
+  is distinct from native-camera preflight being rejected by the demo boundary.
+- Moved configured CORS middleware outside request/demo middleware. Preflight is
+  handled, while actual native-camera access remains 403. Unapproved origins stay
+  rejected; no wildcard, role, consent, evidence or database policy was changed.
+- Free Blueprint uses inference size 320, crop refinement off (including CPU opt-in),
+  preserving v4/YOLO11n weights. User authorized these changes. Render environment
+  was saved with the same three overrides and a service restart requested. Local
+  `.env`, original data/media and checkpoints are unchanged; no paid resources.
+- Then manually deployed existing b561e07 to apply saved environment reliably:
+  dep-db32lgrbc2fs73cdkt60 went Live at 18:21 Bangkok. New instance 2q7lq started;
+  the source CORS repair still requires a separate user push/deployment.
+- Validation: research_demo, cloud_evidence and frame_responsiveness tests: 54 passed;
+  API security, roles and settings regression: 15 passed (53 existing JWT warnings
+  across both runs). After restart, public /health and /ready returned 200 with
+  database ok and cloud recording still enabled; Render reported service recovered.
+  Hosted frame inference/peak memory remains
+  unverified; smaller inputs may reduce distant-PPE recall.
+- CORS source changes are NOT committed/pushed or deployed yet. User must push or
+  explicitly authorize Git writes before deployment. Check restart/health, then
+  actual consented camera persistence and resource use before declaring success.
+
 ### 2026-10-07 cloud feature parity work (pending hosted setup)
 
 - Hosted CPU/free demo is not equivalent to localhost. Existing research-demo

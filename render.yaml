@@ -57,11 +57,11 @@ services:
       - key: INFERENCE_DEVICE
         value: cpu
       - key: INFERENCE_IMAGE_SIZE
-        value: '640'
+        value: '320'
       - key: PPE_CROP_REFINEMENT
-        value: 'true'
+        value: 'false'
       - key: PPE_CROP_REFINEMENT_ON_CPU
-        value: 'true'
+        value: 'false'
       - key: PPE_CROP_MAX_PERSONS
         value: '1'
       - key: MAX_FRAME_SIZE

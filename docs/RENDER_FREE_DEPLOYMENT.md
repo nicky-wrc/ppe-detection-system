@@ -4,6 +4,15 @@ Prepared 2026-10-06. This guide does not mean a deployment is live or that a fre
 instance can run the model within its memory/latency limits. Do not send a URL to
 testers until the acceptance checks below pass. No paid resources are configured.
 
+2026-10-07 hosted incident: Render reported memory above its 512 MiB limit during
+the browser-camera trial. The free Blueprint now starts at `INFERENCE_IMAGE_SIZE=320`
+with both `PPE_CROP_REFINEMENT` and `PPE_CROP_REFINEMENT_ON_CPU` disabled. This keeps
+the exact v4/YOLO11n weights, but can reduce small/distant PPE recall. These settings
+are a memory-reduction trial, NOT proof that 512 MiB is sufficient. Keep local `.env`
+unchanged. Require an actual inference/memory test after deployment; if it still
+fails, stop retrying and choose separate inference hosting or a measured optimized
+runtime rather than silently changing the model or purchasing compute.
+
 Current setup (2026-10-06): approved `ppe_demo` / `ppe_demo_app` provisioning and
 online migrations have been applied to the existing project. Twelve demo tables
 (including `alembic_version`) exist at revision `20260929_01`, with zero demo users.
