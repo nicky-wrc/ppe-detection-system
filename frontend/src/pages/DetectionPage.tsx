@@ -770,7 +770,7 @@ export function DetectionPage() {
           <div className="flex flex-col gap-4">
 
             <section className="surface-card overflow-hidden" aria-labelledby="detection-input-title">
-              <div className="flex min-h-20 items-center justify-between gap-4 border-b border-[#e0e0e0] px-5 py-4 sm:px-8">
+              <div className="flex min-h-20 flex-col items-start justify-between gap-4 border-b border-[#e0e0e0] px-5 py-4 sm:flex-row sm:items-center sm:px-8">
                 <div>
                   <h2 id="detection-input-title" className="m-0 text-[21px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">
                    {activeTab === 'image' ? 'Upload Image' : activeTab === 'video' ? 'Upload Video' : 'Live Camera'}
@@ -861,7 +861,7 @@ export function DetectionPage() {
                           type="button"
                           onClick={() => void refreshAvailableCameraDevices()}
                           disabled={isCameraStarting}
-                          className="btn-apple-secondary min-h-11 shrink-0 px-4"
+                          className="btn-apple-secondary min-h-11 w-full shrink-0 px-4 sm:w-auto"
                         >
                           <RefreshCw size={16} aria-hidden="true" /> Reconnect Devices
                         </button>
@@ -951,7 +951,7 @@ export function DetectionPage() {
 
                 {/* Actions / Detect / Reset buttons */}
                 {(preview || isCameraTab) && (hasValidFile || isCameraTab) && (
-                  <div className="mt-5 flex flex-wrap gap-3">
+                  <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                     {activeTab === 'image' ? (
                       <button
                         type="button"
@@ -998,7 +998,7 @@ export function DetectionPage() {
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); handleReset() }}
-                      className="btn-apple-secondary min-h-12 px-5 text-[15px]"
+                        className="btn-apple-secondary min-h-12 w-full px-5 text-[15px] sm:w-auto"
                       aria-label="Clear source and results"
                     >
                       <X size={17} aria-hidden="true" /> Clear

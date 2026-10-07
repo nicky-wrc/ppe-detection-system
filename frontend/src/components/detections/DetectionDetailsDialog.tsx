@@ -101,32 +101,32 @@ export function DetectionDetailsDialog({
   })() : null
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-5 sm:p-6">
       <button type="button" aria-label={text('ปิดรายละเอียด', 'Close details')} className="absolute inset-0 h-full w-full cursor-default border-0 bg-black/55 backdrop-blur-[2px]" onClick={onClose} />
-      <section ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="detection-details-title" className="relative flex max-h-[92vh] w-full max-w-[900px] flex-col overflow-hidden rounded-[18px] border border-[var(--line)] bg-white">
-        <header className="flex min-h-[72px] shrink-0 items-center justify-between gap-4 border-b border-[var(--line)] px-5 sm:px-8">
-          <div className="flex items-center gap-3">
-            <span className={`inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#f5f5f7] ${violationOnly ? 'text-[#d70015]' : 'text-[var(--ink)]'}`} aria-hidden="true">
+      <section ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="detection-details-title" className="relative flex max-h-[82dvh] w-full max-w-[440px] flex-col overflow-hidden rounded-[14px] border border-[var(--line)] bg-white sm:max-h-[92dvh] sm:max-w-[900px] sm:rounded-[18px]">
+        <header className="flex min-h-[64px] shrink-0 items-center justify-between gap-2 border-b border-[var(--line)] px-3 py-2 sm:min-h-[72px] sm:gap-4 sm:px-8">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f5f5f7] sm:h-11 sm:w-11 ${violationOnly ? 'text-[#d70015]' : 'text-[var(--ink)]'}`} aria-hidden="true">
               {violationOnly ? <ShieldAlert size={19} strokeWidth={1.8} /> : <FileText size={18} strokeWidth={1.8} />}
             </span>
-            <div>
-              <h2 id="detection-details-title" className="text-[21px] font-semibold text-[var(--ink)]">{text(violationOnly ? 'รายละเอียดการฝ่าฝืน' : 'รายละเอียดการตรวจจับ', violationOnly ? 'Violation details' : 'Detection details')}</h2>
+            <div className="min-w-0">
+              <h2 id="detection-details-title" className="text-[17px] leading-snug font-semibold text-[var(--ink)] sm:text-[21px]">{text(violationOnly ? 'รายละเอียดการฝ่าฝืน' : 'รายละเอียดการตรวจจับ', violationOnly ? 'Violation details' : 'Detection details')}</h2>
               {detection && <p className="mt-0.5 text-[13px] text-[var(--muted)]">DET-{String(detection.id).padStart(5, '0')}</p>}
             </div>
           </div>
-          <button type="button" onClick={onClose} aria-label={text('ปิด', 'Close')} className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#f5f5f7] text-[var(--ink)] hover:text-[var(--blue)]"><X size={18} aria-hidden="true" /></button>
+          <button type="button" onClick={onClose} aria-label={text('ปิด', 'Close')} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f5f5f7] text-[var(--ink)] hover:text-[var(--blue)]"><X size={18} aria-hidden="true" /></button>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-5 sm:p-8">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-8">
           {loading ? (
             <div className="flex min-h-64 items-center justify-center gap-3 text-[var(--muted)]" role="status"><Loader2 size={20} className="animate-spin" />{text('กำลังโหลดรายละเอียด…', 'Loading details…')}</div>
           ) : !detection ? (
             <div className="flex min-h-64 items-center justify-center text-[var(--muted)]" role="alert">{text('ไม่พบข้อมูลการตรวจจับ', 'Detection data not found')}</div>
           ) : (
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4 sm:gap-6">
               {error && <div className="rounded-[11px] border border-[#f2b8bd] bg-[#fff5f5] px-4 py-3 text-[14px] text-[#d70015]" role="alert">{text('โหลดรายละเอียดเพิ่มเติมไม่สำเร็จ ข้อมูลพื้นฐานยังแสดงอยู่', 'Additional details could not be loaded. Basic information is still available.')}</div>}
-              <div className="overflow-hidden rounded-[18px] border border-[var(--line)] bg-[#f5f5f7]"><ProtectedDetectionImage detectionId={detection.id} alt={text(`ผลการตรวจจับ ${detection.id}`, `Detection ${detection.id} result`)} className="w-full max-h-[420px] object-contain" /></div>
-              {clipUrl && <div className="overflow-hidden rounded-[18px] border border-[var(--line)] bg-black"><video src={clipUrl} controls className="max-h-[420px] w-full" aria-label={text('คลิปหลักฐานการฝ่าฝืน', 'Violation evidence clip')} /></div>}
+              <div className="overflow-hidden rounded-[18px] border border-[var(--line)] bg-[#f5f5f7]"><ProtectedDetectionImage detectionId={detection.id} alt={text(`ผลการตรวจจับ ${detection.id}`, `Detection ${detection.id} result`)} className="w-full max-h-[28dvh] object-contain sm:max-h-[420px]" /></div>
+              {clipUrl && <div className="overflow-hidden rounded-[18px] border border-[var(--line)] bg-black"><video src={clipUrl} controls className="max-h-[28dvh] w-full sm:max-h-[420px]" aria-label={text('คลิปหลักฐานการฝ่าฝืน', 'Violation evidence clip')} /></div>}
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="rounded-[18px] border border-[var(--line)] bg-[#f5f5f7] p-5"><p className="text-[13px] text-[var(--muted)]">{text('วันที่และเวลา', 'Date & time')}</p><p className="mt-2 text-[17px] font-semibold text-[var(--ink)]">{new Date(detection.created_at).toLocaleString(language === 'th' ? 'th-TH' : 'en-GB')}</p></div>
@@ -139,7 +139,7 @@ export function DetectionDetailsDialog({
                   [text('จำนวนคน', 'Persons'), detection.person_count],
                   [text('การฝ่าฝืน', 'Violations'), detection.violation_count],
                   [text('เวลาประมวลผล', 'Processing time'), detection.processing_time_ms != null ? `${detection.processing_time_ms} ms` : '—'],
-                ].map(([label, value]) => <div key={String(label)} className="p-5 text-center"><p className="text-[13px] text-[var(--muted)]">{label}</p><p className="mt-3 text-[26px] font-semibold text-[var(--ink)]">{value}</p></div>)}</div>
+                ].map(([label, value]) => <div key={String(label)} className="min-w-0 p-2 text-center sm:p-5"><p className="text-[11px] text-[var(--muted)] sm:text-[13px]">{label}</p><p className="mt-2 text-[18px] font-semibold text-[var(--ink)] sm:mt-3 sm:text-[26px]">{value}</p></div>)}</div>
               </div>
 
               {!!detection.violations?.length && <div className="rounded-[18px] border border-[var(--line)] p-5"><p className="mb-4 text-[14px] font-semibold text-[var(--ink)]">{text('ประเภทการฝ่าฝืน', 'Violation types')}</p><div className="flex flex-wrap gap-2">{detection.violations.map((item, index) => <span key={`${item}-${index}`} className="rounded-full border border-[#f0c3c8] bg-[#fff8f8] px-4 py-2 text-[13px] font-semibold text-[#d70015]">{violationLabel(item)}</span>)}</div></div>}
@@ -151,7 +151,7 @@ export function DetectionDetailsDialog({
           )}
         </div>
 
-        <footer className="flex shrink-0 justify-end gap-3 border-t border-[var(--line)] bg-[#f5f5f7] px-5 py-5 sm:px-8">
+        <footer className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-[var(--line)] bg-[#f5f5f7] px-3 py-3 sm:gap-3 sm:px-8 sm:py-5">
           <button type="button" onClick={onClose} className="btn-apple-secondary !min-h-11">{text('ปิด', 'Close')}</button>
           {detection && onDownload && <button type="button" onClick={() => onDownload(detection)} disabled={downloading} className="btn-apple-primary !min-h-11">{downloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}{text('ดาวน์โหลด PDF', 'Download PDF')}</button>}
         </footer>

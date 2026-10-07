@@ -1205,19 +1205,19 @@ export function CameraPage() {
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
             {canOperateCameras && cameras.length > 0 && (
               <button
                 type="button"
                 onClick={() => void runBulkAction('stop')}
                 disabled={bulkAction !== null || hasBusyCamera || activeCount === 0}
-                className="btn-apple-secondary min-h-11"
+                className="btn-apple-secondary min-h-11 w-full sm:w-auto"
               >
                 {bulkAction === 'stop' ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Square size={15} aria-hidden="true" />}
                 {text('หยุดทั้งหมด', 'Stop all')}
               </button>
             )}
-            <button type="button" onClick={() => void load()} disabled={loading} className="btn-apple-secondary min-h-11">
+            <button type="button" onClick={() => void load()} disabled={loading} className="btn-apple-secondary min-h-11 w-full sm:w-auto">
               <RefreshCw size={16} className={loading ? 'animate-spin' : ''} aria-hidden="true" /> {text('รีเฟรช', 'Refresh')}
             </button>
           </div>
@@ -1244,7 +1244,7 @@ export function CameraPage() {
               onClick={() => setIsRegisterCameraExpanded((current) => !current)}
               aria-expanded={isRegisterCameraExpanded}
               aria-controls="register-camera-content"
-              className={`group flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-[#f8f8fa] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#0066cc] sm:px-8 sm:py-5 ${isRegisterCameraExpanded ? 'border-b border-[var(--line)]' : ''}`}
+                  className={`group flex w-full flex-col items-start justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-[#f8f8fa] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#0066cc] sm:flex-row sm:items-center sm:px-8 sm:py-5 ${isRegisterCameraExpanded ? 'border-b border-[var(--line)]' : ''}`}
             >
               <span className="flex min-w-0 items-center gap-3">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f5f5f7] text-[#0066cc] transition-colors group-hover:bg-[#eaf2ff]">
@@ -1350,16 +1350,16 @@ export function CameraPage() {
                   || (sourceType === 'usb' && (!isDeviceIndexValid || duplicateDeviceIndex || isRefreshingDevices))
                   || (sourceType === 'rtsp' && (!isRtspUrlValid || duplicateRtspUrl))
                 }
-                className="btn-apple-primary min-h-12 px-6"
+                className="btn-apple-primary min-h-12 w-full px-6 lg:w-auto"
               >
                 {creating ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Plus size={16} aria-hidden="true" />} {text('เพิ่มกล้อง', 'Add camera')}
               </button>
             </form>
-            <div className="mt-4 flex justify-end">
+            <div className="mt-4 flex justify-stretch sm:justify-end">
               <button
                 type="button"
                 onClick={() => void refreshAvailableCameraDevices()}
-                className="btn-apple-secondary min-h-11 shrink-0 px-4"
+                className="btn-apple-secondary min-h-11 w-full shrink-0 px-4 sm:w-auto"
                 disabled={loading || isRefreshingDevices}
               >
                 <RefreshCw size={16} className={isRefreshingDevices ? 'animate-spin' : ''} aria-hidden="true" /> {text('ค้นหากล้องใหม่', 'Reconnect devices')}
@@ -1411,7 +1411,7 @@ export function CameraPage() {
               const shouldShowBackendError = Boolean(camera.last_error) && !isBrowserPreviewActive && !isOpenCameraSourceError(camera.last_error)
               return (
                 <article key={camera.id} className="surface-card p-5 sm:p-6" aria-busy={isBusy}>
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex min-w-0 items-start gap-3">
                       <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${camera.is_online ? 'bg-[#edf8ef] text-[#15803d]' : camera.is_active ? 'bg-[#fff7e8] text-[#9a5b00]' : 'bg-[#f0f0f2] text-[#6e6e73]'}`}>
                         <Camera size={20} aria-hidden="true" />
@@ -1446,7 +1446,7 @@ export function CameraPage() {
                     <div className="mt-5 rounded-[18px] bg-[#f5f5f7] px-4 py-5 text-center text-[13px] leading-5 text-[#6e6e73]">{text('ผู้ดูแลระบบและเจ้าหน้าที่ความปลอดภัยเท่านั้นที่ดูภาพสดได้', 'Live preview is available to administrators and safety officers.')}</div>
                   )}
 
-                  <dl className="mt-5 grid grid-cols-3 gap-2">
+                  <dl className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <div className="rounded-[18px] bg-[#f5f5f7] p-3 sm:p-4"><dt className="text-[11px] font-semibold text-[var(--muted)]">AI FPS</dt><dd className="mb-0 mt-1 text-[20px] font-semibold text-[#1d1d1f]">{camera.measured_fps.toFixed(1)}</dd></div>
                     <div className="rounded-[18px] bg-[#f5f5f7] p-3 sm:p-4"><dt className="text-[11px] font-semibold text-[var(--muted)]">{text('ภาพที่วิเคราะห์', 'Frames')}</dt><dd className="mb-0 mt-1 text-[20px] font-semibold text-[#1d1d1f]">{camera.frames_analyzed.toLocaleString()}</dd></div>
                     <div className="min-w-0 rounded-[18px] bg-[#f5f5f7] p-3 sm:p-4"><dt className="text-[11px] font-semibold text-[var(--muted)]">{text('พื้นที่', 'Zone')}</dt><dd className="mb-0 mt-1 truncate text-[15px] font-semibold text-[#1d1d1f]">{zones.find((zone) => zone.id === camera.zone_id)?.name || text('ค่าเริ่มต้น', 'Default')}</dd></div>
@@ -1456,13 +1456,13 @@ export function CameraPage() {
 
                   {canOperateCameras && (
                     <div className="mt-5 border-t border-[#e0e0e0] pt-5">
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                         {camera.is_active || isBrowserPreviewActive ? (
-                          <button type="button" title={text('หยุดวิเคราะห์ชั่วคราว กล้องยังอยู่ในรายการ', 'Pause analysis while keeping the camera registered')} onClick={() => void runAction(camera, 'stop')} disabled={isBusy || bulkAction !== null} className="btn-apple-secondary min-h-11 px-4">
+                          <button type="button" title={text('หยุดวิเคราะห์ชั่วคราว กล้องยังอยู่ในรายการ', 'Pause analysis while keeping the camera registered')} onClick={() => void runAction(camera, 'stop')} disabled={isBusy || bulkAction !== null} className="btn-apple-secondary min-h-11 w-full px-4 sm:w-auto">
                             {busyAction === 'stop' ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Square size={14} aria-hidden="true" />} {text('หยุด', 'Stop')}
                           </button>
                         ) : (
-                          <button type="button" title={text('ทดสอบการเชื่อมต่อ แล้วเปิดกล้องนี้เพื่อวิเคราะห์', 'Test the connection, then open this camera for analysis')} onClick={() => void runAction(camera, 'start')} disabled={isBusy || bulkAction !== null} className="btn-apple-primary min-h-11 px-4">
+                          <button type="button" title={text('ทดสอบการเชื่อมต่อ แล้วเปิดกล้องนี้เพื่อวิเคราะห์', 'Test the connection, then open this camera for analysis')} onClick={() => void runAction(camera, 'start')} disabled={isBusy || bulkAction !== null} className="btn-apple-primary min-h-11 w-full px-4 sm:w-auto">
                             {busyAction === 'start' ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Play size={15} aria-hidden="true" />} {text('ทดสอบและเริ่ม', 'Test & Start')}
                           </button>
                         )}
@@ -1472,7 +1472,7 @@ export function CameraPage() {
                             title={text('ลบกล้องนี้ออกจากระบบ', 'Delete this camera')}
                             onClick={() => void deleteCamera(camera)}
                             disabled={isBusy || bulkAction !== null}
-                            className="ml-auto inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-[#f0c3c8] bg-white px-4 text-[14px] font-semibold text-[#b4232f] transition hover:bg-[#fff8f8] disabled:cursor-not-allowed disabled:opacity-50"
+                            className="inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-[#f0c3c8] bg-white px-4 text-[14px] font-semibold text-[#b4232f] transition hover:bg-[#fff8f8] disabled:cursor-not-allowed disabled:opacity-50 sm:ml-auto sm:w-auto"
                           >
                             {busyAction === 'delete' ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Trash2 size={15} aria-hidden="true" />} {text('ลบ', 'Delete')}
                           </button>

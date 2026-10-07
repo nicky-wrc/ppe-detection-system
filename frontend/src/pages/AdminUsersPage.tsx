@@ -290,18 +290,21 @@ export function AdminUsersPage() {
           </button>
         </header>
 
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-3" aria-label={text('สรุปบัญชีผู้ใช้', 'Account summary')}>
+        <section className="grid grid-cols-3 gap-2 sm:gap-4" aria-label={text('สรุปบัญชีผู้ใช้', 'Account summary')}>
           {[
-            { label: text('บัญชีทั้งหมด', 'All accounts'), value: users.length, icon: Users, className: 'text-[var(--blue)]' },
-            { label: text('กำลังใช้งาน', 'Active'), value: activeCount, icon: CheckCircle2, className: 'text-[#15803d]' },
-            { label: text('ผู้ดูแลระบบ', 'Administrators'), value: adminCount, icon: ShieldCheck, className: 'text-[#7c3aed]' },
+            { label: text('บัญชีทั้งหมด', 'All accounts'), compactLabel: text('ทั้งหมด', 'Accounts'), value: users.length, icon: Users, className: 'text-[var(--blue)]' },
+            { label: text('กำลังใช้งาน', 'Active'), compactLabel: text('ใช้งานอยู่', 'Active'), value: activeCount, icon: CheckCircle2, className: 'text-[#15803d]' },
+            { label: text('ผู้ดูแลระบบ', 'Administrators'), compactLabel: text('ผู้ดูแล', 'Admins'), value: adminCount, icon: ShieldCheck, className: 'text-[#7c3aed]' },
           ].map((stat) => (
-            <div key={stat.label} className="surface-card flex min-h-28 items-center justify-between gap-4 p-5 sm:p-6">
-              <div>
-                <p className="text-[13px] text-[var(--muted)]">{stat.label}</p>
-                <p className="mt-2 text-[32px] font-semibold leading-none tracking-[-0.03em] text-[var(--ink)] tabular-nums">{stat.value}</p>
+            <div key={stat.label} className="surface-card flex min-h-28 min-w-0 flex-col-reverse items-start justify-end gap-2 p-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:p-6">
+              <div className="min-w-0">
+                <p className="text-[12px] leading-[18px] text-[var(--muted)] sm:text-[13px]">
+                  <span className="sm:hidden">{stat.compactLabel}</span>
+                  <span className="hidden sm:inline">{stat.label}</span>
+                </p>
+                <p className="mt-2 text-[24px] font-semibold leading-none tracking-normal text-[var(--ink)] tabular-nums sm:text-[32px]">{stat.value.toLocaleString()}</p>
               </div>
-              <stat.icon size={21} className={stat.className} strokeWidth={1.8} aria-hidden="true" />
+              <stat.icon size={21} className={`h-4 w-4 shrink-0 sm:h-[21px] sm:w-[21px] ${stat.className}`} strokeWidth={1.8} aria-hidden="true" />
             </div>
           ))}
         </section>

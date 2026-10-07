@@ -326,7 +326,7 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
 
   const content = (
     <>
-      <div className={`${embedded ? '' : 'mx-auto max-w-[1240px] '}flex flex-col gap-8 sm:gap-10`}>
+      <div className={`${embedded ? '' : 'mx-auto max-w-[1240px] '}flex flex-col gap-5 sm:gap-10`}>
         {!embedded && <header className="page-heading">
           <div className="flex items-start gap-4">
             <div className="mt-3 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ink)] text-white" aria-hidden="true">
@@ -339,19 +339,22 @@ export function HistoryPage({ embedded = false }: HistoryPageProps = {}) {
           </div>
         </header>}
 
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6" aria-label="Detection summary">
+        <section className="grid grid-cols-3 gap-2 sm:gap-6" aria-label="Detection summary">
           {[
-            { label: text('พบการฝ่าฝืน', 'Violations'), value: violationCount, note: text('ในหน้านี้', 'On this page'), icon: AlertTriangle, iconClassName: 'text-[#d70015]' },
-            { label: text('สวมใส่ครบ', 'Compliant'), value: complianceCount, note: text('ในหน้านี้', 'On this page'), icon: CheckCircle, iconClassName: 'text-[#15803d]' },
-            { label: text('รายการทั้งหมด', 'Total records'), value: total, note: text('ทุกช่วงเวลา', 'All time'), icon: FileText, iconClassName: 'text-[var(--muted)]' },
+            { label: text('พบการฝ่าฝืน', 'Violations'), compactLabel: text('ฝ่าฝืน', 'Violations'), value: violationCount, note: text('ในหน้านี้', 'On this page'), icon: AlertTriangle, iconClassName: 'text-[#d70015]' },
+            { label: text('สวมใส่ครบ', 'Compliant'), compactLabel: text('ใส่ครบ', 'Compliant'), value: complianceCount, note: text('ในหน้านี้', 'On this page'), icon: CheckCircle, iconClassName: 'text-[#15803d]' },
+            { label: text('รายการทั้งหมด', 'Total records'), compactLabel: text('ทั้งหมด', 'Total'), value: total, note: text('ทุกช่วงเวลา', 'All time'), icon: FileText, iconClassName: 'text-[var(--muted)]' },
           ].map((stat) => (
-            <div key={stat.label} className="surface-card min-h-40 p-6 sm:p-7">
-              <div className="flex items-start justify-between gap-4">
-                <p className="text-[14px] text-[var(--muted)]">{stat.label}</p>
-                <stat.icon size={19} className={stat.iconClassName} strokeWidth={1.8} aria-hidden="true" />
+            <div key={stat.label} className="surface-card min-w-0 p-2.5 sm:min-h-40 sm:p-7">
+              <div className="flex flex-col-reverse items-start gap-1.5 sm:flex-row sm:justify-between sm:gap-4">
+                <p className="text-[12px] leading-[18px] text-[var(--muted)] sm:text-[14px]">
+                  <span className="sm:hidden">{stat.compactLabel}</span>
+                  <span className="hidden sm:inline">{stat.label}</span>
+                </p>
+                <stat.icon size={19} className={`h-4 w-4 shrink-0 sm:h-[19px] sm:w-[19px] ${stat.iconClassName}`} strokeWidth={1.8} aria-hidden="true" />
               </div>
-              <p className="mt-6 text-[40px] font-semibold leading-none tracking-[-0.04em] text-[var(--ink)] tabular-nums">{stat.value.toLocaleString()}</p>
-              <p className="mt-2 text-[13px] text-[var(--muted)]">{stat.note}</p>
+              <p className="mt-2 text-[24px] font-semibold leading-none tracking-normal text-[var(--ink)] tabular-nums sm:mt-6 sm:text-[40px]">{stat.value.toLocaleString()}</p>
+              <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)] sm:mt-2 sm:text-[13px]">{stat.note}</p>
             </div>
           ))}
         </section>

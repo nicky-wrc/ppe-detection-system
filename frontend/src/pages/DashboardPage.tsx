@@ -648,60 +648,72 @@ export function DashboardPage() {
           </div>
         )}
 
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Key safety metrics">
+        <section className="dashboard-metrics grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4" aria-label="Key safety metrics">
           {/* Total Detections */}
           <article className="surface-card flex min-h-[156px] flex-col justify-between p-6">
             <div className="flex items-start justify-between">
-              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">{text('การตรวจจับทั้งหมด', 'Total detections')}</p>
+              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">
+                <span className="sm:hidden">{text('ตรวจจับทั้งหมด', 'Detections')}</span>
+                <span className="hidden sm:inline">{text('การตรวจจับทั้งหมด', 'Total detections')}</span>
+              </p>
               <Activity size={20} className="text-[#86868b]" strokeWidth={1.75} aria-hidden="true" />
             </div>
             <div className="mt-5">
               <p className="m-0 text-[38px] font-semibold leading-none tracking-[-0.035em] text-[#1d1d1f]">
                 {(stats?.total_detections ?? 0).toLocaleString()}
               </p>
-              {renderTrend(cardChange.detections, 'neutral')}
+              <div className="hidden sm:block">{renderTrend(cardChange.detections, 'neutral')}</div>
             </div>
           </article>
 
           {/* Total Violations */}
           <article className="surface-card flex min-h-[156px] flex-col justify-between p-6">
             <div className="flex items-start justify-between">
-              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">{text('พบการฝ่าฝืน', 'Total violations')}</p>
+              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">
+                <span className="sm:hidden">{text('พบการฝ่าฝืน', 'Violations')}</span>
+                <span className="hidden sm:inline">{text('พบการฝ่าฝืน', 'Total violations')}</span>
+              </p>
               <AlertTriangle size={20} className="text-[#d70015]" strokeWidth={1.75} aria-hidden="true" />
             </div>
             <div className="mt-5">
               <p className="m-0 flex flex-wrap items-baseline gap-x-2 text-[38px] font-semibold leading-none tracking-[-0.035em] text-[#1d1d1f]">
                 <span>{(stats?.total_violations ?? 0).toLocaleString()}</span>
-                <span className="text-[20px] font-semibold tracking-[-0.01em] text-[#86868b]">({violationRate}%)</span>
+                <span className="dashboard-metric-rate text-[18px] font-semibold tracking-[-0.01em] text-[#86868b] sm:text-[20px]">({violationRate}%)</span>
               </p>
-              {renderTrend(cardChange.violations, 'down')}
+              <div className="hidden sm:block">{renderTrend(cardChange.violations, 'down')}</div>
             </div>
           </article>
 
           {/* Compliant Persons */}
           <article className="surface-card flex min-h-[156px] flex-col justify-between p-6">
             <div className="flex items-start justify-between">
-              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">{text('ผู้ที่สวมใส่ครบ', 'Compliant persons')}</p>
+              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">
+                <span className="sm:hidden">{text('สวมใส่ครบ', 'Compliant')}</span>
+                <span className="hidden sm:inline">{text('ผู้ที่สวมใส่ครบ', 'Compliant persons')}</span>
+              </p>
               <CheckCircle size={20} className="text-[#248a3d]" strokeWidth={1.75} aria-hidden="true" />
             </div>
             <div className="mt-5">
               <p className="m-0 flex flex-wrap items-baseline gap-x-2 text-[38px] font-semibold leading-none tracking-[-0.035em] text-[#1d1d1f]">
                 <span>{compliantPersons.toLocaleString()}</span>
-                <span className="text-[20px] font-semibold tracking-[-0.01em] text-[#86868b]">({complianceRate}%)</span>
+                <span className="dashboard-metric-rate text-[18px] font-semibold tracking-[-0.01em] text-[#86868b] sm:text-[20px]">({complianceRate}%)</span>
               </p>
-              {renderTrend(cardChange.compliance, 'up')}
+              <div className="hidden sm:block">{renderTrend(cardChange.compliance, 'up')}</div>
             </div>
           </article>
 
           {/* Active Cameras */}
           <article className="surface-card flex min-h-[156px] flex-col justify-between p-6">
             <div className="flex items-start justify-between">
-              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">{text('กล้องที่กำลังทำงาน', 'Active cameras')}</p>
+              <p className="m-0 text-[15px] font-normal text-[#6e6e73]">
+                <span className="sm:hidden">{text('กล้องออนไลน์', 'Active cameras')}</span>
+                <span className="hidden sm:inline">{text('กล้องที่กำลังทำงาน', 'Active cameras')}</span>
+              </p>
               <Camera size={20} className="text-[#86868b]" strokeWidth={1.75} aria-hidden="true" />
             </div>
             <div className="mt-5 flex flex-col gap-2">
               <p className="m-0 text-[38px] font-semibold leading-none tracking-[-0.035em] text-[#1d1d1f]">{activeCameras}</p>
-              <p className="m-0 flex items-center gap-2 text-[13px] font-normal text-[#6e6e73]">
+              <p className="m-0 hidden items-center gap-2 text-[13px] font-normal text-[#6e6e73] sm:flex">
                 <span className={`h-2 w-2 rounded-full ${activeCameras > 0 ? 'bg-[#248a3d]' : 'bg-[#86868b]'}`} aria-hidden="true" />
                 {activeCameras > 0 ? text('ออนไลน์อยู่', 'Online now') : text('ไม่มีกล้องออนไลน์', 'No camera online')}
               </p>
@@ -715,7 +727,7 @@ export function DashboardPage() {
             <p className="mt-1 text-[14px] leading-[1.45] text-[#6e6e73]">{text('ตัวเลขและแนวโน้มจากข้อมูลของทุกบัญชี', 'Metrics and trends from all accounts.')}</p>
           </div>
           <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:justify-end">
-            <div className="flex max-w-full items-center gap-1 overflow-visible rounded-full bg-[#f5f5f7] p-1" aria-label="Date range">
+            <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full bg-[#f5f5f7] p-1" aria-label="Date range">
               {['Today', '7 days', '30 days'].map((f) => (
                 <button
                   type="button"

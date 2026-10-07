@@ -49,7 +49,55 @@ export function DetectionRecordsTable({
   }
 
   return (
-    <div className={`overflow-auto ${maxHeightClassName}`.trim()}>
+    <div className={maxHeightClassName.trim()}>
+      <div className="grid gap-3 p-4 md:hidden">
+        {detections.map((detection) => {
+          const personOnly = isPersonOnlyDetection(detection)
+          return (
+            <article key={detection.id} className="rounded-[14px] border border-[var(--line)] bg-white p-4">
+              <div className="flex gap-3">
+                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-[11px] border border-[var(--line)] bg-[#f5f5f7]">
+                  <ProtectedDetectionImage detectionId={detection.id} alt={text(`ภาพการตรวจจับ ${detection.id}`, `Detection ${detection.id} preview`)} className="h-full w-full object-cover" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[15px] font-semibold leading-snug text-[var(--ink)]">
+                    {new Date(detection.created_at).toLocaleString(language === 'th' ? 'th-TH' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                  <p className="mt-1 flex items-center gap-2 text-[13px] text-[var(--muted)]">
+                    <Users size={14} className="shrink-0" strokeWidth={1.8} aria-hidden="true" />
+                    <span className="font-semibold tabular-nums text-[var(--ink)]">{detection.person_count}</span>
+                    {text('คน', 'persons')}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {detection.violations?.length ? (
+                  <>
+                    {detection.violations.slice(0, 3).map((violation, violationIndex) => <span key={`${violation}-${violationIndex}`} className="inline-flex rounded-full border border-[#f0c3c8] bg-[#fff8f8] px-3 py-1.5 text-[12px] font-semibold text-[#d70015]">{violationLabel(violation)}</span>)}
+                    {detection.violations.length > 3 && <span className="inline-flex rounded-full bg-[#f5f5f7] px-3 py-1.5 text-[12px] text-[var(--muted)]">+{detection.violations.length - 3} {text('รายการ', 'more')}</span>}
+                  </>
+                ) : (
+                  <span className={`inline-flex rounded-full border px-3 py-1.5 text-[12px] font-semibold ${personOnly ? 'border-[#c7d2fe] bg-[#eef2ff] text-[#1d4ed8]' : 'border-[#b9dfc2] bg-[#f3fbf5] text-[#15803d]'}`}>{personOnly ? text('ตรวจพบคน', 'Person detected') : text('สวมใส่ครบ', 'Compliant')}</span>
+                )}
+              </div>
+
+              <div className="mt-4 flex items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
+                <span className={`inline-flex min-w-0 items-center gap-2 text-[13px] font-semibold ${detection.has_violation ? 'text-[#d70015]' : personOnly ? 'text-[#1d4ed8]' : 'text-[#15803d]'}`}>
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${detection.has_violation ? 'bg-[#d70015]' : personOnly ? 'bg-[#3b82f6]' : 'bg-[#34c759]'}`} aria-hidden="true" />
+                  {statusLabel(detection)}
+                </span>
+                <div className="flex shrink-0 items-center gap-2">
+                  {onDownload && <button type="button" onClick={() => onDownload(detection)} disabled={downloadingId === detection.id} aria-label={text(`ดาวน์โหลด PDF รายการ ${detection.id}`, `Download PDF for detection ${detection.id}`)} className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--line)] bg-white text-[var(--blue)] transition-colors hover:bg-[#f5f5f7] active:scale-95 disabled:opacity-50">{downloadingId === detection.id ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Download size={16} strokeWidth={1.8} aria-hidden="true" />}</button>}
+                  <button type="button" onClick={() => onView(detection)} aria-label={text(`ดูการตรวจจับ ${detection.id}`, `View detection ${detection.id}`)} className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--line)] bg-white text-[var(--blue)] transition-colors hover:bg-[#f5f5f7] active:scale-95"><Eye size={16} strokeWidth={1.8} aria-hidden="true" /></button>
+                </div>
+              </div>
+            </article>
+          )
+        })}
+      </div>
+
+      <div className="hidden overflow-auto md:block">
       <table className="w-full min-w-[900px] border-collapse">
         <thead>
           <tr className="bg-[#f5f5f7] text-left text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--muted)]">
@@ -104,6 +152,7 @@ export function DetectionRecordsTable({
           })}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }
