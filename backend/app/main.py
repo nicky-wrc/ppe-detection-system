@@ -99,14 +99,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.allowed_origins_list,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Bootstrap-Token"],
-)
-
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
 demo_frame_lock = asyncio.Lock()
@@ -161,6 +153,17 @@ async def request_context(request: Request, call_next):
         (time.perf_counter() - started) * 1000,
     )
     return response
+
+
+# CORS must wrap the demo boundary so preflight and early rejection responses
+# retain the configured origin policy. Actual native-camera requests stay blocked.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins_list,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Bootstrap-Token"],
+)
 
 
 @app.get("/")

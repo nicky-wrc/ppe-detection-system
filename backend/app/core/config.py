@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     CONFIDENCE_THRESHOLD: float = 0.20
     PERSON_CONFIDENCE_THRESHOLD: float = 0.30
     INFERENCE_DEVICE: str = "auto"
+    INFERENCE_BACKEND: Literal["pytorch", "onnx"] = "pytorch"
     INFERENCE_IMAGE_SIZE: int = 640
     LOW_LIGHT_ENHANCEMENT: bool = True
     LOW_LIGHT_LUMA_THRESHOLD: float = 72.0
@@ -114,6 +115,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_secrets(self):
+        if self.INFERENCE_BACKEND == "onnx":
+            if self.INFERENCE_DEVICE != "cpu" or self.PPE_CROP_REFINEMENT:
+                raise ValueError("ONNX trial requires CPU and crop refinement disabled")
+            if self.INFERENCE_IMAGE_SIZE not in {320, 640}:
+                raise ValueError("ONNX trial requires static input size 320 or 640")
+            if any(Path(path).suffix != ".onnx" for path in (self.MODEL_PATH, self.PERSON_MODEL_PATH)):
+                raise ValueError("ONNX trial requires explicit ONNX paths for both models")
         if self.CLOUD_BROWSER_RECORDING:
             import re
             if self.ENVIRONMENT != "research_demo":

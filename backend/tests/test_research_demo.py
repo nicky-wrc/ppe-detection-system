@@ -51,6 +51,37 @@ def test_demo_frame_still_requires_authentication(client, monkeypatch):
     assert response.status_code == 401
 
 
+def test_demo_camera_preflight_preserves_cors_without_enabling_camera(client, monkeypatch):
+    monkeypatch.setattr(settings, 'ENVIRONMENT', 'research_demo')
+    origin = settings.allowed_origins_list[0]
+    headers = {'Origin': origin, 'Access-Control-Request-Method': 'GET',
+               'Access-Control-Request-Headers': 'authorization'}
+    response = client.options('/api/v1/cameras/', headers=headers)
+    assert response.status_code == 200
+    assert response.headers['access-control-allow-origin'] == origin
+    response = client.get('/api/v1/cameras/', headers={'Origin': origin})
+    assert response.status_code == 403
+    assert response.headers['access-control-allow-origin'] == origin
+
+
+@pytest.mark.parametrize('busy,status', [(False, 401), (True, 429)])
+def test_demo_frame_rejections_preserve_cors(client, monkeypatch, busy, status):
+    monkeypatch.setattr(settings, 'ENVIRONMENT', 'research_demo')
+    monkeypatch.setattr(demo_frame_lock, 'locked', lambda: busy)
+    origin = settings.allowed_origins_list[0]
+    response = client.post('/api/v1/detection/frame', headers={'Origin': origin})
+    assert response.status_code == status
+    assert response.headers['access-control-allow-origin'] == origin
+
+
+def test_demo_preflight_rejects_unapproved_origin(client, monkeypatch):
+    monkeypatch.setattr(settings, 'ENVIRONMENT', 'research_demo')
+    response = client.options('/api/v1/cameras/', headers={
+        'Origin': 'https://unapproved.invalid', 'Access-Control-Request-Method': 'GET'})
+    assert response.status_code == 400
+    assert 'access-control-allow-origin' not in response.headers
+
+
 def test_demo_busy_does_not_queue_frames(client, monkeypatch):
     monkeypatch.setattr(settings, 'ENVIRONMENT', 'research_demo')
     monkeypatch.setattr(demo_frame_lock, 'locked', lambda: True)

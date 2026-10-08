@@ -1,5 +1,30 @@
 # Codex Handoff — PPE Guard AI
 
+## Cloud Detect layout parity — 2026-10-08
+
+- User authorized matching the localhost camera layout while keeping the cloud
+  browser-frame workflow. ResearchDemoPage now uses the existing page-heading,
+  surface-card and Apple button styles: four real session summary cards, camera
+  selection/consent controls, 16:9 live preview and latest per-person PPE results.
+- Stats distinguish unknown device count from zero and session totals from DB
+  totals. Online status only starts after video playback; processing time comes
+  from the API, not simulated FPS. Reports link does not create extra detections.
+- Consent, recording-mode recheck, sequential requests, retries/abort/stop and
+  private evidence behavior remain intact. No RTSP/backend-device discovery,
+  API/schema/role/dependency/model/config changes. Local CameraPage unchanged.
+- Validation: changed-file ESLint, TypeScript build and isolated cloud-mode Vite
+  production build passed. Isolated browser visual QA passed desktop/mobile
+  (390px; no horizontal document overflow), empty state and consent start-button
+  disabled/enabled checks. QA stubbed recording-mode lookup; no real camera,
+  credentials, inference, evidence or database writes used in that test.
+- Pending: user commit/push then frontend Manual Deploy on Render (auto-deploy
+  is off), followed by real authorized camera/result/persistence smoke test on
+  dtech.life. Hosted UI has not been changed by this source-only step.
+- DNS/CORS were configured separately: apex A 216.24.57.1, www CNAME to the
+  frontend onrender hostname. HTTPS apex returns 200, www redirects to apex;
+  both custom-origin API preflights returned 200 with matching allow-origin.
+  ALLOWED_ORIGINS stays sync:false in render.yaml. Original DB/files retained.
+
 ## Same-project isolated demo schema — 2026-10-06
 
 - User explicitly approved reusing the existing Supabase project with a separate
@@ -641,6 +666,43 @@ Locked targets ปัจจุบัน:
 
 ## 10. Checklist สำหรับ Codex session ถัดไป
 
+### 2026-10-07 hosted memory incident and CORS repair
+
+- Follow-up: user pushed 8ae3c8d; Blueprint deploy dep-db32ohvlk1mc7397tkb0
+  went Live at 18:27 Bangkok. Real preflight cameras/frame: 200 with exact frontend
+  CORS origin; actual native camera GET: 403 with CORS; unapproved origin: 400
+  without allow-origin. Blueprint reset CLOUD_BROWSER_RECORDING=false; restored
+  approved true and requested Save and deploy (dep-db32q3vavr4c739jfiag).
+  render.yaml now uses sync:false for the recording toggle so future sync does not
+  overwrite operator approval; this small follow-up is uncommitted/unpushed.
+  Research-demo tests after that change: 33 passed. Still no real camera/OOM
+  acceptance proof; do not claim the 512 MB runtime is sufficient.
+- Recording restore deploy went Live at 18:30 Bangkok; /health confirmed
+  CLOUD_BROWSER_RECORDING true, /ready confirmed database ok.
+
+- Render Events confirmed instance h7lvj failed at 18:02 Bangkok: RAM above 512 MB.
+  Public health returned 502. Proxy errors have no application CORS headers; this
+  is distinct from native-camera preflight being rejected by the demo boundary.
+- Moved configured CORS middleware outside request/demo middleware. Preflight is
+  handled, while actual native-camera access remains 403. Unapproved origins stay
+  rejected; no wildcard, role, consent, evidence or database policy was changed.
+- Free Blueprint uses inference size 320, crop refinement off (including CPU opt-in),
+  preserving v4/YOLO11n weights. User authorized these changes. Render environment
+  was saved with the same three overrides and a service restart requested. Local
+  `.env`, original data/media and checkpoints are unchanged; no paid resources.
+- Then manually deployed existing b561e07 to apply saved environment reliably:
+  dep-db32lgrbc2fs73cdkt60 went Live at 18:21 Bangkok. New instance 2q7lq started;
+  the source CORS repair still requires a separate user push/deployment.
+- Validation: research_demo, cloud_evidence and frame_responsiveness tests: 54 passed;
+  API security, roles and settings regression: 15 passed (53 existing JWT warnings
+  across both runs). After restart, public /health and /ready returned 200 with
+  database ok and cloud recording still enabled; Render reported service recovered.
+  Hosted frame inference/peak memory remains
+  unverified; smaller inputs may reduce distant-PPE recall.
+- CORS source changes are NOT committed/pushed or deployed yet. User must push or
+  explicitly authorize Git writes before deployment. Check restart/health, then
+  actual consented camera persistence and resource use before declaring success.
+
 ### 2026-10-07 cloud feature parity work (pending hosted setup)
 
 - Hosted CPU/free demo is not equivalent to localhost. Existing research-demo
@@ -661,6 +723,75 @@ Locked targets ปัจจุบัน:
 - Next: review/retest final changes; obtain confirmation for private evidence
   bucket and dedicated identity provisioning; audit existing RLS before enabling.
   Real browser camera/roles/restart persistence still unverified for this feature.
+
+## 2026-10-07 ONNX cloud experiment (not promoted)
+
+- Snapshot: Render Free repeatedly exceeded memory limits. Existing CORS fix
+  cannot prevent proxy errors while API is unavailable. Hosted settings unchanged.
+- Completed: additive FP32 static-320 exports of exact v4 PPE and YOLO11n weights;
+  strict CPU ONNX adapter and opt-in Dockerfile.onnx/requirements-onnx.txt without
+  torch/ultralytics. Lazy ML imports prevent unintended torch loading. PyTorch
+  remains default; local .env, source checkpoints, DB and evidence preserved.
+- Validation: 209 application tests passed (69 existing python-jose UTC warnings).
+  Raw `pytest -q` initially collected vendor tests inside isolated experiment
+  tools and failed on missing vendor-only dependencies. Added pytest.ini with
+  testpaths=tests; no application test removed or skipped.
+- Windows CPU peak RSS: PyTorch 748.28 MiB; ONNX 197.34 MiB; ONNX with API imports
+  263.10 MiB; with additional hybrid detection on 60 images 272.21 MiB. No torch
+  import in ONNX trial. 30-image raw replay matched 253 boxes/classes/counts;
+  max score delta 0.00000218, coordinate delta 0.000260 px. Not accuracy evidence.
+- Known issues: local Linux Docker daemon unavailable. Linux dependencies,
+  hosted memory/load, HTTP persistence and long-running behavior still unverified.
+  PPE ONNX is 98.71 MiB; private artifact hosting upload cap must be checked.
+  Do not promise full localhost/RTSP parity or 512 MB compatibility yet.
+- Next task: see docs/CLOUD_ONNX_TRIAL.md; review/push source when authorized,
+  provision private export URLs within existing storage limits, explicitly promote
+  Dockerfile + backend/paths/URLs together, then test on Render and retain rollback.
+  No commit/push or production config mutation performed in this experiment.
+
+## 2026-10-07 multipart model preparation
+
+- User authorized splitting and runtime reassembly for the private artifact
+  upload cap. Added scripts/split_model_artifact.py and ordered JSON secret
+  PPE_MODEL_PART_URLS / PERSON_MODEL_PART_URLS support in render_start.py.
+- Prepared PPE export parts (40 MiB, 40 MiB, 19615050 bytes) in ignored
+  experiments/onnx-v4-fp32-320-20261007/upload-parts. Saved part reassembly hash
+  equals trusted original ONNX hash. Original exports/.pt files preserved.
+- Downloads use 64 KiB streaming, bounded part/total sizes, no redirects and
+  whole-model hash verification before publishing. Invalid/missing/reordered
+  parts fail closed. Existing single-file download behavior is preserved.
+- Validation: 21 new tests, full suite 230 passed / 69 existing JWT warnings;
+  git diff --check passed. No dependency/API/schema/role/retention change.
+- Pending: user push, private bucket upload of 3 PPE parts plus person.onnx,
+  signed URLs in Render secrets, explicit ONNX image/config promotion and hosted
+  acceptance/memory validation. Local .env and hosted settings untouched.
+  On rollback clear multipart variables before restoring original .pt URLs.
+- No Git commit/push, upload, external deploy, original data deletion, storage
+  policy or paid resource change performed by this step. See CLOUD_ONNX_TRIAL.md.
+
+## 2026-10-07 ONNX hosted promotion
+
+- User explicitly approved one-year private signed artifact URLs and entering
+  them into Render. Three PPE parts + person.onnx uploaded to private bucket;
+  original .pt objects remain. No bucket policy/public access change.
+- Saved INFERENCE_BACKEND=onnx, CPU/static320/crop=false, ONNX model paths and
+  version; ordered PPE_MODEL_PART_URLS and person URL stored only in Render.
+  Dockerfile path saved as backend/Dockerfile.onnx, context remains backend.
+- First deploy used the old Dockerfile before its asynchronous save completed;
+  failed config validation. Also fixed model path fields after delayed Render
+  value loading restored old .pt paths. Verified edited field values before save.
+- Final deploy dep-db375c60tbcc73fshej0, commit 4911fc6, is Live. Build logs show
+  requirements-onnx.txt; application startup complete. Read-only public health
+  healthy with cloud_browser_recording=true; readiness ready/database=ok.
+  Strict startup verifies model hashes/paths before starting API.
+- render.yaml updated locally to match ONNX promotion and preserve multipart URL
+  secret on future Blueprint sync. This small follow-up needs user commit/push;
+  no Git writes performed. Do not sync the old Blueprint values meanwhile.
+- Evidence screenshot outside Git: private-backups/onnx-upload-20261007/
+  render-onnx-live.jpg. Secret URLs not included in source/docs/chat.
+- Still pending: real consented browser-frame detection, persistence/evidence,
+  roles and sustained hosted memory/load tests. Live/readiness alone does not
+  prove inference stability or full localhost parity. No paid resources used.
 
 1. อ่าน `AGENTS.md` ทั้งหมด
 2. อ่านไฟล์นี้ทั้งหมด

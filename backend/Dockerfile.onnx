@@ -1,0 +1,8 @@
+# Opt-in trial image. Existing Render/PyTorch image is unchanged until promotion.
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements-onnx.txt ./
+RUN pip install --no-cache-dir -r requirements-onnx.txt
+COPY . .
+ENV OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+CMD ["python", "render_start.py"]
