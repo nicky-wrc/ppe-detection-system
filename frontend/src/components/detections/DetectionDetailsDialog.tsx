@@ -4,6 +4,7 @@ import { useDialogFocus } from '../../hooks/useDialogFocus'
 import { useLanguage } from '../../i18n/LanguageContext'
 import type { Detection } from '../../types'
 import { ProtectedDetectionImage } from '../ui/ProtectedDetectionImage'
+import { DetectionPerformance } from './DetectionPerformance'
 
 interface DetectionDetailsDialogProps {
   detection: Detection | null
@@ -147,6 +148,7 @@ export function DetectionDetailsDialog({
               {!!detection.persons?.length && <div className="overflow-hidden rounded-[18px] border border-[var(--line)]"><div className="flex justify-between gap-3 border-b border-[var(--line)] bg-[#f5f5f7] px-5 py-4"><p className="text-[14px] font-semibold text-[var(--ink)]">{text('รายละเอียดรายบุคคล', 'Detailed breakdown')}</p><span className="text-[12px] text-[var(--muted)]">{text(`ตรวจพบ ${detection.person_count} คน`, `${detection.person_count} people detected`)}</span></div><div className="space-y-3 p-5">{nonCompliant.map((person) => <div key={person.id} className="rounded-[12px] border border-[#f0c3c8] bg-[#fff8f8] p-4"><p className="font-semibold text-[#d70015]">{text(`บุคคล ${person.id} · ฝ่าฝืน`, `Person ${person.id} · Violation`)}</p><div className="mt-2 flex flex-wrap gap-2">{person.not_wearing?.map((item, index) => <span key={`${item}-${index}`} className="rounded-full bg-white px-3 py-1.5 text-[12px] text-[var(--muted)]">{violationLabel(item)}</span>)}</div></div>)}<p className="text-[14px] text-[var(--muted)]">{text(`สวมใส่ครบ ${compliantCount} คน`, `${compliantCount} fully compliant`)}</p></div></div>}
 
               {localizedSettings && <div className="rounded-[18px] border border-[var(--line)] p-5"><p className="mb-4 text-[14px] font-semibold text-[var(--ink)]">{text('การตั้งค่าที่ใช้', 'Settings used')}</p><div className="grid gap-3 text-[14px] sm:grid-cols-3"><div><p className="text-[var(--muted)]">{text('โหมด', 'Mode')}</p><p className="mt-1 font-semibold">{localizedSettings.mode}</p></div><div><p className="text-[var(--muted)]">{text('กฎ PPE', 'PPE rules')}</p><p className="mt-1 font-semibold">{localizedSettings.rules}</p></div><div><p className="text-[var(--muted)]">{text('ระดับการตรวจจับ', 'Detection levels')}</p><p className="mt-1 font-semibold">{localizedSettings.confidence}</p></div></div></div>}
+              <DetectionPerformance detection={detection} />
             </div>
           )}
         </div>

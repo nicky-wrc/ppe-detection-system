@@ -33,6 +33,20 @@ class DetectionSummary(BaseModel):
     violation_breakdown: Dict[str, int] = Field(default_factory=dict)
 
 
+class BrowserPerformance(BaseModel):
+    """Client-observed camera session measurements, not model accuracy."""
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    api_host: str = Field(min_length=1, max_length=253, pattern=r"^[a-zA-Z0-9.\[\]:-]+$")
+    elapsed_ms: float = Field(gt=0, le=86400000)
+    completed: int = Field(ge=1, le=1000000)
+    failed: int = Field(ge=0, le=1000000)
+    skipped: int = Field(ge=0, le=1000000)
+    processing_ms: float = Field(ge=0, le=3600000)
+    delay_ms: float = Field(ge=0, le=3600000)
+    target_interval_ms: float = Field(gt=0, le=60000)
+
+
 class DetectionResponse(BaseModel):
     id: int
     zone_id: Optional[int] = None

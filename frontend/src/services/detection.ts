@@ -1,6 +1,6 @@
 import api from './api'
 import { API_ORIGIN } from './api'
-import type { Detection, DetectionStats } from '../types'
+import type { BrowserPerformance, Detection, DetectionStats } from '../types'
 
 export interface DailyData {
   date: string
@@ -48,9 +48,10 @@ export const detectionService = {
   async checkReadiness(signal?: AbortSignal): Promise<void> {
     await api.get('/ready', { baseURL: API_ORIGIN, timeout: 90000, signal })
   },
-  async uploadImage(file: File, zoneId?: number, recordKind?: 'violation'): Promise<Detection> {
+  async uploadImage(file: File, zoneId?: number, recordKind?: 'violation', metrics?: BrowserPerformance): Promise<Detection> {
     const formData = new FormData()
     formData.append('file', file)
+    if (metrics) formData.append('comparison_metrics', JSON.stringify(metrics))
     
     const params = new URLSearchParams()
     if (zoneId) params.set('zone_id', String(zoneId))
@@ -62,9 +63,10 @@ export const detectionService = {
     return response.data
   },
 
-  async detectFrame(file: File, zoneId?: number, signal?: AbortSignal, recordingConsent = false): Promise<Detection> {
+  async detectFrame(file: File, zoneId?: number, signal?: AbortSignal, recordingConsent = false, metrics?: BrowserPerformance): Promise<Detection> {
     const formData = new FormData()
     formData.append('file', file)
+    if (metrics) formData.append('comparison_metrics', JSON.stringify(metrics))
 
     const params = new URLSearchParams()
     if (zoneId) params.set('zone_id', String(zoneId))
@@ -77,9 +79,10 @@ export const detectionService = {
     return response.data
   },
 
-  async saveCompliantFrameReport(file: File, zoneId?: number): Promise<Detection> {
+  async saveCompliantFrameReport(file: File, zoneId?: number, metrics?: BrowserPerformance): Promise<Detection> {
     const formData = new FormData()
     formData.append('file', file)
+    if (metrics) formData.append('comparison_metrics', JSON.stringify(metrics))
 
     const params = zoneId ? `?zone_id=${zoneId}` : ''
     try {
@@ -93,6 +96,7 @@ export const detectionService = {
 
       const fallbackFormData = new FormData()
       fallbackFormData.append('file', file)
+      if (metrics) fallbackFormData.append('comparison_metrics', JSON.stringify(metrics))
       const response = await api.post(`/detection/image${params}`, fallbackFormData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })

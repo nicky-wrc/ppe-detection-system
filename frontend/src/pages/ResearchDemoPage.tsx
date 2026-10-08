@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { isAxiosError } from 'axios'
 import { Layout } from '../components/layout/Layout'
+import { DetectionPerformance } from '../components/detections/DetectionPerformance'
+import { API_ORIGIN } from '../services/api'
 import { detectionService } from '../services/detection'
-import type { Detection } from '../types'
+import type { BrowserPerformance, Detection } from '../types'
 
 function detectionFailure(error: unknown): { message: string; retry: boolean } {
   if (!isAxiosError(error)) return { message: 'ผลตรวจจับไม่สมบูรณ์ กรุณาลองใหม่', retry: false }
@@ -31,6 +33,30 @@ export function ResearchDemoPage() {
   const [deviceId, setDeviceId] = useState('')
   const [result, setResult] = useState<Detection | null>(null)
   const [size, setSize] = useState({ width: 640, height: 480 })
+  const samplesRef = useRef({ started: 0, completed: 0, failed: 0, processing: 0, delay: 0, lastResult: 0 })
+  const metricsRef = useRef<BrowserPerformance | null>(null)
+  const [metrics, setMetrics] = useState<BrowserPerformance | null>(null)
+  const [stale, setStale] = useState(false)
+  const [performanceError, setPerformanceError] = useState<string>()
+
+  useEffect(() => {
+    if (!running) return
+    const timer = window.setInterval(() => {
+      const samples = samplesRef.current
+      if (!samples.completed) return
+      const snapshot: BrowserPerformance = {
+        api_host: new URL(API_ORIGIN).host,
+        elapsed_ms: Math.min(86400000, Math.max(1, performance.now() - samples.started)),
+        completed: samples.completed, failed: samples.failed, skipped: 0,
+        processing_ms: samples.processing / samples.completed,
+        delay_ms: samples.delay / samples.completed, target_interval_ms: 1000,
+      }
+      metricsRef.current = snapshot
+      setMetrics(snapshot)
+      setStale(performance.now() - samples.lastResult > Math.max(5000, snapshot.delay_ms * 2))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [running])
 
   const stop = () => {
     sessionRef.current += 1
@@ -72,6 +98,11 @@ export function ResearchDemoPage() {
     const controller = new AbortController()
     requestRef.current = controller
     setRunning(true)
+    samplesRef.current = { started: 0, completed: 0, failed: 0, processing: 0, delay: 0, lastResult: 0 }
+    metricsRef.current = null
+    setMetrics(null)
+    setStale(false)
+    setPerformanceError(undefined)
     setResult(null)
     setMessage('กำลังตรวจความพร้อม Backend… เซิร์ฟเวอร์ฟรีอาจใช้เวลาปลุกประมาณหนึ่งนาที')
     try {
@@ -120,15 +151,23 @@ export function ResearchDemoPage() {
         setSize({ width: canvas.width, height: canvas.height })
         const context = canvas.getContext('2d')
         if (!context) { stop(); return }
+        const capturedAt = performance.now()
+        if (!samplesRef.current.started) samplesRef.current.started = capturedAt
         context.drawImage(video, 0, 0, canvas.width, canvas.height)
         const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.7))
         if (!blob || session !== sessionRef.current) return
         setMessage('กำลังตรวจเฟรม… เซิร์ฟเวอร์ฟรีอาจใช้เวลาปลุกหรือประมวลผล')
         let retryDelay = 2000
         try {
-          const detection = await detectionService.detectFrame(new File([blob], 'demo-frame.jpg', { type: 'image/jpeg' }), undefined, controller.signal, cloudRecording)
+          const detection = await detectionService.detectFrame(new File([blob], 'demo-frame.jpg', { type: 'image/jpeg' }), undefined, controller.signal, cloudRecording, metricsRef.current ?? undefined)
           if (session !== sessionRef.current) return
           failures = 0
+          const samples = samplesRef.current
+          samples.completed += 1
+          samples.processing += detection.processing_time_ms ?? 0
+          samples.delay += performance.now() - capturedAt
+          samples.lastResult = performance.now()
+          setPerformanceError(undefined)
           setResult(detection)
           const duration = detection.processing_time_ms == null ? '' : ` · ประมวลผล ${(detection.processing_time_ms / 1000).toFixed(1)} วินาที`
           const saved = detection.id > 0 ? ' · บันทึกผลลง Reports แล้ว' : ''
@@ -136,8 +175,10 @@ export function ResearchDemoPage() {
         } catch (error) {
           if (session !== sessionRef.current) return
           failures += 1
+          samplesRef.current.failed += 1
           setResult(null)
           const failure = detectionFailure(error)
+          setPerformanceError(failure.message)
           if (!failure.retry || failures >= 6) {
             stop()
             setMessage(`${failure.message} · หยุดส่งเฟรมแล้ว กรุณาลองเปิดกล้องใหม่`)
@@ -187,6 +228,7 @@ export function ResearchDemoPage() {
         </svg>
       </div>
       <p role="status" aria-live="polite">{message}</p>
+      {running && <DetectionPerformance detection={result} metrics={metrics} live stale={stale} error={performanceError} />}
       <p className="text-sm text-gray-600">กรอบเป็นผลของเฟรมล่าสุดที่ประมวลผล ไม่ใช่ตำแหน่งปัจจุบันทุกเฟรม · ไม่รับประกันความเร็วบนแพ็กเกจฟรี</p>
     </section>
   </Layout>

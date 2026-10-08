@@ -3,18 +3,38 @@ from datetime import date
 from pathlib import Path
 import logging
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File, Form, Query
+from pydantic import ValidationError
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import get_current_user, require_roles
 from app.models import User, Detection
 from app.schemas import DetectionResponse, DetectionStats
+from app.schemas.detection import BrowserPerformance
 from app.services import DetectionService
 from app.core.rate_limit import enforce_rate_limit
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _browser_performance(comparison_metrics: Optional[str] = Form(None)) -> Optional[BrowserPerformance]:
+    if comparison_metrics is None:
+        return None
+    if len(comparison_metrics) > 2048:
+        raise HTTPException(status_code=422, detail="Camera metrics are too large")
+    try:
+        return BrowserPerformance.model_validate_json(comparison_metrics)
+    except ValidationError:
+        raise HTTPException(status_code=422, detail="Invalid camera performance metrics")
+
+
+def _save_browser_performance(db: Session, detection: Detection, metrics: Optional[BrowserPerformance]) -> None:
+    if metrics is not None:
+        detection.summary = {**(detection.summary or {}), "browser_performance": metrics.model_dump()}
+        db.commit()
+        db.refresh(detection)
 
 
 def _validate_extension(file: UploadFile, allowed: set[str]) -> None:
@@ -29,6 +49,7 @@ async def detect_from_image(
     file: UploadFile = File(...),
     zone_id: Optional[int] = Query(None),
     record_kind: Optional[str] = Query(None),
+    metrics: Optional[BrowserPerformance] = Depends(_browser_performance),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("admin", "safety_officer"))
 ):
@@ -52,6 +73,7 @@ async def detect_from_image(
         if record_kind == "violation":
             process_kwargs["enforce_record_mode"] = True
         detection = await service.process_image(**process_kwargs)
+        _save_browser_performance(db, detection, metrics)
         return detection
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -68,6 +90,7 @@ async def detect_from_frame(
     file: UploadFile = File(...),
     zone_id: Optional[int] = Query(None),
     recording_consent: bool = Query(False),
+    metrics: Optional[BrowserPerformance] = Depends(_browser_performance),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("admin", "safety_officer"))
 ):
@@ -91,6 +114,7 @@ async def detect_from_frame(
             zone_id=zone_id,
             user_id=current_user.id,
             recording_consent=recording_consent,
+            **({"browser_performance": metrics.model_dump()} if metrics is not None else {}),
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -107,6 +131,7 @@ async def save_compliant_frame_report(
     request: Request,
     file: UploadFile = File(...),
     zone_id: Optional[int] = Query(None),
+    metrics: Optional[BrowserPerformance] = Depends(_browser_performance),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("admin", "safety_officer"))
 ):
@@ -122,11 +147,13 @@ async def save_compliant_frame_report(
     service = DetectionService(db)
 
     try:
-        return await service.process_compliant_frame_report(
+        detection = await service.process_compliant_frame_report(
             file=file,
             user_id=current_user.id,
             zone_id=zone_id,
         )
+        _save_browser_performance(db, detection, metrics)
+        return detection
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except Exception as e:

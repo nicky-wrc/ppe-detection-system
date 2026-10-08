@@ -63,6 +63,8 @@ export interface DetectionSummary {
   compliant_persons: number
   non_compliant_persons: number
   violation_breakdown: Record<string, number>
+  browser_performance?: BrowserPerformance
+  runtime?: { environment: string; model_version: string; device: string }
   settings?: {
     ppe_check_enabled: boolean
     detection_mode: string
@@ -73,6 +75,17 @@ export interface DetectionSummary {
     ppe_confidence_percent: number
     detection_record_mode?: 'both' | 'violations_only' | 'compliant_only'
   }
+}
+
+export interface BrowserPerformance {
+  api_host: string
+  elapsed_ms: number
+  completed: number
+  failed: number
+  skipped: number
+  processing_ms: number
+  delay_ms: number
+  target_interval_ms: number
 }
 
 export interface DetectionStats {

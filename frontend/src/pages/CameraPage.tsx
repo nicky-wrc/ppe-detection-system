@@ -13,13 +13,15 @@ import {
 import toast from 'react-hot-toast'
 
 import { Layout } from '../components/layout/Layout'
+import { DetectionPerformance } from '../components/detections/DetectionPerformance'
+import { API_ORIGIN } from '../services/api'
 import { camerasService } from '../services/cameras'
 import type { CameraDeviceOption } from '../services/cameras'
 import { detectionService } from '../services/detection'
 import { settingsService } from '../services/settings'
 import { zonesService } from '../services/zones'
 import { useAuthStore } from '../stores/authStore'
-import type { Detection, EdgeCamera, Zone } from '../types'
+import type { BrowserPerformance, Detection, EdgeCamera, Zone } from '../types'
 import { useLanguage } from '../i18n/LanguageContext'
 
 interface CameraSocketMessage {
@@ -369,6 +371,35 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
   const detectionCooldownMsRef = useRef(30_000)
   const settingsUserId = useAuthStore((state) => state.user?.id)
   const [frameCount, setFrameCount] = useState(0)
+  const performanceRef = useRef({ started: 0, completed: 0, failed: 0, skipped: 0, processing: 0, delay: 0, lastResult: 0 })
+  const metricsRef = useRef<BrowserPerformance | null>(null)
+  const [metrics, setMetrics] = useState<BrowserPerformance | null>(null)
+  const [lastResult, setLastResult] = useState<Detection | null>(null)
+  const [performanceError, setPerformanceError] = useState<string>()
+  const [staleResult, setStaleResult] = useState(false)
+
+  const refreshMetrics = useCallback(() => {
+    const current = performanceRef.current
+    if (!current.started || !current.completed) return
+    const next: BrowserPerformance = {
+      api_host: new URL(API_ORIGIN).host,
+      elapsed_ms: Math.min(86400000, Math.max(1, performance.now() - current.started)),
+      completed: current.completed,
+      failed: current.failed,
+      skipped: current.skipped,
+      processing_ms: current.processing / current.completed,
+      delay_ms: current.delay / current.completed,
+      target_interval_ms: LIVE_DETECT_INTERVAL_MS,
+    }
+    metricsRef.current = next
+    setMetrics(next)
+    setStaleResult(performance.now() - current.lastResult > Math.max(3000, next.delay_ms * 2))
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setInterval(refreshMetrics, 1000)
+    return () => window.clearInterval(timer)
+  }, [refreshMetrics])
   const [summary, setSummary] = useState<{ persons: number; violations: number; message: string }>({
     persons: 0,
     violations: 0,
@@ -451,7 +482,7 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
     isPersistingViolationRef.current = true
     persistAttemptAtBySignatureRef.current[signature] = now
     try {
-      const persisted = await detectionService.uploadImage(frameFile, camera.zone_id)
+      const persisted = await detectionService.uploadImage(frameFile, camera.zone_id, undefined, metricsRef.current ?? undefined)
       if (sessionId !== sessionRef.current) return
       if (persisted.has_violation) {
         recordedViolationSignatureRef.current = signature
@@ -493,7 +524,7 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
     isPersistingCompliantRef.current = true
     lastCompliantReportAttemptAtRef.current = now
     try {
-      const persisted = await detectionService.saveCompliantFrameReport(frameFile, camera.zone_id)
+      const persisted = await detectionService.saveCompliantFrameReport(frameFile, camera.zone_id, metricsRef.current ?? undefined)
       if (sessionId !== sessionRef.current) return
       if (!persisted.has_violation && persisted.person_count > 0) {
         lastCompliantReportAtRef.current = Date.now()
@@ -510,13 +541,19 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
   const captureAndDetect = useCallback(() => {
     const video = videoRef.current
     const captureCanvas = captureCanvasRef.current
-    if (!video || !captureCanvas || video.paused || video.ended || isFrameBusyRef.current) return
+    if (!video || !captureCanvas || video.paused || video.ended) return
+    if (isFrameBusyRef.current) {
+      performanceRef.current.skipped += 1
+      return
+    }
     if (!video.videoWidth || !video.videoHeight) return
 
     captureCanvas.width = video.videoWidth
     captureCanvas.height = video.videoHeight
     const ctx = captureCanvas.getContext('2d')
     if (!ctx) return
+    const capturedAt = performance.now()
+    if (!performanceRef.current.started) performanceRef.current.started = capturedAt
     ctx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height)
 
     const sessionId = sessionRef.current
@@ -524,6 +561,9 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
     captureCanvas.toBlob(async (blob) => {
       if (sessionId !== sessionRef.current) return
       if (!blob) {
+        performanceRef.current.failed += 1
+        setPerformanceError(text('สร้างภาพจากกล้องไม่สำเร็จ', 'Camera frame encoding failed'))
+        refreshMetrics()
         isFrameBusyRef.current = false
         return
       }
@@ -533,6 +573,14 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
         const detection = await detectionService.detectFrame(frameFile, camera.zone_id)
         if (sessionId !== sessionRef.current) return
         lastDetectionRef.current = detection
+        const current = performanceRef.current
+        current.completed += 1
+        current.processing += detection.processing_time_ms ?? 0
+        current.delay += performance.now() - capturedAt
+        current.lastResult = performance.now()
+        setLastResult(detection)
+        setPerformanceError(undefined)
+        refreshMetrics()
         setFrameCount((current) => current + 1)
         setSummary({
           persons: detection.person_count,
@@ -561,6 +609,9 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
         await updateLiveCompliantReport(detection, frameFile, sessionId)
       } catch (error) {
         if (sessionId === sessionRef.current) {
+          performanceRef.current.failed += 1
+          setPerformanceError(text('ตรวจจับเฟรมไม่สำเร็จ', 'Frame detection failed'))
+          refreshMetrics()
           console.error('Camera page live detection failed:', error)
           setSummary((current) => ({ ...current, message: 'ตรวจจับเฟรมนี้ไม่สำเร็จ กำลังลองต่อ...' }))
         }
@@ -568,7 +619,7 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
         if (sessionId === sessionRef.current) isFrameBusyRef.current = false
       }
     }, 'image/jpeg', 0.8)
-  }, [camera.zone_id, updateLiveCompliantReport, updateLiveViolationEpisode])
+  }, [camera.zone_id, updateLiveCompliantReport, updateLiveViolationEpisode, refreshMetrics, text])
 
   useEffect(() => {
     let mounted = true
@@ -600,6 +651,14 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
     }
 
     const start = async () => {
+      performanceRef.current = { started: 0, completed: 0, failed: 0, skipped: 0, processing: 0, delay: 0, lastResult: 0 }
+      metricsRef.current = null
+      lastDetectionRef.current = null
+      setMetrics(null)
+      setLastResult(null)
+      setPerformanceError(undefined)
+      setStaleResult(false)
+      setFrameCount(0)
       setStatus('waiting')
       setSummary({ persons: 0, violations: 0, message: 'กำลังเปิดกล้อง...' })
       try {
@@ -685,6 +744,7 @@ function BrowserDetectionPreview({ camera }: { camera: EdgeCamera }) {
       <p className="mb-0 mt-3 rounded-[18px] border border-[#d8e7ff] bg-[#f6faff] px-4 py-3 text-[13px] leading-5 text-[#1455a0]" role="status">
         {summary.message}
       </p>
+      <DetectionPerformance detection={lastResult} metrics={metrics} error={performanceError} live stale={staleResult} />
     </div>
   )
 }
@@ -1446,11 +1506,13 @@ export function CameraPage() {
                     <div className="mt-5 rounded-[18px] bg-[#f5f5f7] px-4 py-5 text-center text-[13px] leading-5 text-[#6e6e73]">{text('ผู้ดูแลระบบและเจ้าหน้าที่ความปลอดภัยเท่านั้นที่ดูภาพสดได้', 'Live preview is available to administrators and safety officers.')}</div>
                   )}
 
-                  <dl className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    <div className="rounded-[18px] bg-[#f5f5f7] p-3 sm:p-4"><dt className="text-[11px] font-semibold text-[var(--muted)]">AI FPS</dt><dd className="mb-0 mt-1 text-[20px] font-semibold text-[#1d1d1f]">{camera.measured_fps.toFixed(1)}</dd></div>
-                    <div className="rounded-[18px] bg-[#f5f5f7] p-3 sm:p-4"><dt className="text-[11px] font-semibold text-[var(--muted)]">{text('ภาพที่วิเคราะห์', 'Frames')}</dt><dd className="mb-0 mt-1 text-[20px] font-semibold text-[#1d1d1f]">{camera.frames_analyzed.toLocaleString()}</dd></div>
+                  <dl className={`mt-5 grid grid-cols-1 gap-2 ${isBrowserPreviewActive ? '' : 'sm:grid-cols-3'}`}>
+                    {!isBrowserPreviewActive && <div className="rounded-[18px] bg-[#f5f5f7] p-3 sm:p-4"><dt className="text-[11px] font-semibold text-[var(--muted)]">AI FPS</dt><dd className="mb-0 mt-1 text-[20px] font-semibold text-[#1d1d1f]">{camera.measured_fps.toFixed(1)}</dd></div>}
+                    {!isBrowserPreviewActive && <div className="rounded-[18px] bg-[#f5f5f7] p-3 sm:p-4"><dt className="text-[11px] font-semibold text-[var(--muted)]">{text('ภาพที่วิเคราะห์', 'Frames')}</dt><dd className="mb-0 mt-1 text-[20px] font-semibold text-[#1d1d1f]">{camera.frames_analyzed.toLocaleString()}</dd></div>}
                     <div className="min-w-0 rounded-[18px] bg-[#f5f5f7] p-3 sm:p-4"><dt className="text-[11px] font-semibold text-[var(--muted)]">{text('พื้นที่', 'Zone')}</dt><dd className="mb-0 mt-1 truncate text-[15px] font-semibold text-[#1d1d1f]">{zones.find((zone) => zone.id === camera.zone_id)?.name || text('ค่าเริ่มต้น', 'Default')}</dd></div>
                   </dl>
+
+                  {camera.is_active && !isBrowserPreviewActive && <DetectionPerformance fps={camera.measured_fps} error={camera.last_error} live stale={!camera.is_online} />}
 
                   {shouldShowBackendError && <p className="mb-0 mt-4 rounded-[18px] border border-[#f0c3c8] bg-[#fff8f8] px-4 py-3 text-[13px] leading-5 text-[#b4232f]" role="alert">{camera.last_error}</p>}
 

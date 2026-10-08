@@ -70,11 +70,15 @@ class DetectionService:
             required_ppe, confidence, person_confidence, get_detection_record_mode(self.db, user_id),
         )
 
-    @staticmethod
-    def _summary_with_settings(detection_result: dict, settings_summary: dict) -> dict:
+    def _summary_with_settings(self, detection_result: dict, settings_summary: dict) -> dict:
         return {
             **(detection_result.get("summary", {}) or {}),
             "settings": settings_summary,
+            "runtime": {
+                "environment": settings.ENVIRONMENT,
+                "model_version": settings.MODEL_VERSION,
+                **self.detector.engine_metadata,
+            },
         }
 
     def _allows_detection_record(self, user_id: Optional[int], has_violation: bool) -> bool:
@@ -147,6 +151,7 @@ class DetectionService:
         zone_id: Optional[int] = None,
         user_id: Optional[int] = None,
         recording_consent: bool = False,
+        browser_performance: Optional[dict] = None,
     ) -> dict:
         content = await file.read(settings.MAX_FRAME_SIZE + 1)
         if len(content) > settings.MAX_FRAME_SIZE:
@@ -196,6 +201,8 @@ class DetectionService:
             "summary": self._summary_with_settings(detection_result, settings_summary),
             "created_at": datetime.now(),
         }
+        if browser_performance is not None:
+            response["summary"]["browser_performance"] = browser_performance
         if settings.ENVIRONMENT == "research_demo" and settings.CLOUD_BROWSER_RECORDING and recording_consent:
             response["summary"]["cloud_recording_enabled"] = True
             if response["person_count"] > 0 and self._allows_detection_record(user_id, response["has_violation"]):
