@@ -1,4 +1,5 @@
 import json
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -73,3 +74,12 @@ def test_runtime_identifies_actual_engine_without_claiming_accuracy():
     assert summary["runtime"]["crop_refinement"] is False
     assert summary["runtime"]["model_version"]
     assert "accuracy" not in summary
+
+
+def test_frame_response_keeps_client_measurements_for_cloud_recording(monkeypatch):
+    from tests.test_frame_responsiveness import frame_file, make_service
+
+    service = make_service(monkeypatch, lambda *_args, **_kwargs: {"person_count": 0})
+    result = asyncio.run(service.process_frame(frame_file(), user_id=1, browser_performance=METRICS))
+    assert result["summary"]["browser_performance"] == METRICS
+    assert result["summary"]["runtime"]["device"] == "cpu"

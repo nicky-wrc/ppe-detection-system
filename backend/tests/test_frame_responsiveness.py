@@ -19,7 +19,7 @@ def frame_file():
 
 def make_service(monkeypatch, detect):
     service = object.__new__(DetectionService)
-    service.detector = Mock(detect=detect)
+    service.detector = Mock(detect=detect, engine_metadata={"device": "cpu", "crop_refinement": False})
     monkeypatch.setattr(service, '_get_detection_options', lambda *_: (['helmet', 'vest'], 0.2, 0.3))
     monkeypatch.setattr(service, '_settings_summary', lambda *_: {})
     return service
@@ -101,7 +101,7 @@ def test_ready_and_busy_response_work_during_demo_inference(monkeypatch, admin_h
         return {'persons': [], 'person_count': 0}
 
     monkeypatch.setattr(settings, 'ENVIRONMENT', 'research_demo')
-    monkeypatch.setattr(detection_module, 'get_detector', lambda: Mock(detect=detect))
+    monkeypatch.setattr(detection_module, 'get_detector', lambda: Mock(detect=detect, engine_metadata={"device": "cpu", "crop_refinement": False}))
     monkeypatch.setattr(DetectionService, '_get_detection_options', lambda *_: ([], 0.2, 0.3))
     monkeypatch.setattr(DetectionService, '_settings_summary', lambda *_: {})
 

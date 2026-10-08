@@ -25,7 +25,7 @@ def frame_file():
 
 def make_service(monkeypatch, detect):
     service = object.__new__(DetectionService)
-    service.detector = Mock(detect=detect)
+    service.detector = Mock(detect=detect, engine_metadata={"device": "cpu", "crop_refinement": False})
     monkeypatch.setattr(service, '_get_detection_options', lambda *_: ([], .2, .3))
     monkeypatch.setattr(service, '_settings_summary', lambda *_: {})
     return service
